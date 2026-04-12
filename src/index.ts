@@ -7,25 +7,29 @@ async function main(): Promise<void> {
 
   startScheduler();
 
-  // Start long-polling
-  bot.start({
+  // Start long-polling — fire-and-forget with explicit .catch so startup
+  // errors are logged and cause a clean exit rather than an unhandled rejection.
+  void bot.start({
     onStart: () => {
       logger.info('Bot is running (long-polling mode)');
     },
+  }).catch((err: unknown) => {
+    logger.fatal({ err }, 'bot.start() failed');
+    process.exit(1);
   });
 }
 
 // Graceful shutdown (REL-01)
-function shutdown(signal: string): void {
+async function shutdown(signal: string): Promise<void> {
   logger.info({ signal }, 'Shutdown signal received, stopping gracefully...');
   stopScheduler();
-  bot.stop();
+  await bot.stop();
   logger.info('Bot stopped. Goodbye.');
   process.exit(0);
 }
 
-process.on('SIGTERM', () => shutdown('SIGTERM'));
-process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => void shutdown('SIGTERM'));
+process.on('SIGINT', () => void shutdown('SIGINT'));
 
 // Uncaught error handlers (REL-02) -- log but exit cleanly
 process.on('uncaughtException', (err) => {
