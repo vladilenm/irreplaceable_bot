@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { bot } from './bot.js';
 import { logger } from './utils/logger.js';
 import { startScheduler, stopScheduler } from './scheduler/cron.js';

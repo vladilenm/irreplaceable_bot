@@ -1,4 +1,3 @@
-import 'dotenv/config';
 import type { BotConfig } from './types/index.js';
 
 function requireEnv(name: string): string {
