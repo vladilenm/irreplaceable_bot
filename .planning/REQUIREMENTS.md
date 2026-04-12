@@ -7,9 +7,9 @@
 
 ### Project Setup
 
-- [ ] **SETUP-01**: Project initialized with Node.js 20+, TypeScript, Grammy, modular structure from spec
-- [ ] **SETUP-02**: Configuration loaded from .env (BOT_TOKEN, TARGET_CHAT_ID, AI_RADAR_THREAD_ID, DIGEST_CRON, AI_API_KEY, AI_MODEL, LOG_LEVEL)
-- [ ] **SETUP-03**: Logging via pino with configurable level (LOG_LEVEL)
+- [x] **SETUP-01**: Project initialized with Node.js 20+, TypeScript, Grammy, modular structure from spec
+- [x] **SETUP-02**: Configuration loaded from .env (BOT_TOKEN, TARGET_CHAT_ID, AI_RADAR_THREAD_ID, DIGEST_CRON, AI_API_KEY, AI_MODEL, LOG_LEVEL)
+- [x] **SETUP-03**: Logging via pino with configurable level (LOG_LEVEL)
 - [ ] **SETUP-04**: Dockerfile for VPS deploy (long-polling mode)
 
 ### RSS Parser
@@ -47,7 +47,7 @@
 
 - [ ] **REL-01**: Graceful shutdown on SIGTERM/SIGINT (clean Grammy and cron termination)
 - [ ] **REL-02**: Errors are logged, do not crash bot -- bot continues after digest failure
-- [ ] **REL-03**: Strict TypeScript (strict: true, no any)
+- [x] **REL-03**: Strict TypeScript (strict: true, no any)
 
 ## v2 Requirements
 
@@ -83,9 +83,9 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SETUP-01 | Phase 1 | Pending |
-| SETUP-02 | Phase 1 | Pending |
-| SETUP-03 | Phase 1 | Pending |
+| SETUP-01 | Phase 1 | Complete |
+| SETUP-02 | Phase 1 | Complete |
+| SETUP-03 | Phase 1 | Complete |
 | SETUP-04 | Phase 1 | Pending |
 | RSS-01 | Phase 2 | Pending |
 | RSS-02 | Phase 2 | Pending |
@@ -108,7 +108,7 @@
 | CMD-03 | Phase 3 | Pending |
 | REL-01 | Phase 1 | Pending |
 | REL-02 | Phase 1 | Pending |
-| REL-03 | Phase 1 | Pending |
+| REL-03 | Phase 1 | Complete |
 
 **Coverage:**
 - v1 requirements: 26 total

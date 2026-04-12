@@ -31,7 +31,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans:** 2 plans
 
 Plans:
-- [ ] 01-01-PLAN.md — Project scaffolding, TypeScript strict, config with env validation, pino logger, shared types
+- [x] 01-01-PLAN.md — Project scaffolding, TypeScript strict, config with env validation, pino logger, shared types
 - [ ] 01-02-PLAN.md — Grammy bot with /start command, graceful shutdown, Docker deployment, stub modules
 
 ### Phase 2: Digest Pipeline
