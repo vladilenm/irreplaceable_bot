@@ -32,7 +32,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 Plans:
 - [x] 01-01-PLAN.md — Project scaffolding, TypeScript strict, config with env validation, pino logger, shared types
-- [ ] 01-02-PLAN.md — Grammy bot with /start command, graceful shutdown, Docker deployment, stub modules
+- [x] 01-02-PLAN.md — Grammy bot with /start command, graceful shutdown, Docker deployment, stub modules
 
 ### Phase 2: Digest Pipeline
 **Goal**: The core pipeline fetches RSS feeds and filters articles through LLM to produce a structured digest object ready for publishing
