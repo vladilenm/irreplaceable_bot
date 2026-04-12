@@ -28,11 +28,11 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. Bot logs are structured JSON (pino) with configurable log level via .env
   4. Sending SIGTERM to the container stops the bot gracefully without error logs
   5. Project compiles with strict TypeScript (no `any`, strict: true)
-**Plans**: TBD
+**Plans:** 2 plans
 
 Plans:
-- [ ] 01-01: TBD
-- [ ] 01-02: TBD
+- [ ] 01-01-PLAN.md — Project scaffolding, TypeScript strict, config with env validation, pino logger, shared types
+- [ ] 01-02-PLAN.md — Grammy bot with /start command, graceful shutdown, Docker deployment, stub modules
 
 ### Phase 2: Digest Pipeline
 **Goal**: The core pipeline fetches RSS feeds and filters articles through LLM to produce a structured digest object ready for publishing
