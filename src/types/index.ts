@@ -31,3 +31,18 @@ export interface DigestPayload {
   items: DigestItem[];
   totalSources: number;
 }
+
+export interface FeedConfig {
+  url: string;
+  name: string;
+  sourceKey: string;
+}
+
+export interface RawArticle {
+  title: string;
+  description: string;
+  link: string;
+  source: string;
+  sourceKey: string;
+  pubDate: Date;
+}
