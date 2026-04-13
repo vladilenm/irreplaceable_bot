@@ -44,11 +44,12 @@ Plans:
   3. Digest respects vc.ru quota: exactly 2 business news items from vc.ru (minimum 1 if insufficient)
   4. If fewer than 3 significant articles found, pipeline returns "skip" signal (no digest produced)
   5. Adding or removing an RSS feed requires only a config change, no code modification
-**Plans**: TBD
+**Plans:** 3 plans
 
 Plans:
-- [ ] 02-01: TBD
-- [ ] 02-02: TBD
+- [ ] 02-01-PLAN.md — RSS feed configuration (feeds.json) and fetcher service with time-window filtering
+- [ ] 02-02-PLAN.md — AI curator prompt file and ai.service.ts with Claude/OpenAI dual-provider support
+- [ ] 02-03-PLAN.md — Digest pipeline orchestrator (digest.service.ts) wiring RSS + AI with state management
 
 ### Phase 3: Delivery & Operations
 **Goal**: Bot autonomously publishes daily digest to the AI-radar thread and provides operational commands for manual control and monitoring
@@ -73,6 +74,6 @@ Phases execute in numeric order: 1 -> 2 -> 3
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation & Bot Shell | 0/2 | Not started | - |
-| 2. Digest Pipeline | 0/2 | Not started | - |
+| 1. Foundation & Bot Shell | 2/2 | Complete | 2026-04-12 |
+| 2. Digest Pipeline | 0/3 | Not started | - |
 | 3. Delivery & Operations | 0/2 | Not started | - |
