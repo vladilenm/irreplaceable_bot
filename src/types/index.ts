@@ -31,3 +31,12 @@ export interface DigestPayload {
   items: DigestItem[];
   totalSources: number;
 }
+
+export interface RawArticle {
+  title: string;
+  description: string;
+  link: string;
+  source: string;
+  sourceKey: string;
+  pubDate: Date;
+}
