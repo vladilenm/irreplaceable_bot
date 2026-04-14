@@ -79,6 +79,10 @@ None yet.
 
 None yet.
 
+### Roadmap Evolution
+
+- Phase 03.1 inserted after Phase 3: dev-digest command for repeatable digest testing (URGENT)
+
 ## Session Continuity
 
 Last session: 2026-04-14T10:28:58.354Z

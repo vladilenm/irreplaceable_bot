@@ -77,3 +77,13 @@ Phases execute in numeric order: 1 -> 2 -> 3
 | 1. Foundation & Bot Shell | 2/2 | Complete | 2026-04-12 |
 | 2. Digest Pipeline | 0/3 | Not started | - |
 | 3. Delivery & Operations | 0/2 | Not started | - |
+
+### Phase 03.1: dev-digest command for repeatable digest testing (INSERTED)
+
+**Goal:** [Urgent work - to be planned]
+**Requirements**: TBD
+**Depends on:** Phase 3
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 03.1 to break down)
