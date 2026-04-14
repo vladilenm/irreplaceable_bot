@@ -4,6 +4,7 @@ import { logger } from './utils/logger.js';
 import {
   runDigestPipeline,
   isDigestPublishedToday,
+  readState,
 } from './modules/digest/digest.service.js';
 import { sendDigest } from './modules/digest/digest.sender.js';
 
@@ -90,4 +91,53 @@ bot.command('digest', async (ctx) => {
         /* ignore edit failure */
       });
   }
+});
+
+// /status command (CMD-03) -- admin-only, reads state.json only, no LLM calls
+bot.command('status', async (ctx) => {
+  logger.info({ userId: ctx.from?.id }, '/status command received');
+
+  // D-17 / T-03-08: Admin-only
+  if (!(await isAdmin(ctx))) {
+    await ctx.reply('Команда доступна только администраторам.');
+    return;
+  }
+
+  // D-20 / T-03-10: Read from state.json, no LLM calls, no secrets exposed
+  const state = readState();
+
+  let lastDigestInfo: string;
+  if (state.lastDigestDate) {
+    const lastDate = new Date(state.lastDigestDate);
+    const formattedDate = lastDate.toLocaleDateString('ru-RU', {
+      day: 'numeric',
+      month: 'long',
+      timeZone: 'Europe/Moscow',
+    });
+    const resultText = state.lastSkipped ? 'пропущен' : 'опубликован';
+    lastDigestInfo = `📡 Последний дайджест: ${formattedDate} — ${state.lastItemCount} новостей (${resultText})`;
+  } else {
+    lastDigestInfo = '📡 Дайджестов ещё не было';
+  }
+
+  // D-18: cron schedule (UTC expression from config)
+  const nextRunInfo = `⏰ Расписание: ${config.digestCron} UTC`;
+
+  // Bot uptime
+  const uptimeSeconds = process.uptime();
+  const uptimeHours = Math.floor(uptimeSeconds / 3600);
+  const uptimeMinutes = Math.floor((uptimeSeconds % 3600) / 60);
+  const uptimeText =
+    uptimeHours > 0 ? `${uptimeHours}ч ${uptimeMinutes}м` : `${uptimeMinutes}м`;
+
+  const statusText = [
+    '🤖 Статус бота',
+    '',
+    lastDigestInfo,
+    nextRunInfo,
+    `⏱ Аптайм: ${uptimeText}`,
+  ].join('\n');
+
+  // D-19: reply in same chat/thread
+  await ctx.reply(statusText);
 });
