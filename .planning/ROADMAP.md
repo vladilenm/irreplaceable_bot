@@ -65,7 +65,7 @@ Plans:
 
 Plans:
 - [x] 03-01-PLAN.md — Delivery core: HTML formatter, sender with retry, idempotency guard, cron scheduler
-- [ ] 03-02-PLAN.md — /digest and /status commands with admin-only access
+- [x] 03-02-PLAN.md — /digest and /status commands with admin-only access
 
 ## Progress
 
