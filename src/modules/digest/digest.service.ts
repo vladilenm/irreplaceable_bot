@@ -10,16 +10,18 @@ export interface DigestResult {
   itemCount: number;
   skipped: boolean;
   date: Date;
+  alreadyPublished: boolean;
 }
 
-interface PipelineState {
+export interface PipelineState {
   lastDigestDate: string | null;
   lastSkipped: boolean;
+  lastItemCount: number;
 }
 
 const STATE_PATH = new URL('../../../data/state.json', import.meta.url);
 
-function readState(): PipelineState {
+export function readState(): PipelineState {
   try {
     const raw = readFileSync(STATE_PATH, 'utf-8');
     const parsed: unknown = JSON.parse(raw);
@@ -34,13 +36,29 @@ function readState(): PipelineState {
         lastDigestDate:
           typeof state['lastDigestDate'] === 'string' ? state['lastDigestDate'] : null,
         lastSkipped: typeof state['lastSkipped'] === 'boolean' ? state['lastSkipped'] : false,
+        lastItemCount:
+          typeof state['lastItemCount'] === 'number' ? state['lastItemCount'] : 0,
       };
     }
-    return { lastDigestDate: null, lastSkipped: false };
+    return { lastDigestDate: null, lastSkipped: false, lastItemCount: 0 };
   } catch {
     logger.warn('State file not found or corrupted, using defaults');
-    return { lastDigestDate: null, lastSkipped: false };
+    return { lastDigestDate: null, lastSkipped: false, lastItemCount: 0 };
   }
+}
+
+function toMskDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-CA', { timeZone: 'Europe/Moscow' });
+}
+
+export function isDigestPublishedToday(): boolean {
+  const state = readState();
+  if (state.lastDigestDate === null) {
+    return false;
+  }
+  const todayMsk = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Moscow' });
+  const lastMsk = toMskDate(state.lastDigestDate);
+  return todayMsk === lastMsk;
 }
 
 function writeState(state: PipelineState): void {
@@ -50,6 +68,10 @@ function writeState(state: PipelineState): void {
   logger.debug({ state }, 'Pipeline state saved');
 }
 
+function emptyResult(alreadyPublished: boolean, skipped: boolean): DigestResult {
+  return { text: '', itemCount: 0, skipped, date: new Date(), alreadyPublished };
+}
+
 function countDigestItems(text: string): number {
   const matches = text.match(/→ https?:\/\//g);
   return matches ? matches.length : 0;
@@ -57,6 +79,17 @@ function countDigestItems(text: string): number {
 
 export async function runDigestPipeline(): Promise<DigestResult> {
   const state = readState();
+
+  // Idempotency guard (D-01, D-02): if a non-skipped digest already shipped
+  // today in MSK, don't re-run or re-send.
+  if (isDigestPublishedToday() && state.lastSkipped === false) {
+    logger.warn(
+      { lastDigestDate: state.lastDigestDate },
+      'Digest already published today (MSK), skipping',
+    );
+    return emptyResult(true, false);
+  }
+
   const hoursBack = state.lastSkipped ? 48 : 24;
 
   logger.info(
@@ -68,8 +101,12 @@ export async function runDigestPipeline(): Promise<DigestResult> {
 
   if (articles.length === 0) {
     logger.warn({ hoursBack }, 'No articles found in time window');
-    writeState({ lastDigestDate: new Date().toISOString(), lastSkipped: true });
-    return { text: '', itemCount: 0, skipped: true, date: new Date() };
+    writeState({
+      lastDigestDate: new Date().toISOString(),
+      lastSkipped: true,
+      lastItemCount: 0,
+    });
+    return { text: '', itemCount: 0, skipped: true, date: new Date(), alreadyPublished: false };
   }
 
   logger.info(
@@ -93,7 +130,8 @@ export async function runDigestPipeline(): Promise<DigestResult> {
   writeState({
     lastDigestDate: new Date().toISOString(),
     lastSkipped: skipped,
+    lastItemCount: itemCount,
   });
 
-  return { text, itemCount, skipped, date: new Date() };
+  return { text, itemCount, skipped, date: new Date(), alreadyPublished: false };
 }
