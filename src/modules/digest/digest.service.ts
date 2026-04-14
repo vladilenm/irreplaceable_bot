@@ -19,6 +19,13 @@ export interface PipelineState {
   lastItemCount: number;
 }
 
+export interface RunPipelineOptions {
+  /** If true, bypass isDigestPublishedToday() short-circuit. Default: false. */
+  skipIdempotency?: boolean;
+  /** If true, write data/state.json after the run. Default: true. */
+  persistState?: boolean;
+}
+
 const STATE_PATH = new URL('../../../data/state.json', import.meta.url);
 
 export function readState(): PipelineState {
@@ -77,12 +84,18 @@ function countDigestItems(text: string): number {
   return matches ? matches.length : 0;
 }
 
-export async function runDigestPipeline(): Promise<DigestResult> {
+export async function runDigestPipeline(
+  opts: RunPipelineOptions = {},
+): Promise<DigestResult> {
+  const skipIdempotency = opts.skipIdempotency ?? false;
+  const persistState = opts.persistState ?? true;
+
   const state = readState();
 
   // Idempotency guard (D-01, D-02): if a non-skipped digest already shipped
   // today in MSK, don't re-run or re-send.
-  if (isDigestPublishedToday() && state.lastSkipped === false) {
+  // Dev-run: skip MSK-day idempotency guard so /dev-digest can be called repeatedly.
+  if (!skipIdempotency && isDigestPublishedToday() && state.lastSkipped === false) {
     logger.warn(
       { lastDigestDate: state.lastDigestDate },
       'Digest already published today (MSK), skipping',
@@ -93,7 +106,13 @@ export async function runDigestPipeline(): Promise<DigestResult> {
   const hoursBack = state.lastSkipped ? 48 : 24;
 
   logger.info(
-    { hoursBack, lastSkipped: state.lastSkipped, lastDigestDate: state.lastDigestDate },
+    {
+      hoursBack,
+      lastSkipped: state.lastSkipped,
+      lastDigestDate: state.lastDigestDate,
+      skipIdempotency,
+      persistState,
+    },
     'Starting digest pipeline',
   );
 
@@ -101,11 +120,13 @@ export async function runDigestPipeline(): Promise<DigestResult> {
 
   if (articles.length === 0) {
     logger.warn({ hoursBack }, 'No articles found in time window');
-    writeState({
-      lastDigestDate: new Date().toISOString(),
-      lastSkipped: true,
-      lastItemCount: 0,
-    });
+    if (persistState) {
+      writeState({
+        lastDigestDate: new Date().toISOString(),
+        lastSkipped: true,
+        lastItemCount: 0,
+      });
+    }
     return { text: '', itemCount: 0, skipped: true, date: new Date(), alreadyPublished: false };
   }
 
@@ -127,11 +148,13 @@ export async function runDigestPipeline(): Promise<DigestResult> {
     logger.info({ itemCount }, 'Digest ready');
   }
 
-  writeState({
-    lastDigestDate: new Date().toISOString(),
-    lastSkipped: skipped,
-    lastItemCount: itemCount,
-  });
+  if (persistState) {
+    writeState({
+      lastDigestDate: new Date().toISOString(),
+      lastSkipped: skipped,
+      lastItemCount: itemCount,
+    });
+  }
 
   return { text, itemCount, skipped, date: new Date(), alreadyPublished: false };
 }
