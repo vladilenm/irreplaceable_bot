@@ -46,7 +46,10 @@ export async function filterArticles(
     }
     result = firstBlock.text;
   } else {
-    const client = new OpenAI({ apiKey: config.aiApiKey });
+    const client = new OpenAI({
+      apiKey: config.aiApiKey,
+      ...(config.aiBaseUrl ? { baseURL: config.aiBaseUrl } : {}),
+    });
     const response = await client.chat.completions.create({
       model: config.aiModel,
       max_tokens: 2000,

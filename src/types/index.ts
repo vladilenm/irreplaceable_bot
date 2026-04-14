@@ -5,6 +5,7 @@ export interface BotConfig {
   digestCron: string;
   aiApiKey: string;
   aiModel: string;
+  aiBaseUrl?: string;
   logLevel: string;
   nodeEnv: string;
 }
