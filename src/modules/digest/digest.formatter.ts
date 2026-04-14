@@ -12,10 +12,12 @@ function escapeHtml(input: string): string {
   return input.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-// Un-escape HTML entities that were introduced by escapeHtml, used only inside
-// href attribute values where URL must keep literal "&" for query strings.
-function unescapeHtml(input: string): string {
-  return input.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+// Un-escape only "&amp;" inside href attribute values so URL query strings
+// keep literal "&". We intentionally leave "&lt;"/"&gt;" escaped: angle
+// brackets are not required in URL semantics and leaving them escaped
+// preserves the T-03-01 injection guard inside the href attribute.
+function unescapeAmp(input: string): string {
+  return input.replace(/&amp;/g, '&');
 }
 
 function isHeaderLine(line: string): boolean {
@@ -35,7 +37,7 @@ function isLinkLine(line: string): boolean {
 function transformLinkLine(line: string): string {
   // line has already been HTML-escaped; URL may contain "&amp;" we must preserve inside href
   return line.replace(/(→\s+)(https?:\/\/\S+)/, (_match, arrow: string, url: string) => {
-    const hrefUrl = unescapeHtml(url);
+    const hrefUrl = unescapeAmp(url);
     return `${arrow}<a href="${hrefUrl}">ссылка</a>`;
   });
 }
