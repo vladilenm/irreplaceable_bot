@@ -15,12 +15,29 @@ bot.catch((err) => {
   logger.error({ err: err.error, update: err.ctx?.update?.update_id }, 'Bot error caught');
 });
 
-// Admin-only guard (D-13, D-17, T-03-07, T-03-08)
+// Admin-only guard (D-13, D-17, T-03-07, T-03-08).
+// WR-04: cache admin list per-chat with a short TTL so that /status or /digest
+// spam from non-admins does not hammer the Telegram API (rate-limit / DoS surface).
+// Also short-circuit in non-group chats to avoid noisy error logs from
+// getChatAdministrators failing on private DMs.
+const ADMIN_CACHE_TTL_MS = 5 * 60_000;
+const adminCache = new Map<number, { ids: Set<number>; expires: number }>();
+
 async function isAdmin(ctx: Context): Promise<boolean> {
   if (!ctx.chat || !ctx.from) return false;
+  if (ctx.chat.type !== 'group' && ctx.chat.type !== 'supergroup') return false;
+
+  const now = Date.now();
+  const cached = adminCache.get(ctx.chat.id);
+  if (cached && cached.expires > now) {
+    return cached.ids.has(ctx.from.id);
+  }
+
   try {
     const admins = await ctx.api.getChatAdministrators(ctx.chat.id);
-    return admins.some((admin) => admin.user.id === ctx.from?.id);
+    const ids = new Set(admins.map((admin) => admin.user.id));
+    adminCache.set(ctx.chat.id, { ids, expires: now + ADMIN_CACHE_TTL_MS });
+    return ids.has(ctx.from.id);
   } catch (err: unknown) {
     logger.error({ err }, 'Failed to check admin status');
     return false;
