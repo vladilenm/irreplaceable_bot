@@ -158,3 +158,58 @@ bot.command('status', async (ctx) => {
   // D-19: reply in same chat/thread
   await ctx.reply(statusText);
 });
+
+// /dev-digest command -- dev-only repeatable trigger.
+// Admin-gated. Bypasses isDigestPublishedToday() and does NOT persist state.json.
+// Intended for format tuning during development; публикует в реальный AI-radar тред, так что
+// output идентичен production-render (HTML, emoji, links).
+bot.command('dev-digest', async (ctx) => {
+  logger.info({ userId: ctx.from?.id, devRun: true }, '/dev-digest command received');
+
+  if (!(await isAdmin(ctx))) {
+    await ctx.reply('Команда доступна только администраторам.');
+    return;
+  }
+
+  const statusMsg = await ctx.reply('Dev-run: запускаю сборку дайджеста...');
+
+  try {
+    const result = await runDigestPipeline({
+      skipIdempotency: true,
+      persistState: false,
+    });
+
+    if (result.skipped) {
+      await ctx.api.editMessageText(
+        statusMsg.chat.id,
+        statusMsg.message_id,
+        'Dev-run: дайджест пропущен (менее 3 значимых новостей). state.json не изменён.',
+      );
+      return;
+    }
+
+    await sendDigest(result);
+
+    logger.info(
+      { itemCount: result.itemCount, devRun: true },
+      'Dev-digest published (state NOT persisted)',
+    );
+
+    await ctx.api.editMessageText(
+      statusMsg.chat.id,
+      statusMsg.message_id,
+      `Dev-run: опубликовано ${result.itemCount} новостей. state.json не изменён.`,
+    );
+  } catch (err: unknown) {
+    logger.error({ err, devRun: true }, '/dev-digest command failed');
+    await ctx.api
+      .editMessageText(
+        statusMsg.chat.id,
+        statusMsg.message_id,
+        'Dev-run: ошибка при сборке дайджеста. Подробности в логах.',
+      )
+      .catch(() => {
+        /* ignore edit failure */
+      });
+  }
+});
