@@ -35,11 +35,16 @@ function isLinkLine(line: string): boolean {
 }
 
 function transformLinkLine(line: string): string {
-  // line has already been HTML-escaped; URL may contain "&amp;" we must preserve inside href
-  return line.replace(/(→\s+)(https?:\/\/\S+)/, (_match, arrow: string, url: string) => {
-    const hrefUrl = unescapeAmp(url);
-    return `${arrow}<a href="${hrefUrl}">ссылка</a>`;
-  });
+  // line has already been HTML-escaped; URL may contain "&amp;" we must preserve inside href.
+  // Anchor URL to end-of-line and disallow whitespace / "<" / ">" / quote chars so trailing
+  // punctuation (., ), etc.) stays outside the href (WR-02).
+  return line.replace(
+    /(→\s+)(https?:\/\/[^\s<>"]+)\s*$/,
+    (_match, arrow: string, url: string) => {
+      const hrefUrl = unescapeAmp(url);
+      return `${arrow}<a href="${hrefUrl}">ссылка</a>`;
+    },
+  );
 }
 
 export function formatDigestHtml(plainText: string): string {
