@@ -4,7 +4,7 @@ milestone: v2.0
 milestone_name: Thread Summaries
 status: verifying
 stopped_at: Completed 04-03-PLAN.md
-last_updated: "2026-04-28T06:18:05.801Z"
+last_updated: "2026-04-28T06:37:11.997Z"
 last_activity: 2026-04-28
 progress:
   total_phases: 6
@@ -25,8 +25,8 @@ See: .planning/PROJECT.md (updated 2026-04-27)
 
 ## Current Position
 
-Phase: 04 (message-capture-persistence) — EXECUTING
-Plan: 3 of 3
+Phase: 5
+Plan: Not started
 Status: Phase complete — ready for verification
 Last activity: 2026-04-28
 
@@ -38,7 +38,7 @@ Note: `total_phases: 5` counts the integer code phases (4-8). Phase 0-Ops is a m
 
 **Velocity (v2.0):**
 
-- Total plans completed: 0
+- Total plans completed: 3
 - Average duration: —
 - Total execution time: 0h
 
@@ -51,6 +51,7 @@ Note: `total_phases: 5` counts the integer code phases (4-8). Phase 0-Ops is a m
 | 6. Thread Summarizer Service | 0/TBD | — | — |
 | 7. Daily Summary Delivery | 0/TBD | — | — |
 | 8. Operational & Privacy Commands | 0/TBD | — | — |
+| 04 | 3 | - | - |
 
 **Recent Trend:**
 
