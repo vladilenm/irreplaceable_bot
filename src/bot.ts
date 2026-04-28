@@ -85,7 +85,7 @@ bot.command('digest', async (ctx) => {
       await ctx.api.editMessageText(
         statusMsg.chat.id,
         statusMsg.message_id,
-        'Дайджест пропущен: недостаточно значимых новостей (менее 3).',
+        'Дайджест пропущен: ни одной новости не прошло фильтр.',
       );
       return;
     }
@@ -184,7 +184,7 @@ bot.command('dev-digest', async (ctx) => {
       await ctx.api.editMessageText(
         statusMsg.chat.id,
         statusMsg.message_id,
-        'Dev-run: дайджест пропущен (менее 3 значимых новостей). state.json не изменён.',
+        'Dev-run: дайджест пропущен: ни одной новости не прошло фильтр. state.json не изменён.',
       );
       return;
     }
