@@ -30,6 +30,8 @@ export async function filterArticles(
   const userMessage = `Сегодняшняя дата: ${new Date().toLocaleDateString('ru-RU')}.\n\nСтатьи для анализа:\n\n${formattedArticles}`;
 
   let result: string;
+  let finishReason: string | null | undefined;
+  let refusal: string | null | undefined;
 
   if (isClaude(config.aiModel)) {
     const client = new Anthropic({ apiKey: config.aiApiKey });
@@ -45,6 +47,8 @@ export async function filterArticles(
       throw new Error('Unexpected Anthropic response: no text block');
     }
     result = firstBlock.text;
+    finishReason = response.stop_reason ?? null;
+    refusal = response.stop_sequence ?? null;
   } else {
     const client = new OpenAI({
       apiKey: config.aiApiKey,
@@ -59,13 +63,20 @@ export async function filterArticles(
       ],
     });
 
-    result = response.choices[0]?.message?.content ?? '';
+    const firstChoice = response.choices[0];
+    result = firstChoice?.message?.content ?? '';
+    finishReason = firstChoice?.finish_reason ?? null;
+    refusal =
+      (firstChoice?.message as { refusal?: string | null } | undefined)
+        ?.refusal ?? null;
   }
 
   logger.info(
     {
       rawResponseHead: result.slice(0, 800),
       rawResponseLength: result.length,
+      finishReason,
+      refusal,
       model: config.aiModel,
     },
     'AI raw response (debug)',
