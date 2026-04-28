@@ -1289,19 +1289,25 @@ Cross-checking D-01..D-14 against PITFALLS.md to surface any inconsistencies:
 
 2. **PITFALL-NEW-02: Telegram `ctx.editedMessage.edit_date` may be undefined?** Per Bot API, `edit_date` is required field on edited messages but Grammy types may mark optional. *Mitigation:* assert on mapper: `if (!ctx.editedMessage.edit_date) throw new Error('Edit message missing edit_date')` — if TG ever sends edit without edit_date, that's their bug; we want loud failure не silent wrong timestamps. Defensive check в mapper.
 
-## 9. Open Questions / Unknowns (for Planner)
+## 9. Open Questions / Unknowns (for Planner) (RESOLVED)
+
+> **Status:** All 5 questions resolved during planning (commit `8a026a1`). Each recommendation реализована в плановых задачах — см. inline `RESOLVED:` маркеры ниже.
 
 1. **Should Phase 4 populate `users` table?** D-04 explicit: «`users` (lazy-populated lookup)». Phase 4 ships the table. Question: does capture-handler upsert into `users` on first sight, OR is population deferred to Phase 5/6/7 actually-needs-it moment?
    - **Recommendation:** Phase 4 ships the table empty. Don't populate from capture path — adds extra SQL per message for zero current consumer. Phase 6 (summarizer) decides whether it wants `users.display_name` (override of denormalised `messages.author_name`) or trusts denorm value. Plan checklist: «`users` table empty after Phase 4 verification — populate-on-first-sight is Phase 5/6 decision».
+   - **RESOLVED:** Plan 04-03 capture-handler не populates `users` (verified: capture.handler.ts touches только messages-store + forgotten guard). Phase 4 ships table empty по recommendation.
 
 2. **Where exactly to place the forgotten-user guard?** D-12 says «pre-INSERT prepared statement SELECT 1 FROM forgotten_users WHERE author_id = ?». Question: this is a *separate* statement before the upsert (2 SQL roundtrips per message), OR fold into the upsert WHERE clause as `INSERT ... WHERE NOT EXISTS (SELECT 1 FROM forgotten_users...)`?
    - **Recommendation:** Separate statement. Reasons: (a) for anon admins (`author_id = NULL`) the SELECT is skipped anyway (NULL never matches anything); (b) folding into INSERT makes ON CONFLICT path more complex (need to check forgotten in DO UPDATE branch too); (c) two prepared statements at p95 <50ms is well under MSG-01's <2s requirement.
+   - **RESOLVED:** Plan 04-02 Task 1 экспортирует `isAuthorForgotten()` как отдельный prepared statement; Plan 04-03 Task 1 capture-handler вызывает его перед `upsertMessage()`. Separate statement по recommendation.
 
 3. **`users.last_seen_at` update strategy?** Schema includes it (D-04 implies it's «lazy-populated lookup»). If not populated by capture path (per Q1), this column is unused в Phase 4. Question: drop column from migration v1?
    - **Recommendation:** Keep. Schema lockdown D-06 ships «all 4 product tables sui-schema»; column exists for Phase 5/6 to populate without v2 migration. No semantic cost.
+   - **RESOLVED:** Plan 04-01 Task 3 MIGRATIONS[0] DDL для `users` сохраняет `last_seen_at TEXT`. Keep по recommendation — schema lockdown D-06.
 
 4. **REQUIREMENTS.md MSG-03 update wording.** D-08 explicitly: «REQUIREMENTS.md MSG-03 must be rewritten in this phase». Question: rewrite as «text + caption only — placeholder rows deferred to v3» (full deletion of placeholder concept) OR mark as «D-08 deviation; placeholder rows deferred» (more diff-friendly)?
    - **Recommendation:** Rewrite to «text + caption only — non-text without caption dropped». Cleaner historical record. Planner adds explicit «edit REQUIREMENTS.md MSG-03» as task.
+   - **RESOLVED:** Plan 04-03 Task 3 — explicit «Rewrite REQUIREMENTS.md §MSG-03» task. Full rewrite по recommendation.
 
 5. **Planner subdivision risk (D-11).** D-11 says single plan 4-01 covering 17 reqs is the bias; planner may subdivide. Sub-question: which subdivisions are safe?
    - **Recommendation:** If planner subdivides, suggested split:
@@ -1309,6 +1315,7 @@ Cross-checking D-01..D-14 against PITFALLS.md to surface any inconsistencies:
      - 4-01b: Stores + types (message-store, tracked-threads-store, types/index.ts extension)
      - 4-01c: Capture handler + tracking.service stub + bot.ts wiring + preflight + REQUIREMENTS.md MSG-03 update
    - But strong recommendation to keep single plan per D-11 — the cohesion bonus (one E2E-test gate) outweighs.
+   - **RESOLVED:** Planner выбрал 3-plan split (04-01 / 04-02 / 04-03) по обоснованию context budget — single plan превысил бы ~50% target. Split совпадает с recommendation, но границы скорректированы (tracking.service.ts → 04-02; capture+bot.ts wiring+preflight → 04-03).
 
 ## Common Pitfalls (Phase 4-specific)
 
@@ -1516,13 +1523,15 @@ function isAuthorForgotten(authorId: number): boolean {
 | Dockerfile Diff | HIGH | builder + production layout verified against STACK.md (which itself verified ABI 115 prebuild against GitHub release manifest) |
 | Pitfalls | HIGH | D-01..D-14 cross-checked, no conflicts; 2 new pitfalls surfaced and mitigated |
 
-### Open Questions (5)
+### Open Questions (5) (RESOLVED)
 
-1. `users` table population strategy — Phase 4 ships empty? (Recommendation: yes, defer to consumer phase.)
-2. Forgotten-user guard placement — separate SELECT or fold into INSERT WHERE NOT EXISTS? (Recommendation: separate SELECT.)
-3. `users.last_seen_at` column unused в Phase 4 — keep or drop? (Recommendation: keep; schema lockdown D-06.)
-4. REQUIREMENTS.md MSG-03 rewrite wording — full rewrite vs deviation note? (Recommendation: full rewrite.)
-5. Plan subdivision (D-11 bias = single plan) — if planner subdivides, what's the safe split? (Recommendation: keep single; if forced split, suggested 4-01a infra / 4-01b stores+types / 4-01c handler+wiring.)
+> Все 5 закрыты в plans 04-01..04-03 (commit `8a026a1`). Подробности в §9 (RESOLVED) выше.
+
+1. `users` table population strategy — Phase 4 ships empty? (Recommendation: yes, defer to consumer phase.) **RESOLVED:** 04-03 не populates `users`.
+2. Forgotten-user guard placement — separate SELECT or fold into INSERT WHERE NOT EXISTS? (Recommendation: separate SELECT.) **RESOLVED:** 04-02 экспортирует отдельный `isAuthorForgotten()`.
+3. `users.last_seen_at` column unused в Phase 4 — keep or drop? (Recommendation: keep; schema lockdown D-06.) **RESOLVED:** 04-01 MIGRATIONS[0] сохраняет колонку.
+4. REQUIREMENTS.md MSG-03 rewrite wording — full rewrite vs deviation note? (Recommendation: full rewrite.) **RESOLVED:** 04-03 Task 3 — full rewrite.
+5. Plan subdivision (D-11 bias = single plan) — if planner subdivides, what's the safe split? (Recommendation: keep single; if forced split, suggested 4-01a infra / 4-01b stores+types / 4-01c handler+wiring.) **RESOLVED:** Planner выбрал 3-plan split по context budget; границы близки к recommendation, скорректированы (tracking.service → 04-02, wiring+preflight → 04-03).
 
 ### Ready for Planning
 
