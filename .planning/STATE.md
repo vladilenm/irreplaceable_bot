@@ -46,7 +46,7 @@ Note: `total_phases: 5` counts the integer code phases (4-8). Phase 0-Ops is a m
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 4. Message Capture & Persistence | 0/TBD | — | — |
+| 4. Message Capture & Persistence | 0/3 | — | — |
 | 5. Thread Tracking Commands | 0/TBD | — | — |
 | 6. Thread Summarizer Service | 0/TBD | — | — |
 | 7. Daily Summary Delivery | 0/TBD | — | — |

@@ -62,9 +62,12 @@ Full details: [milestones/v1.0-ROADMAP.md](milestones/v1.0-ROADMAP.md)
   2. After `docker compose down && up`, the database file at `./data/messages.db` survives restart (Docker volume mounted)
   3. A regular member sending a non-command text message inside a tracked forum topic produces exactly one row in `messages` within 5s; the same message redelivered (Telegram retry, polling replay, restart-mid-update) still produces exactly one row
   4. Editing a captured message updates the same row by `(chat_id, tg_message_id)` with `edited_at` set, never creating a duplicate; an edit arriving before its original (out-of-order) upserts a new row with `edited_at` populated
-  5. Service messages (`forum_topic_created`, `pinned_message`, `new_chat_members`, etc.), channel posts, and automatic forwards are filtered at the handler and produce zero DB rows; non-text messages are stored with placeholders (`[photo]`, `[voice 0:42]`, ...) including caption when present; anonymous-admin messages store `author_id = NULL` and `is_anonymous = true`
+  5. Service messages (`forum_topic_created`, `pinned_message`, `new_chat_members`, etc.), channel posts, and automatic forwards are filtered at the handler and produce zero DB rows; only text-bearing messages are captured — `messages.text` stores `ctx.message.text` OR `ctx.message.caption` (no `[photo]`/`[video]` prefix; non-text without caption drops, per CONTEXT D-08); anonymous-admin messages store `author_id = NULL` and `is_anonymous = true`
   6. Capture handler errors (DB lock, prepared-statement failure, schema mismatch) are caught, logged, and do NOT terminate the long-polling loop; pino logs do NOT include message text body (only `chat_id`, `thread_id`, `author_id`, `message_length`, `has_media`)
-**Plans**: TBD (estimated 3 plans: 4-01 infra/Dockerfile/compose/db.service/migrations, 4-02 message-store/types/idempotency, 4-03 capture handler + register in bot.ts + preflight log)
+**Plans**: 3 plans
+- [ ] 04-01-PLAN.md — Infra foundation (Dockerfile, docker-compose, package.json, ENV/config, types, db.service.ts + WAL + MIGRATIONS v1 + ENV-seed)
+- [ ] 04-02-PLAN.md — Stores + tracking service stub (message-store upsert + forgotten guard, tracked-threads-store, tracking.service Set)
+- [ ] 04-03-PLAN.md — Capture handler + mapper + preflight + bot.ts/index.ts wiring + REQUIREMENTS.md MSG-03 rewrite
 
 ### Phase 5: Thread Tracking Commands
 **Goal**: Admins manage the capture whitelist live from inside the chat without restarting the bot; the in-memory `Set<number>` is the source of truth for the hot path and stays consistent with DB; whitelist survives restart so first capture after boot honours the persisted whitelist.
@@ -129,7 +132,7 @@ Full details: [milestones/v1.0-ROADMAP.md](milestones/v1.0-ROADMAP.md)
 | 3. Delivery & Operations | v1.0 | 2/2 | Complete | 2026-04-14 |
 | 03.1. dev-digest (INSERTED) | v1.0 | 1/1 | Complete | 2026-04-14 |
 | 0-Ops. Pre-Flight Checklist | v2.0 | manual gate | Not started | - |
-| 4. Message Capture & Persistence | v2.0 | 0/TBD | Not started | - |
+| 4. Message Capture & Persistence | v2.0 | 0/3 | Not started | - |
 | 5. Thread Tracking Commands | v2.0 | 0/TBD | Not started | - |
 | 6. Thread Summarizer Service | v2.0 | 0/TBD | Not started | - |
 | 7. Daily Summary Delivery | v2.0 | 0/TBD | Not started | - |
