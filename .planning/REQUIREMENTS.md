@@ -14,10 +14,10 @@ REQ-IDs continue from v1.0 archive (`.planning/milestones/v1.0-REQUIREMENTS.md`)
 
 > Extends v1.0 SETUP-01..04 (project bootstrap, env config, pino, Dockerfile).
 
-- [ ] **SETUP-05**: Dockerfile builder stage installs `apk add --no-cache python3 make g++` as fallback for native `better-sqlite3` build (prebuild for Node ABI 115 / linuxmusl-x64 is happy path; build deps cover the fallback)
-- [ ] **SETUP-06**: `docker-compose.yml` mounts `./data:/app/data` named volume so SQLite + `state.json` survive `docker compose down`
-- [ ] **SETUP-07**: Dockerfile creates `/app/data` with `botuser:botuser` ownership before `USER botuser` directive (uid 1001 must own the volume mount-point)
-- [ ] **SETUP-08**: 5 new ENV vars loaded via existing `requireEnv` / `requireEnvInt` at config boundary with sane defaults: `THREAD_SUMMARY_THREAD_ID`, `THREAD_SUMMARY_CRON` (default `30 3 * * *` = 06:30 MSK), `MESSAGE_RETENTION_DAYS` (default 90, min=7 enforced), `RETENTION_SWEEP_CRON` (default `0 1 * * *` = 04:00 MSK), `DB_PATH` (default `data/messages.db`)
+- [x] **SETUP-05**: Dockerfile builder stage installs `apk add --no-cache python3 make g++` as fallback for native `better-sqlite3` build (prebuild for Node ABI 115 / linuxmusl-x64 is happy path; build deps cover the fallback)
+- [x] **SETUP-06**: `docker-compose.yml` mounts `./data:/app/data` named volume so SQLite + `state.json` survive `docker compose down`
+- [x] **SETUP-07**: Dockerfile creates `/app/data` with `botuser:botuser` ownership before `USER botuser` directive (uid 1001 must own the volume mount-point)
+- [x] **SETUP-08**: 5 new ENV vars loaded via existing `requireEnv` / `requireEnvInt` at config boundary with sane defaults: `THREAD_SUMMARY_THREAD_ID`, `THREAD_SUMMARY_CRON` (default `30 3 * * *` = 06:30 MSK), `MESSAGE_RETENTION_DAYS` (default 90, min=7 enforced), `RETENTION_SWEEP_CRON` (default `0 1 * * *` = 04:00 MSK), `DB_PATH` (default `data/messages.db`)
 - [ ] **SETUP-09 (Phase 0-Ops, manual checklist — gating)**: BotFather privacy mode OFF; bot kicked + re-invited + re-promoted to admin in club group; «🧵 Сводки тредов» forum topic created and `THREAD_SUMMARY_THREAD_ID` captured; in-chat consent announcement published; checklist artifact stored at `.planning/phases/04-message-capture/04-OPS-CHECKLIST.md`
 
 ### Message Capture (MSG-*)
@@ -33,9 +33,9 @@ REQ-IDs continue from v1.0 archive (`.planning/milestones/v1.0-REQUIREMENTS.md`)
 
 ### Storage (STORE-*)
 
-- [ ] **STORE-01**: `better-sqlite3` connection singleton with `journal_mode=WAL`, `foreign_keys=ON`, `synchronous=NORMAL`; opened during `initDb()` before scheduler/polling
-- [ ] **STORE-02**: `schema_migrations(version, applied_at)` table from day one; migrations array applied inside a single transaction; on each boot, only un-applied versions run
-- [ ] **STORE-03**: Schema includes `messages`, `tracked_threads`, `users`, `forgotten_users` tables with proper FKs and indexes
+- [x] **STORE-01**: `better-sqlite3` connection singleton with `journal_mode=WAL`, `foreign_keys=ON`, `synchronous=NORMAL`; opened during `initDb()` before scheduler/polling
+- [x] **STORE-02**: `schema_migrations(version, applied_at)` table from day one; migrations array applied inside a single transaction; on each boot, only un-applied versions run
+- [x] **STORE-03**: Schema includes `messages`, `tracked_threads`, `users`, `forgotten_users` tables with proper FKs and indexes
 - [ ] **STORE-04**: Prepared statements cached per store as module-level constants (lazy-init on first `getDb()` call); capture insert latency p95 <50ms in WAL mode
 
 ### Thread Tracking (TRK-*)
@@ -160,10 +160,10 @@ REQ-IDs continue from v1.0 archive (`.planning/milestones/v1.0-REQUIREMENTS.md`)
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SETUP-05 | Phase 4 | Pending |
-| SETUP-06 | Phase 4 | Pending |
-| SETUP-07 | Phase 4 | Pending |
-| SETUP-08 | Phase 4 | Pending |
+| SETUP-05 | Phase 4 | Complete |
+| SETUP-06 | Phase 4 | Complete |
+| SETUP-07 | Phase 4 | Complete |
+| SETUP-08 | Phase 4 | Complete |
 | SETUP-09 | Phase 0-Ops | Pending |
 | MSG-01 | Phase 4 | Pending |
 | MSG-02 | Phase 4 | Pending |
@@ -173,9 +173,9 @@ REQ-IDs continue from v1.0 archive (`.planning/milestones/v1.0-REQUIREMENTS.md`)
 | MSG-06 | Phase 4 | Pending |
 | MSG-07 | Phase 4 | Pending |
 | MSG-08 | Phase 4 | Pending |
-| STORE-01 | Phase 4 | Pending |
-| STORE-02 | Phase 4 | Pending |
-| STORE-03 | Phase 4 | Pending |
+| STORE-01 | Phase 4 | Complete |
+| STORE-02 | Phase 4 | Complete |
+| STORE-03 | Phase 4 | Complete |
 | STORE-04 | Phase 4 | Pending |
 | TRK-01 | Phase 5 | Pending |
 | TRK-02 | Phase 5 | Pending |

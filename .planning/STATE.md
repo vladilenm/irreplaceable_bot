@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Thread Summaries
-status: planning
-stopped_at: Phase 4 context gathered
-last_updated: "2026-04-28T05:08:43.144Z"
-last_activity: 2026-04-27 — ROADMAP.md generated for v2.0; 57/57 v2.0 requirements mapped
+status: executing
+stopped_at: Completed 04-01-PLAN.md
+last_updated: "2026-04-28T06:00:06.631Z"
+last_activity: 2026-04-28
 progress:
   total_phases: 6
   completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  total_plans: 3
+  completed_plans: 1
+  percent: 33
 ---
 
 # Project State
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-27)
 
 **Core value:** Participants get a quality-filtered AI digest every morning — builds the habit and saves 30-60 minutes of daily scrolling. v2.0 extends this with morning thread summaries so participants reconnect to club discussions without scrolling.
-**Current focus:** v2.0 Thread Summaries — roadmap done, Phase 4 next (after Phase 0-Ops manual checklist)
+**Current focus:** Phase 04 — message-capture-persistence
 
 ## Current Position
 
-Phase: Not started (Phase 4 next, after Phase 0-Ops manual gate)
-Plan: —
-Status: Roadmap created, ready to plan Phase 4
-Last activity: 2026-04-27 — ROADMAP.md generated for v2.0; 57/57 v2.0 requirements mapped
+Phase: 04 (message-capture-persistence) — EXECUTING
+Plan: 2 of 3
+Status: Ready to execute
+Last activity: 2026-04-28
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -58,6 +58,7 @@ Note: `total_phases: 5` counts the integer code phases (4-8). Phase 0-Ops is a m
 - Trend: —
 
 *v1.0 velocity archived in `milestones/v1.0-ROADMAP.md` (10 plans across Phases 1-3 + 03.1).*
+| Phase 04 P01 | 4min | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -75,6 +76,13 @@ v2.0-specific decisions (locked, see PROJECT.md):
 - Whitelist via admin `/track` persisted in DB
 - 06:30 MSK schedule (after 06:00 MSK AI-radar)
 - `state.json` retained for cron idempotency with atomic-rename mitigation; SQLite migration deferred to v2.1
+- [Phase 04]: WAL pragma applied first + verify-active throw defends DB-01 silent fallback
+- [Phase 04]: In-code MIGRATIONS array with per-migration db.transaction() — forward-only
+- [Phase 04]: Migration v1 ships ALL 4 product tables (D-06): no schema change in Phase 5-8
+- [Phase 04]: ENV-seed dual-gated (empty table + non-empty CSV) for clean post-Phase-5 deactivation (D-02)
+- [Phase 04]: MESSAGE_RETENTION_DAYS readEnvIntWithDefault enforces MIN=7 to defeat PRIV-02 typo regression
+- [Phase 04]: THREAD_SUMMARY_THREAD_ID is requireEnvInt (no default) — gates Phase 7, fail-fast at boot
+- [Phase 04]: No FKs in v1 (4 candidates rejected with documented rationale per RESEARCH §3)
 
 ### Pending Todos
 
@@ -102,6 +110,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-28T05:08:43.141Z
-Stopped at: Phase 4 context gathered
-Resume file: .planning/phases/04-message-capture-persistence/04-CONTEXT.md
+Last session: 2026-04-28T05:59:52.269Z
+Stopped at: Completed 04-01-PLAN.md
+Resume file: None
