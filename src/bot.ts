@@ -7,6 +7,7 @@ import {
   readState,
 } from './modules/digest/digest.service.js';
 import { sendDigest } from './modules/digest/digest.sender.js';
+import { registerCaptureHandlers } from './modules/capture/capture.handler.js';
 
 export const bot = new Bot(config.botToken);
 
@@ -213,3 +214,8 @@ bot.command('dev-digest', async (ctx) => {
       });
   }
 });
+
+// v2.0 Phase 4: capture handler — MUST be registered AFTER all commands and
+// AFTER bot.catch() (CODE-01: Grammy middleware order). Capture is terminal
+// (does not call next()), so commands must match first.
+registerCaptureHandlers(bot);
