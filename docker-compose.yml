@@ -4,6 +4,11 @@ services:
     env_file:
       - .env
     restart: unless-stopped
+    # v2.0 SETUP-06: bind-mount ./data:/app/data so SQLite + state.json
+    # survive `docker compose down`. Note: `down -v` does NOT affect bind mounts;
+    # only `rm -rf ./data` deletes (PITFALLS DB-03).
+    volumes:
+      - ./data:/app/data
     logging:
       driver: json-file
       options:

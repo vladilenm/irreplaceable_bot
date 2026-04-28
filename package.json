@@ -13,6 +13,7 @@
   "license": "ISC",
   "dependencies": {
     "@anthropic-ai/sdk": "^0.88.0",
+    "better-sqlite3": "^12.9.0",
     "dotenv": "^17.4.2",
     "grammy": "^1.42.0",
     "node-cron": "^4.2.1",
@@ -21,6 +22,7 @@
     "rss-parser": "^3.13.0"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^25.6.0",
     "@types/node-cron": "^3.0.11",
     "pino-pretty": "^13.1.3",
