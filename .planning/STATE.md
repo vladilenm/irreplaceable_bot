@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-04-27)
 Phase: 5
 Plan: Not started
 Status: Phase complete — ready for verification
-Last activity: 2026-04-28 - Completed quick task 260428-m57: Снизить порог публикации дайджеста с 3 до 1 и смягчить prompts/curator.md (3-5 новостей, гибкая квота vc.ru 0-2, ослаблять критерии когда новостей мало)
+Last activity: 2026-04-28 - Completed quick task 260428-mn8: Восстановить формат "→ https://…" в prompts/curator.md под digest.formatter.ts и прописать императив 5-7 новостей минимум
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -119,6 +119,7 @@ None.
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 260428-m57 | Снизить порог публикации дайджеста с 3 до 1 и смягчить prompts/curator.md (3-5 новостей, гибкая квота vc.ru 0-2, ослаблять критерии когда новостей мало) | 2026-04-28 | 4ee9e7e | [260428-m57-3-1-prompts-curator-md-3-5-vc-ru-0-2](./quick/260428-m57-3-1-prompts-curator-md-3-5-vc-ru-0-2/) |
+| 260428-mn8 | Восстановить формат "→ https://…" в prompts/curator.md под digest.formatter.ts и прописать императив 5-7 новостей минимум | 2026-04-28 | 403a744 | [260428-mn8-https-prompts-curator-md-formatter-5-7](./quick/260428-mn8-https-prompts-curator-md-formatter-5-7/) |
 
 ### Roadmap Evolution
 
