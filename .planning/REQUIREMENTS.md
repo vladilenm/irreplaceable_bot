@@ -22,14 +22,14 @@ REQ-IDs continue from v1.0 archive (`.planning/milestones/v1.0-REQUIREMENTS.md`)
 
 ### Message Capture (MSG-*)
 
-- [ ] **MSG-01**: `bot.on('message')` captures every text/non-text message in tracked forum threads within <2s of arrival; non-tracked threads filtered out at handler before any DB touch
-- [ ] **MSG-02**: `bot.on('edited_message')` updates the same row by `(chat_id, tg_message_id)` and sets `edited_at`; does NOT create a duplicate row
-- [ ] **MSG-03**: Phase 4 captures only text-bearing messages — `messages.text` stores `ctx.message.text` OR `ctx.message.caption` (no prefix, no `[photo]`/`[video]` placeholder). Pure non-text messages without caption (photo/voice/video/document/sticker/poll/animation/video_note/audio/dice/location/contact) drop with zero rows in DB. Originally specified as "placeholder rows for non-text"; changed in Phase 4 per CONTEXT decision D-08 (cleaner summarizer transcript, no placeholder noise; media-activity signal deferred — if needed in Phase 6, will be added as a separate `media_count` aggregate query column, not via duplicate rows).
+- [x] **MSG-01**: `bot.on('message')` captures every text/non-text message in tracked forum threads within <2s of arrival; non-tracked threads filtered out at handler before any DB touch
+- [x] **MSG-02**: `bot.on('edited_message')` updates the same row by `(chat_id, tg_message_id)` and sets `edited_at`; does NOT create a duplicate row
+- [x] **MSG-03**: Phase 4 captures only text-bearing messages — `messages.text` stores `ctx.message.text` OR `ctx.message.caption` (no prefix, no `[photo]`/`[video]` placeholder). Pure non-text messages without caption (photo/voice/video/document/sticker/poll/animation/video_note/audio/dice/location/contact) drop with zero rows in DB. Originally specified as "placeholder rows for non-text"; changed in Phase 4 per CONTEXT decision D-08 (cleaner summarizer transcript, no placeholder noise; media-activity signal deferred — if needed in Phase 6, will be added as a separate `media_count` aggregate query column, not via duplicate rows).
 - [x] **MSG-04**: Idempotent insert via `UNIQUE(chat_id, tg_message_id)` and `INSERT OR IGNORE` — same message delivered twice (Telegram retry, polling replay) results in one row
-- [ ] **MSG-05**: Service messages (`forum_topic_created`, `pinned_message`, `new_chat_members`, `forum_topic_edited`, `forum_topic_closed`), channel posts (`channel_post`/`edited_channel_post`), and automatic forwards (`is_automatic_forward === true`) filtered out at handler
-- [ ] **MSG-06**: Anonymous admins handled — when `from` is missing and `sender_chat` present, store `author_id = NULL` and `is_anonymous = true`
-- [ ] **MSG-07**: Reply context preserved — `reply_to_message_id` stored as nullable column, no recursive parent fetch
-- [ ] **MSG-08**: Startup preflight check — `getMe().can_read_all_group_messages` logged at WARN level if false (detects misconfigured BotFather privacy state)
+- [x] **MSG-05**: Service messages (`forum_topic_created`, `pinned_message`, `new_chat_members`, `forum_topic_edited`, `forum_topic_closed`), channel posts (`channel_post`/`edited_channel_post`), and automatic forwards (`is_automatic_forward === true`) filtered out at handler
+- [x] **MSG-06**: Anonymous admins handled — when `from` is missing and `sender_chat` present, store `author_id = NULL` and `is_anonymous = true`
+- [x] **MSG-07**: Reply context preserved — `reply_to_message_id` stored as nullable column, no recursive parent fetch
+- [x] **MSG-08**: Startup preflight check — `getMe().can_read_all_group_messages` logged at WARN level if false (detects misconfigured BotFather privacy state)
 
 ### Storage (STORE-*)
 
@@ -113,7 +113,7 @@ REQ-IDs continue from v1.0 archive (`.planning/milestones/v1.0-REQUIREMENTS.md`)
 
 > Extends v1.0 REL-01..03 (graceful shutdown, error resilience, strict TypeScript).
 
-- [ ] **REL-04**: Capture handler body wrapped in try/catch — DB errors, schema mismatch, prepared-statement failures logged but DO NOT crash the long-polling loop (extends existing `bot.catch()` pattern)
+- [x] **REL-04**: Capture handler body wrapped in try/catch — DB errors, schema mismatch, prepared-statement failures logged but DO NOT crash the long-polling loop (extends existing `bot.catch()` pattern)
 - [ ] **REL-05**: `closeDb()` called in shutdown handler AFTER `bot.stop()` completes — checkpoints WAL on graceful SIGTERM/SIGINT (in-flight transactions allowed to finish)
 
 ---
@@ -165,14 +165,14 @@ REQ-IDs continue from v1.0 archive (`.planning/milestones/v1.0-REQUIREMENTS.md`)
 | SETUP-07 | Phase 4 | Complete |
 | SETUP-08 | Phase 4 | Complete |
 | SETUP-09 | Phase 0-Ops | Pending |
-| MSG-01 | Phase 4 | Pending |
-| MSG-02 | Phase 4 | Pending |
-| MSG-03 | Phase 4 | Pending |
+| MSG-01 | Phase 4 | Complete |
+| MSG-02 | Phase 4 | Complete |
+| MSG-03 | Phase 4 | Complete |
 | MSG-04 | Phase 4 | Complete |
-| MSG-05 | Phase 4 | Pending |
-| MSG-06 | Phase 4 | Pending |
-| MSG-07 | Phase 4 | Pending |
-| MSG-08 | Phase 4 | Pending |
+| MSG-05 | Phase 4 | Complete |
+| MSG-06 | Phase 4 | Complete |
+| MSG-07 | Phase 4 | Complete |
+| MSG-08 | Phase 4 | Complete |
 | STORE-01 | Phase 4 | Complete |
 | STORE-02 | Phase 4 | Complete |
 | STORE-03 | Phase 4 | Complete |
@@ -215,7 +215,7 @@ REQ-IDs continue from v1.0 archive (`.planning/milestones/v1.0-REQUIREMENTS.md`)
 | OBS-02 | Phase 8 | Pending |
 | OBS-03 | Phase 8 | Pending |
 | OBS-04 | Phase 8 | Pending |
-| REL-04 | Phase 4 | Pending |
+| REL-04 | Phase 4 | Complete |
 | REL-05 | Phase 8 | Pending |
 
 ### Coverage by Phase

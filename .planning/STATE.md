@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Thread Summaries
-status: executing
-stopped_at: Completed 04-02-PLAN.md
-last_updated: "2026-04-28T06:06:12.386Z"
+status: verifying
+stopped_at: Completed 04-03-PLAN.md
+last_updated: "2026-04-28T06:18:05.801Z"
 last_activity: 2026-04-28
 progress:
   total_phases: 6
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 3
-  completed_plans: 2
-  percent: 67
+  completed_plans: 3
+  percent: 100
 ---
 
 # Project State
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-04-27)
 
 Phase: 04 (message-capture-persistence) — EXECUTING
 Plan: 3 of 3
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-04-28
 
 Progress: [░░░░░░░░░░] 0%
@@ -60,6 +60,7 @@ Note: `total_phases: 5` counts the integer code phases (4-8). Phase 0-Ops is a m
 *v1.0 velocity archived in `milestones/v1.0-ROADMAP.md` (10 plans across Phases 1-3 + 03.1).*
 | Phase 04 P01 | 4min | 3 tasks | 7 files |
 | Phase 04-message-capture-persistence P02 | 3min | 2 tasks | 3 files |
+| Phase 04-message-capture-persistence P03 | 5min32s | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -88,6 +89,10 @@ v2.0-specific decisions (locked, see PROJECT.md):
 - [Phase 04]: [Phase 04 P02] UPSERT uses ON CONFLICT(chat_id, tg_message_id) DO UPDATE with 3-column allowlist (text, author_name, edited_at) — preserves created_at on edit; INSERT OR IGNORE/REPLACE rejected
 - [Phase 04]: [Phase 04 P02] Module-private trackedSet + read/write trio (load/check/list); listTrackedThreadIds returns [...set] copy — caller cannot mutate internal state (T-04-13)
 - [Phase 04]: [Phase 04 P02] D-01 honoured: no track/untrack stubs in tracking.service — Phase 5 will ADD the writers without refactor
+- [Phase 04-message-capture-persistence]: [Phase 04 P03] Single combined Grammy filter ['message:text','message:caption','edited_message:text','edited_message:caption'] — Pattern 3 from RESEARCH §1.1 chosen over 4 separate bot.on calls
+- [Phase 04-message-capture-persistence]: [Phase 04 P03] 5-step guard chain order is_topic_message → is_automatic_forward → sender_chat.type → isThreadTracked → mapper → isAuthorForgotten → upsertMessage; entire body in try/catch (REL-04); metadata-only debug log (PRIV-05)
+- [Phase 04-message-capture-persistence]: [Phase 04 P03] index.ts main() ordering initDb → loadTrackingWhitelist → startScheduler → bot.start (with runPreflight inside onStart); shutdown closeDb AFTER await bot.stop for REL-05 WAL checkpoint
+- [Phase 04-message-capture-persistence]: [Phase 04 P03] REQUIREMENTS.md MSG-03 rewritten per D-08: 'Phase 4 captures only text-bearing messages' (text or caption, no placeholder rows for non-text)
 
 ### Pending Todos
 
@@ -115,6 +120,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-28T06:06:01.216Z
-Stopped at: Completed 04-02-PLAN.md
+Last session: 2026-04-28T06:18:05.798Z
+Stopped at: Completed 04-03-PLAN.md
 Resume file: None

@@ -67,7 +67,7 @@ Full details: [milestones/v1.0-ROADMAP.md](milestones/v1.0-ROADMAP.md)
 **Plans**: 3 plans
 - [x] 04-01-PLAN.md — Infra foundation (Dockerfile, docker-compose, package.json, ENV/config, types, db.service.ts + WAL + MIGRATIONS v1 + ENV-seed)
 - [x] 04-02-PLAN.md — Stores + tracking service stub (message-store upsert + forgotten guard, tracked-threads-store, tracking.service Set)
-- [ ] 04-03-PLAN.md — Capture handler + mapper + preflight + bot.ts/index.ts wiring + REQUIREMENTS.md MSG-03 rewrite
+- [x] 04-03-PLAN.md — Capture handler + mapper + preflight + bot.ts/index.ts wiring + REQUIREMENTS.md MSG-03 rewrite
 
 ### Phase 5: Thread Tracking Commands
 **Goal**: Admins manage the capture whitelist live from inside the chat without restarting the bot; the in-memory `Set<number>` is the source of truth for the hot path and stays consistent with DB; whitelist survives restart so first capture after boot honours the persisted whitelist.
