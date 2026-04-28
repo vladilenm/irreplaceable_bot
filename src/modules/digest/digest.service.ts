@@ -137,12 +137,12 @@ export async function runDigestPipeline(
 
   const text = await filterArticles(articles);
   const itemCount = countDigestItems(text);
-  const skipped = itemCount < 3;
+  const skipped = itemCount < 1;
 
   if (skipped) {
     logger.warn(
       { itemCount },
-      'Fewer than 3 items in digest, marking as skipped',
+      'No items in digest, marking as skipped',
     );
   } else {
     logger.info({ itemCount }, 'Digest ready');
