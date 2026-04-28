@@ -8,6 +8,13 @@ export interface BotConfig {
   aiBaseUrl?: string;
   logLevel: string;
   nodeEnv: string;
+  // ── v2.0 thread summaries (Phase 4) ──
+  threadSummaryThreadId: string;     // requireEnvInt — gates Phase 7 publish
+  threadSummaryCron: string;         // default '30 3 * * *' (06:30 MSK)
+  messageRetentionDays: number;      // default 90, MIN 7 enforced
+  retentionSweepCron: string;        // default '0 1 * * *' (04:00 MSK)
+  dbPath: string;                    // default 'data/messages.db'
+  initialTrackedThreadIds: number[]; // CSV-parsed, default []
 }
 
 export interface DigestItem {
@@ -46,4 +53,33 @@ export interface RawArticle {
   source: string;
   sourceKey: string;
   pubDate: Date;
+}
+
+// ─── v2.0 Thread Summaries — Phase 4 capture infra (D-03..D-05) ───
+
+export interface CapturedMessage {
+  chatId: number;
+  threadId: number;
+  tgMessageId: number;
+  authorId: number | null;          // NULL для anon admins (D-04)
+  authorName: string;
+  isAnonymous: 0 | 1;
+  text: string;
+  replyToMessageId: number | null;
+  createdAt: string;                 // ISO-8601 UTC (D-03)
+  editedAt: string | null;
+}
+
+export interface TrackedThread {
+  threadId: number;
+  chatId: number;
+  addedBy: number | null;            // NULL when seeded from ENV bootstrap (D-02)
+  addedAt: string;
+}
+
+export interface ForgottenUser {
+  authorId: number;
+  forgottenAt: string;
+  deletedCount: number;
+  requestedVia: 'self' | 'admin' | 'bootstrap-test';
 }
