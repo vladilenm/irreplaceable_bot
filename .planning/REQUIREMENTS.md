@@ -25,7 +25,7 @@ REQ-IDs continue from v1.0 archive (`.planning/milestones/v1.0-REQUIREMENTS.md`)
 - [ ] **MSG-01**: `bot.on('message')` captures every text/non-text message in tracked forum threads within <2s of arrival; non-tracked threads filtered out at handler before any DB touch
 - [ ] **MSG-02**: `bot.on('edited_message')` updates the same row by `(chat_id, tg_message_id)` and sets `edited_at`; does NOT create a duplicate row
 - [ ] **MSG-03**: Non-text messages stored as `[photo]` / `[voice 0:42]` / `[video]` / `[document: name.pdf]` / `[sticker]` / `[poll: "Q?"]` placeholder in `text` field; captions captured alongside placeholder when present
-- [ ] **MSG-04**: Idempotent insert via `UNIQUE(chat_id, tg_message_id)` and `INSERT OR IGNORE` — same message delivered twice (Telegram retry, polling replay) results in one row
+- [x] **MSG-04**: Idempotent insert via `UNIQUE(chat_id, tg_message_id)` and `INSERT OR IGNORE` — same message delivered twice (Telegram retry, polling replay) results in one row
 - [ ] **MSG-05**: Service messages (`forum_topic_created`, `pinned_message`, `new_chat_members`, `forum_topic_edited`, `forum_topic_closed`), channel posts (`channel_post`/`edited_channel_post`), and automatic forwards (`is_automatic_forward === true`) filtered out at handler
 - [ ] **MSG-06**: Anonymous admins handled — when `from` is missing and `sender_chat` present, store `author_id = NULL` and `is_anonymous = true`
 - [ ] **MSG-07**: Reply context preserved — `reply_to_message_id` stored as nullable column, no recursive parent fetch
@@ -36,7 +36,7 @@ REQ-IDs continue from v1.0 archive (`.planning/milestones/v1.0-REQUIREMENTS.md`)
 - [x] **STORE-01**: `better-sqlite3` connection singleton with `journal_mode=WAL`, `foreign_keys=ON`, `synchronous=NORMAL`; opened during `initDb()` before scheduler/polling
 - [x] **STORE-02**: `schema_migrations(version, applied_at)` table from day one; migrations array applied inside a single transaction; on each boot, only un-applied versions run
 - [x] **STORE-03**: Schema includes `messages`, `tracked_threads`, `users`, `forgotten_users` tables with proper FKs and indexes
-- [ ] **STORE-04**: Prepared statements cached per store as module-level constants (lazy-init on first `getDb()` call); capture insert latency p95 <50ms in WAL mode
+- [x] **STORE-04**: Prepared statements cached per store as module-level constants (lazy-init on first `getDb()` call); capture insert latency p95 <50ms in WAL mode
 
 ### Thread Tracking (TRK-*)
 
@@ -168,7 +168,7 @@ REQ-IDs continue from v1.0 archive (`.planning/milestones/v1.0-REQUIREMENTS.md`)
 | MSG-01 | Phase 4 | Pending |
 | MSG-02 | Phase 4 | Pending |
 | MSG-03 | Phase 4 | Pending |
-| MSG-04 | Phase 4 | Pending |
+| MSG-04 | Phase 4 | Complete |
 | MSG-05 | Phase 4 | Pending |
 | MSG-06 | Phase 4 | Pending |
 | MSG-07 | Phase 4 | Pending |
@@ -176,7 +176,7 @@ REQ-IDs continue from v1.0 archive (`.planning/milestones/v1.0-REQUIREMENTS.md`)
 | STORE-01 | Phase 4 | Complete |
 | STORE-02 | Phase 4 | Complete |
 | STORE-03 | Phase 4 | Complete |
-| STORE-04 | Phase 4 | Pending |
+| STORE-04 | Phase 4 | Complete |
 | TRK-01 | Phase 5 | Pending |
 | TRK-02 | Phase 5 | Pending |
 | TRK-03 | Phase 5 | Pending |

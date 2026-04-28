@@ -66,7 +66,7 @@ Full details: [milestones/v1.0-ROADMAP.md](milestones/v1.0-ROADMAP.md)
   6. Capture handler errors (DB lock, prepared-statement failure, schema mismatch) are caught, logged, and do NOT terminate the long-polling loop; pino logs do NOT include message text body (only `chat_id`, `thread_id`, `author_id`, `message_length`, `has_media`)
 **Plans**: 3 plans
 - [x] 04-01-PLAN.md — Infra foundation (Dockerfile, docker-compose, package.json, ENV/config, types, db.service.ts + WAL + MIGRATIONS v1 + ENV-seed)
-- [ ] 04-02-PLAN.md — Stores + tracking service stub (message-store upsert + forgotten guard, tracked-threads-store, tracking.service Set)
+- [x] 04-02-PLAN.md — Stores + tracking service stub (message-store upsert + forgotten guard, tracked-threads-store, tracking.service Set)
 - [ ] 04-03-PLAN.md — Capture handler + mapper + preflight + bot.ts/index.ts wiring + REQUIREMENTS.md MSG-03 rewrite
 
 ### Phase 5: Thread Tracking Commands

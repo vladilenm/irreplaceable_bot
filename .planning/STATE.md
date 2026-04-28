@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Thread Summaries
 status: executing
-stopped_at: Completed 04-01-PLAN.md
-last_updated: "2026-04-28T06:00:06.631Z"
+stopped_at: Completed 04-02-PLAN.md
+last_updated: "2026-04-28T06:06:12.386Z"
 last_activity: 2026-04-28
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 3
-  completed_plans: 1
-  percent: 33
+  completed_plans: 2
+  percent: 67
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-04-27)
 ## Current Position
 
 Phase: 04 (message-capture-persistence) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 Status: Ready to execute
 Last activity: 2026-04-28
 
@@ -59,6 +59,7 @@ Note: `total_phases: 5` counts the integer code phases (4-8). Phase 0-Ops is a m
 
 *v1.0 velocity archived in `milestones/v1.0-ROADMAP.md` (10 plans across Phases 1-3 + 03.1).*
 | Phase 04 P01 | 4min | 3 tasks | 7 files |
+| Phase 04-message-capture-persistence P02 | 3min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -83,6 +84,10 @@ v2.0-specific decisions (locked, see PROJECT.md):
 - [Phase 04]: MESSAGE_RETENTION_DAYS readEnvIntWithDefault enforces MIN=7 to defeat PRIV-02 typo regression
 - [Phase 04]: THREAD_SUMMARY_THREAD_ID is requireEnvInt (no default) — gates Phase 7, fail-fast at boot
 - [Phase 04]: No FKs in v1 (4 candidates rejected with documented rationale per RESEARCH §3)
+- [Phase 04]: [Phase 04 P02] Lazy module-level prepared statements via ??= cache pattern (STORE-04) — first call prepares, subsequent reuse
+- [Phase 04]: [Phase 04 P02] UPSERT uses ON CONFLICT(chat_id, tg_message_id) DO UPDATE with 3-column allowlist (text, author_name, edited_at) — preserves created_at on edit; INSERT OR IGNORE/REPLACE rejected
+- [Phase 04]: [Phase 04 P02] Module-private trackedSet + read/write trio (load/check/list); listTrackedThreadIds returns [...set] copy — caller cannot mutate internal state (T-04-13)
+- [Phase 04]: [Phase 04 P02] D-01 honoured: no track/untrack stubs in tracking.service — Phase 5 will ADD the writers without refactor
 
 ### Pending Todos
 
@@ -110,6 +115,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-04-28T05:59:52.269Z
-Stopped at: Completed 04-01-PLAN.md
+Last session: 2026-04-28T06:06:01.216Z
+Stopped at: Completed 04-02-PLAN.md
 Resume file: None
