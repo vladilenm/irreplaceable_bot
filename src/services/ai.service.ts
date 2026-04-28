@@ -63,6 +63,15 @@ export async function filterArticles(
   }
 
   logger.info(
+    {
+      rawResponseHead: result.slice(0, 800),
+      rawResponseLength: result.length,
+      model: config.aiModel,
+    },
+    'AI raw response (debug)',
+  );
+
+  logger.info(
     { model: config.aiModel, inputArticles: articles.length },
     'AI filtering complete',
   );
