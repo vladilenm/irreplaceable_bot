@@ -10,11 +10,15 @@ const curatorPrompt = readFileSync(
   'utf-8',
 );
 
+function truncateDescription(description: string): string {
+  return description.length > 200 ? `${description.slice(0, 200)}…` : description;
+}
+
 function formatArticlesForLLM(articles: RawArticle[]): string {
   return articles
     .map(
       (article) =>
-        `---\nИсточник: ${article.source}\nЗаголовок: ${article.title}\nОписание: ${article.description}\nСсылка: ${article.link}\nДата: ${article.pubDate.toISOString()}`,
+        `---\nИсточник: ${article.source}\nЗаголовок: ${article.title}\nОписание: ${truncateDescription(article.description)}\nСсылка: ${article.link}\nДата: ${article.pubDate.toISOString()}`,
     )
     .join('\n\n');
 }
@@ -41,7 +45,7 @@ export async function filterArticles(
     const client = new Anthropic({ apiKey: config.aiApiKey });
     const response = await client.messages.create({
       model: config.aiModel,
-      max_tokens: 4000,
+      max_tokens: 16000,
       system: curatorPrompt,
       messages: [{ role: 'user', content: userMessage }],
     });
@@ -61,7 +65,7 @@ export async function filterArticles(
     });
     const response = await client.chat.completions.create({
       model: config.aiModel,
-      max_tokens: 4000,
+      max_tokens: 16000,
       messages: [
         { role: 'system', content: curatorPrompt },
         { role: 'user', content: userMessage },
