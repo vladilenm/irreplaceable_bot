@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-04-27)
 Phase: 5
 Plan: Not started
 Status: Phase complete — ready for verification
-Last activity: 2026-04-28
+Last activity: 2026-04-28 - Completed quick task 260428-m57: Снизить порог публикации дайджеста с 3 до 1 и смягчить prompts/curator.md (3-5 новостей, гибкая квота vc.ru 0-2, ослаблять критерии когда новостей мало)
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -113,6 +113,12 @@ None.
 - Dockerfile native-build toolchain → owned by Phase 4
 - `state.json` not in volume + non-atomic write → owned by Phase 4 (volume) + Phase 7 (atomic write)
 - `cron.ts` single-task slot → owned by Phase 7-01
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 260428-m57 | Снизить порог публикации дайджеста с 3 до 1 и смягчить prompts/curator.md (3-5 новостей, гибкая квота vc.ru 0-2, ослаблять критерии когда новостей мало) | 2026-04-28 | 4ee9e7e | [260428-m57-3-1-prompts-curator-md-3-5-vc-ru-0-2](./quick/260428-m57-3-1-prompts-curator-md-3-5-vc-ru-0-2/) |
 
 ### Roadmap Evolution
 
