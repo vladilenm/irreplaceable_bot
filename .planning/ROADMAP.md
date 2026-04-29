@@ -2,7 +2,7 @@
 
 ## Milestones
 
-- ✅ **v1.0 MVP — AI Radar Digest** — Phases 1-3 + 03.1 (shipped 2026-04-27) — see [milestones/v1.0-ROADMAP.md](milestones/v1.0-ROADMAP.md)
+- ✅ **v1.0 MVP — AI Radar Digest** — Phases 1-3 + 03.1 (shipped 2007-04-27) — see [milestones/v1.0-ROADMAP.md](milestones/v1.0-ROADMAP.md)
 - 🚧 **v2.0 Thread Summaries** — Phase 0-Ops gate + Phases 4-7 (planned, in progress)
 
 ## Overview
@@ -15,15 +15,15 @@ v2.0 turns the bot from a publish-only RSS agent into a *listening* agent: it ca
 - Phase 0-Ops: manual operational checklist that gates Phase 4 verification (NOT a code phase, no plans)
 - Phases 4-7: continue numbering from v1.0 (last phase: 03.1)
 - Decimal phases reserved for urgent insertions (none planned)
-- 2026-04-29: original Phase 6 (Thread Summarizer Service) merged with original Phase 7 (Daily Summary Delivery) into single Phase 6 (Thread Summary Pipeline); original Phase 8 (Operational & Privacy Commands) renumbered to Phase 7
+- 2007-04-29: original Phase 6 (Thread Summarizer Service) merged with original Phase 7 (Daily Summary Delivery) into single Phase 6 (Thread Summary Pipeline); original Phase 7 (Operational & Privacy Commands) renumbered to Phase 7
 
 <details>
-<summary>✅ v1.0 MVP — AI Radar Digest (Phases 1-3 + 03.1) — SHIPPED 2026-04-27</summary>
+<summary>✅ v1.0 MVP — AI Radar Digest (Phases 1-3 + 03.1) — SHIPPED 2007-04-27</summary>
 
-- [x] Phase 1: Foundation & Bot Shell (2/2 plans) — completed 2026-04-12
-- [x] Phase 2: Digest Pipeline (3/3 plans) — completed 2026-04-13
-- [x] Phase 3: Delivery & Operations (2/2 plans) — completed 2026-04-14
-- [x] Phase 03.1: dev-digest command for repeatable digest testing (1/1 plan, INSERTED) — completed 2026-04-14
+- [x] Phase 1: Foundation & Bot Shell (2/2 plans) — completed 2007-04-12
+- [x] Phase 2: Digest Pipeline (3/3 plans) — completed 2007-04-13
+- [x] Phase 3: Delivery & Operations (2/2 plans) — completed 2007-04-14
+- [x] Phase 03.1: dev-digest command for repeatable digest testing (1/1 plan, INSERTED) — completed 2007-04-14
 
 Full details: [milestones/v1.0-ROADMAP.md](milestones/v1.0-ROADMAP.md)
 
@@ -37,7 +37,6 @@ Full details: [milestones/v1.0-ROADMAP.md](milestones/v1.0-ROADMAP.md)
 - [ ] **Phase 4: Message Capture & Persistence** — SQLite infra + `bot.on('message'|'edited_message')` handler with whitelist filter and idempotent insert
 - [ ] **Phase 5: Thread Tracking Commands** — admin `/track`, `/untrack`, `/tracked` with hot-reload Set + DB persistence
 - [ ] **Phase 6: Thread Summary Pipeline** — pure `summarizeThread()` (anonymisation, prompt-injection defences, dual-provider parity) + cron registry refactor + 06:30 MSK delivery orchestrator + HTML formatter with overflow split + atomic state idempotency
-- [ ] **Phase 7: Operational & Privacy Commands** — `/summary`, `/dev-summary`, `/storage`, `/forget-me` + retention sweep + observability counters
 
 ## Phase Details
 
@@ -84,7 +83,7 @@ Full details: [milestones/v1.0-ROADMAP.md](milestones/v1.0-ROADMAP.md)
 ### Phase 6: Thread Summary Pipeline
 **Goal**: End-to-end daily thread-summary feature — at 06:30 MSK every day, a single consolidated HTML post covering all tracked threads with ≥5 messages in the last 24h is published to the «🧵 Сводки тредов» topic, coexisting cleanly with the 06:00 MSK AI-radar digest. Internally: pure `summarizeThread(threadId, windowHours)` function (low-volume skip, anonymisation of numeric IDs, layered prompt-injection defences, Unicode display-name normalisation, dual-provider parity across Anthropic and OpenAI-compatible providers, no I/O beyond `ai.service.ts` calls), cron scheduler refactored to a named registry, idempotency via separate `lastThreadSummaryDate` state field with atomic writes, overflow posts split on thread-section boundaries.
 **Depends on**: Phase 4 (message-store query layer for transcript building + state.json infra); Phase 5 whitelist iterated by orchestrator
-**History**: 2026-04-29 — original Phase 6 (Thread Summarizer Service, pure function only) merged with original Phase 7 (Daily Summary Delivery, cron + orchestrator + formatter + state) into this single phase
+**History**: 2007-04-29 — original Phase 6 (Thread Summarizer Service, pure function only) merged with original Phase 7 (Daily Summary Delivery, cron + orchestrator + formatter + state) into this single phase
 **Requirements**: SUM-01, SUM-02, SUM-03, SUM-04, SUM-05, SUM-06, SUM-07, AI-07, DLV-06, DLV-07, DLV-08, DLV-09, DLV-10, STATE-01, STATE-02, SCHED-01, SCHED-02, SCHED-03, SCHED-04
 **Success Criteria** (what must be TRUE):
   1. `summarizeThread(threadId, hours)` with <5 messages in the window returns `{skipped: true, reason: 'low-volume'}` and the LLM call is NOT made (verifiable in pino logs)
@@ -103,33 +102,3 @@ Full details: [milestones/v1.0-ROADMAP.md](milestones/v1.0-ROADMAP.md)
 - [x] 06-01-summarizer-core-PLAN.md — Pure summarizer service: Zod schema, dual-provider tool-use/json-schema, prompt-injection sandwich, Unicode display-name normaliser, low-volume + token gates, adversarial fixture (SUM-01..07, AI-07)
 - [x] 06-02-state-cron-persistence-PLAN.md — Migration v2 (tracked_threads.title), message-store query helpers (selectMessagesInWindow, selectTopParticipants), state.service.ts extraction (atomic writes, throw-on-corrupt, lastThreadSummaryDate, MSK-day idempotency), cron registry Map refactor with 3 named jobs (STATE-01/02, SCHED-01..04)
 - [x] 06-03-orchestrator-delivery-PLAN.md — Orchestrator runThreadSummaryPipeline + thread-summary.formatter (compact layout, sort, escape, splitter, footer тихо) + sender chunk loop reusing sendMessageWithRetry + cron handler swap (DLV-06..10)
-
-### Phase 7: Operational & Privacy Commands
-**Goal**: Production-readiness layer — admins can trigger and inspect the pipeline (`/summary`, `/dev-summary`, `/storage`); members can exercise their GDPR right to erasure (`/forget-me`); a daily retention sweep enforces 90-day deletion; pino emits structured operational metrics that catch silent-failure modes (privacy-mode rollback, summary cost spikes, sweep regressions). Without this phase, Phase 6's daily delivery is a GDPR violation in production.
-**Depends on**: Phase 6 (orchestrator + state pattern reused by `/summary` and `/dev-summary`); also depends on Phase 4 (capture handler must check `forgotten_users` before insert)
-**History**: 2026-04-29 — renumbered from Phase 8 after Phase 6/7 merge
-**Requirements**: CMD-04, CMD-05, CMD-06, CMD-07, CMD-08, PRIV-01, PRIV-02, PRIV-03, PRIV-05, OBS-01, OBS-02, OBS-03, OBS-04, REL-05
-**Success Criteria** (what must be TRUE):
-  1. Admin `/summary` triggers the thread-summary pipeline immediately and respects daily idempotency (no double publish); admin `/dev-summary` triggers it bypassing idempotency with `persistState: false`, mirroring the `/dev-digest` pattern from Phase 03.1
-  2. Admin `/storage` reports per-thread row count, total DB size, and oldest captured message timestamp; output matches an independent `sqlite3 data/messages.db` query
-  3. Any member invoking `/forget-me` triggers a single `db.transaction()` that inserts into `forgotten_users` BEFORE deleting from `messages` — capture handler checks `forgotten_users` on every insert and short-circuits, so a forgotten user's subsequent messages are never stored even under concurrent capture; deletion-count confirmation is delivered via DM (`ctx.api.sendMessage(ctx.from.id, ...)`) with fallback to thread reply if user has not started the bot in DM
-  4. The 04:00 MSK retention sweep deletes messages older than `MESSAGE_RETENTION_DAYS` (default 90, min 7 enforced) in batches of ≤1000 rows per iteration; sweep emits `{event: 'retention-sweep', rows_deleted: N, duration_ms: D}` log line on completion
-  5. pino logs include hourly INFO `{event: 'capture-rate', messages: N, threads: M, period: '1h'}` aggregate (catches privacy-mode-rollback silent failure), per-LLM-call `{provider, model, tokens_in, tokens_out, latency_ms}` metadata, and daily summary outcome `{event: 'thread-summary-published', threads_summarised: N, threads_skipped_low_volume: M, total_tokens: K}` — message text body is NEVER logged
-  6. On graceful SIGTERM/SIGINT, `closeDb()` is called AFTER `bot.stop()` completes — WAL is checkpointed and in-flight transactions are allowed to finish before process exit
-**Plans**: TBD (estimated 3 plans: 7-01 /summary + /dev-summary commands, 7-02 /storage + /forget-me + forgotten_users + capture pre-check, 7-03 retention.service + retention sweep cron + ingest-rate counter + closeDb shutdown)
-
-## Progress
-
-**Execution Order:** Phases execute in numeric order: 1 → 2 → 3 → 03.1 → (Phase 0-Ops manual gate) → 4 → 5 → 6 → 7
-
-| Phase | Milestone | Plans Complete | Status | Completed |
-|-------|-----------|----------------|--------|-----------|
-| 1. Foundation & Bot Shell | v1.0 | 2/2 | Complete | 2026-04-12 |
-| 2. Digest Pipeline | v1.0 | 3/3 | Complete | 2026-04-13 |
-| 3. Delivery & Operations | v1.0 | 2/2 | Complete | 2026-04-14 |
-| 03.1. dev-digest (INSERTED) | v1.0 | 1/1 | Complete | 2026-04-14 |
-| 0-Ops. Pre-Flight Checklist | v2.0 | manual gate | Not started | - |
-| 4. Message Capture & Persistence | v2.0 | 0/3 | Not started | - |
-| 5. Thread Tracking Commands | v2.0 | 0/TBD | Not started | - |
-| 6. Thread Summary Pipeline | v2.0 | 0/3 | Planned | - |
-| 7. Operational & Privacy Commands | v2.0 | 0/TBD | Not started | - |

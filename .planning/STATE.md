@@ -4,10 +4,10 @@ milestone: v2.0
 milestone_name: Thread Summaries
 status: executing
 stopped_at: Phase 6 context gathered
-last_updated: "2026-04-29T16:47:05.547Z"
-last_activity: 2026-04-29
+last_updated: "2026-04-29T17:06:03.854Z"
+last_activity: "2026-04-29 - Completed quick task 260429-rm3: refresh cron MSK comments + TZ=UTC header in .env.example"
 progress:
-  total_phases: 5
+  total_phases: 4
   completed_phases: 2
   total_plans: 6
   completed_plans: 6
