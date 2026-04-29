@@ -2,28 +2,30 @@
 
 ## Milestones
 
-- ✅ **v1.0 MVP — AI Radar Digest** — Phases 1-3 + 03.1 (shipped 2007-04-27) — see [milestones/v1.0-ROADMAP.md](milestones/v1.0-ROADMAP.md)
-- 🚧 **v2.0 Thread Summaries** — Phase 0-Ops gate + Phases 4-7 (planned, in progress)
+- ✅ **v1.0 MVP — AI Radar Digest** — Phases 1-3 + 03.1 (shipped 2026-04-27) — see [milestones/v1.0-ROADMAP.md](milestones/v1.0-ROADMAP.md)
+- 🚧 **v2.0 Thread Summaries** — Phase 0-Ops gate + Phases 4 + 6 (Phase 5 cancelled, Phase 7 removed; in progress)
 
 ## Overview
 
-v2.0 turns the bot from a publish-only RSS agent into a *listening* agent: it captures messages from admin-whitelisted forum threads into a local SQLite database and publishes a single consolidated morning summary at 06:30 MSK alongside the existing 06:00 MSK AI-radar digest. The milestone is delivered as four integer code phases (4-7) preceded by a manual operational checklist (Phase 0-Ops) that must be executed before Phase 4 verification can be trusted. The build order de-risks operational and infrastructure blockers in Phase 4 (privacy mode, native build on Alpine, Docker volume permissions, idempotent capture), then layers admin tracking (Phase 5), the full thread-summary pipeline (Phase 6 — pure summariser + cron registry refactor + 06:30 MSK delivery orchestrator + HTML formatter + atomic state idempotency), and finally GDPR + ops commands (Phase 7).
+v2.0 turns the bot from a publish-only RSS agent into a *listening* agent: it captures messages from admin-whitelisted forum threads into a local SQLite database and publishes a single consolidated morning summary at 06:30 MSK alongside the existing 06:00 MSK AI-radar digest. The milestone is delivered as two integer code phases (4 + 6) preceded by a manual operational checklist (Phase 0-Ops) that must be executed before Phase 4 verification can be trusted. Phase 4 lands operational/infrastructure foundations (privacy mode, native build on Alpine, Docker volume permissions, idempotent capture); Phase 6 layers the full thread-summary pipeline (pure summariser + cron registry refactor + 06:30 MSK delivery orchestrator + HTML formatter + atomic state idempotency). Phase 5 (Thread Tracking Commands) was cancelled 2026-04-29 — admin whitelist is managed via env-seed/DB only, no in-chat commands. Phase 7 (Operational & Privacy Commands) was removed 2026-04-29 — out of scope for v2.0.
 
 ## Phases
 
 **Phase Numbering:**
 - Phase 0-Ops: manual operational checklist that gates Phase 4 verification (NOT a code phase, no plans)
-- Phases 4-7: continue numbering from v1.0 (last phase: 03.1)
+- Phases 4-6: continue numbering from v1.0 (last phase: 03.1)
 - Decimal phases reserved for urgent insertions (none planned)
-- 2007-04-29: original Phase 6 (Thread Summarizer Service) merged with original Phase 7 (Daily Summary Delivery) into single Phase 6 (Thread Summary Pipeline); original Phase 7 (Operational & Privacy Commands) renumbered to Phase 7
+- 2026-04-29: original Phase 6 (Thread Summarizer Service) merged with original Phase 7 (Daily Summary Delivery) into single Phase 6 (Thread Summary Pipeline); original Phase 8 (Operational & Privacy Commands) renumbered to Phase 7
+- 2026-04-29: Phase 7 (Operational & Privacy Commands) removed from roadmap — out of scope for v2.0
+- 2026-04-29: Phase 5 (Thread Tracking Commands) cancelled — admin whitelist managed via env-seed/DB without in-chat commands; numbering preserved (Phase 6 stays Phase 6) to keep git history and `.planning/phases/06-thread-summary-pipeline/` artifacts consistent
 
 <details>
-<summary>✅ v1.0 MVP — AI Radar Digest (Phases 1-3 + 03.1) — SHIPPED 2007-04-27</summary>
+<summary>✅ v1.0 MVP — AI Radar Digest (Phases 1-3 + 03.1) — SHIPPED 2026-04-27</summary>
 
-- [x] Phase 1: Foundation & Bot Shell (2/2 plans) — completed 2007-04-12
-- [x] Phase 2: Digest Pipeline (3/3 plans) — completed 2007-04-13
-- [x] Phase 3: Delivery & Operations (2/2 plans) — completed 2007-04-14
-- [x] Phase 03.1: dev-digest command for repeatable digest testing (1/1 plan, INSERTED) — completed 2007-04-14
+- [x] Phase 1: Foundation & Bot Shell (2/2 plans) — completed 2026-04-12
+- [x] Phase 2: Digest Pipeline (3/3 plans) — completed 2026-04-13
+- [x] Phase 3: Delivery & Operations (2/2 plans) — completed 2026-04-14
+- [x] Phase 03.1: dev-digest command for repeatable digest testing (1/1 plan, INSERTED) — completed 2026-04-14
 
 Full details: [milestones/v1.0-ROADMAP.md](milestones/v1.0-ROADMAP.md)
 
@@ -35,7 +37,7 @@ Full details: [milestones/v1.0-ROADMAP.md](milestones/v1.0-ROADMAP.md)
 
 - [ ] **Phase 0-Ops: Operational Pre-Flight Checklist** — manual gate before Phase 4 verification: BotFather privacy off, admin status, summary topic, volume permissions, consent announcement
 - [ ] **Phase 4: Message Capture & Persistence** — SQLite infra + `bot.on('message'|'edited_message')` handler with whitelist filter and idempotent insert
-- [ ] **Phase 5: Thread Tracking Commands** — admin `/track`, `/untrack`, `/tracked` with hot-reload Set + DB persistence
+- ⊘ **Phase 5: Thread Tracking Commands** — ~~admin `/track`, `/untrack`, `/tracked` with hot-reload Set + DB persistence~~ **CANCELLED 2026-04-29** (whitelist managed via env-seed/DB only, no in-chat commands)
 - [ ] **Phase 6: Thread Summary Pipeline** — pure `summarizeThread()` (anonymisation, prompt-injection defences, dual-provider parity) + cron registry refactor + 06:30 MSK delivery orchestrator + HTML formatter with overflow split + atomic state idempotency
 
 ## Phase Details
@@ -68,22 +70,18 @@ Full details: [milestones/v1.0-ROADMAP.md](milestones/v1.0-ROADMAP.md)
 - [x] 04-02-PLAN.md — Stores + tracking service stub (message-store upsert + forgotten guard, tracked-threads-store, tracking.service Set)
 - [x] 04-03-PLAN.md — Capture handler + mapper + preflight + bot.ts/index.ts wiring + REQUIREMENTS.md MSG-03 rewrite
 
-### Phase 5: Thread Tracking Commands
-**Goal**: Admins manage the capture whitelist live from inside the chat without restarting the bot; the in-memory `Set<number>` is the source of truth for the hot path and stays consistent with DB; whitelist survives restart so first capture after boot honours the persisted whitelist.
-**Depends on**: Phase 4 (capture handler + DB schema must exist)
-**Requirements**: TRK-01, TRK-02, TRK-03, TRK-04, TRK-05
-**Success Criteria** (what must be TRUE):
-  1. Admin invoking `/track` inside a forum topic adds the current `message_thread_id` to the whitelist (DB row + in-memory Set updated atomically); the very next message in that topic is captured without restart
-  2. Admin invoking `/untrack` inside a topic removes it from the whitelist; existing captured rows remain (only the retention sweep deletes them)
-  3. Admin invoking `/tracked` lists active whitelist entries (thread IDs + topic titles via `getForumTopic` when available, fall back to ID only)
-  4. After bot restart, `loadTrackingWhitelist()` populates the in-memory Set from DB before `bot.start()`, so the first capture after boot honours the persisted whitelist
-  5. Non-admin users invoking `/track`, `/untrack`, or `/tracked` are silently ignored (reuses existing `isAdmin()` guard with 5-min cache)
-**Plans**: TBD (estimated 2 plans: 5-01 tracking.service + tracked-threads-store + load on startup, 5-02 commands + hot-reload wiring)
+### Phase 5: Thread Tracking Commands ⊘ CANCELLED 2026-04-29
+**Status**: CANCELLED — out of scope for v2.0. Admin whitelist is managed via env-seed (`TRACKED_THREAD_IDS`) and direct DB writes; no in-chat `/track`, `/untrack`, `/tracked` commands ship.
+**Numbering note**: Phase 5 slot is preserved (NOT renumbered) to keep Phase 6's number, git history (`phase-06` commits), and `.planning/phases/06-thread-summary-pipeline/` artifacts consistent.
+**Original Goal** (kept for reference): Admins manage the capture whitelist live from inside the chat without restarting the bot; the in-memory `Set<number>` is the source of truth for the hot path and stays consistent with DB; whitelist survives restart so first capture after boot honours the persisted whitelist.
+**Original Depends on**: Phase 4 (capture handler + DB schema must exist)
+**Original Requirements**: TRK-01, TRK-02, TRK-03, TRK-04, TRK-05 (deferred — re-evaluate in v2.1 if needed)
+**Plans**: None — phase cancelled before planning
 
 ### Phase 6: Thread Summary Pipeline
 **Goal**: End-to-end daily thread-summary feature — at 06:30 MSK every day, a single consolidated HTML post covering all tracked threads with ≥5 messages in the last 24h is published to the «🧵 Сводки тредов» topic, coexisting cleanly with the 06:00 MSK AI-radar digest. Internally: pure `summarizeThread(threadId, windowHours)` function (low-volume skip, anonymisation of numeric IDs, layered prompt-injection defences, Unicode display-name normalisation, dual-provider parity across Anthropic and OpenAI-compatible providers, no I/O beyond `ai.service.ts` calls), cron scheduler refactored to a named registry, idempotency via separate `lastThreadSummaryDate` state field with atomic writes, overflow posts split on thread-section boundaries.
-**Depends on**: Phase 4 (message-store query layer for transcript building + state.json infra); Phase 5 whitelist iterated by orchestrator
-**History**: 2007-04-29 — original Phase 6 (Thread Summarizer Service, pure function only) merged with original Phase 7 (Daily Summary Delivery, cron + orchestrator + formatter + state) into this single phase
+**Depends on**: Phase 4 (message-store query layer for transcript building + state.json infra); whitelist iterated by orchestrator is sourced from `tracked_threads` table seeded via env/DB (Phase 5 commands cancelled)
+**History**: 2026-04-29 — original Phase 6 (Thread Summarizer Service, pure function only) merged with original Phase 7 (Daily Summary Delivery, cron + orchestrator + formatter + state) into this single phase
 **Requirements**: SUM-01, SUM-02, SUM-03, SUM-04, SUM-05, SUM-06, SUM-07, AI-07, DLV-06, DLV-07, DLV-08, DLV-09, DLV-10, STATE-01, STATE-02, SCHED-01, SCHED-02, SCHED-03, SCHED-04
 **Success Criteria** (what must be TRUE):
   1. `summarizeThread(threadId, hours)` with <5 messages in the window returns `{skipped: true, reason: 'low-volume'}` and the LLM call is NOT made (verifiable in pino logs)
