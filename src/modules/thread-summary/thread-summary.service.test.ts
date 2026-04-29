@@ -8,7 +8,7 @@ const {
   mockState,
   mockReadState,
   mockWriteState,
-  mockIsThreadSummaryPublishedToday,
+  mockIsThreadSummaryPublishedTodayWithState,
   mockListTrackedThreadIds,
   mockListTracked,
   mockSelectMessagesInWindow,
@@ -29,7 +29,7 @@ const {
     mockWriteState: vi.fn((s: PipelineStateV2) => {
       state.current = s;
     }),
-    mockIsThreadSummaryPublishedToday: vi.fn(() => false),
+    mockIsThreadSummaryPublishedTodayWithState: vi.fn(() => false),
     mockListTrackedThreadIds: vi.fn(() => [100, 200, 300]),
     mockListTracked: vi.fn(() => [
       { threadId: 100, chatId: -1, addedBy: null, addedAt: '', title: 'Cached100' },
@@ -47,7 +47,7 @@ const {
 vi.mock('../../services/state.service.js', () => ({
   readState: mockReadState,
   writeState: mockWriteState,
-  isThreadSummaryPublishedToday: mockIsThreadSummaryPublishedToday,
+  isThreadSummaryPublishedTodayWithState: mockIsThreadSummaryPublishedTodayWithState,
 }));
 vi.mock('../../services/tracking.service.js', () => ({
   listTrackedThreadIds: mockListTrackedThreadIds,
@@ -86,8 +86,8 @@ beforeEach(() => {
   mockReadState.mockClear();
   mockReadState.mockImplementation(() => mockState.current);
   mockWriteState.mockClear();
-  mockIsThreadSummaryPublishedToday.mockClear();
-  mockIsThreadSummaryPublishedToday.mockReturnValue(false);
+  mockIsThreadSummaryPublishedTodayWithState.mockClear();
+  mockIsThreadSummaryPublishedTodayWithState.mockReturnValue(false);
   mockListTrackedThreadIds.mockReturnValue([100, 200, 300]);
   mockSelectMessagesInWindow.mockReturnValue([]);
   mockSelectTopParticipants.mockReturnValue([]);
@@ -96,7 +96,7 @@ beforeEach(() => {
 
 describe('runThreadSummaryPipeline (DLV-06, DLV-10, D-32..D-35)', () => {
   it('O1: idempotency — already-published-today returns alreadyPublished:true and skips work', async () => {
-    mockIsThreadSummaryPublishedToday.mockReturnValue(true);
+    mockIsThreadSummaryPublishedTodayWithState.mockReturnValue(true);
     mockState.current = { ...mockState.current, lastThreadSummaryDate: new Date().toISOString() };
     const r = await runThreadSummaryPipeline();
     expect(r.alreadyPublished).toBe(true);
@@ -104,8 +104,17 @@ describe('runThreadSummaryPipeline (DLV-06, DLV-10, D-32..D-35)', () => {
     expect(mockSummarizeThread).not.toHaveBeenCalled();
   });
 
+  it('O1b: WR-03 — idempotency check is invoked with the already-loaded prevState (no second readState)', async () => {
+    mockIsThreadSummaryPublishedTodayWithState.mockReturnValue(true);
+    mockState.current = { ...mockState.current, lastThreadSummaryDate: new Date().toISOString() };
+    await runThreadSummaryPipeline();
+    expect(mockReadState).toHaveBeenCalledTimes(1);
+    expect(mockIsThreadSummaryPublishedTodayWithState).toHaveBeenCalledTimes(1);
+    expect(mockIsThreadSummaryPublishedTodayWithState).toHaveBeenCalledWith(mockState.current);
+  });
+
   it('O2: skipIdempotency:true bypasses idempotency gate', async () => {
-    mockIsThreadSummaryPublishedToday.mockReturnValue(true);
+    mockIsThreadSummaryPublishedTodayWithState.mockReturnValue(true);
     mockSummarizeThread.mockImplementation((input: { threadId: number }) =>
       Promise.resolve(okSummary(input.threadId, 5)),
     );

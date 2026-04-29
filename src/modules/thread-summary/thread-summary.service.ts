@@ -15,7 +15,7 @@ import { summarizeThread } from '../../services/summarizer.service.js';
 import {
   readState,
   writeState,
-  isThreadSummaryPublishedToday,
+  isThreadSummaryPublishedTodayWithState,
 } from '../../services/state.service.js';
 import { formatThreadSummaryPost } from './thread-summary.formatter.js';
 import type {
@@ -82,7 +82,11 @@ export async function runThreadSummaryPipeline(
     return emptyResult(false);
   }
 
-  if (!skipIdempotency && isThreadSummaryPublishedToday()) {
+  // WR-03 fix: idempotency check uses the already-loaded prevState — no second
+  // readState() call. The prior implementation read state.json twice per cycle
+  // (once here, once inside isThreadSummaryPublishedToday) with no consistency
+  // guarantee between reads.
+  if (!skipIdempotency && isThreadSummaryPublishedTodayWithState(prevState)) {
     logger.warn(
       { lastThreadSummaryDate: prevState.lastThreadSummaryDate },
       'Thread-summary already published today (MSK), skipping',
