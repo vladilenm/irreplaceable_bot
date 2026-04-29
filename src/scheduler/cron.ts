@@ -1,8 +1,9 @@
 // Cron scheduler registry: Phase 6 D-25..D-27 refactor from a single
 // task slot to a Map<string, ScheduledTask>. Public API
 // (startScheduler/stopScheduler) unchanged.
-// Three jobs registered:
-//   - digest         (06:00 MSK / config.digestCron)         — existing v1.0 handler, unchanged
+// Three jobs registered (cron expressions evaluated in container TZ=UTC;
+// MSK times below are the rendering of the *default* values from .env.example):
+//   - digest         (09:00 MSK / config.digestCron)         — existing v1.0 handler, unchanged
 //   - thread-summary (06:30 MSK / config.threadSummaryCron)  — Plan 06-03 wires runThreadSummaryPipeline + sendThreadSummary
 //   - retention-sweep (04:00 MSK / config.retentionSweepCron) — STUB (Phase 7 implements)
 //
