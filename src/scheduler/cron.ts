@@ -3,7 +3,7 @@
 // (startScheduler/stopScheduler) unchanged.
 // Three jobs registered:
 //   - digest         (06:00 MSK / config.digestCron)         — existing v1.0 handler, unchanged
-//   - thread-summary (06:30 MSK / config.threadSummaryCron)  — STUB (Plan 06-03 wires real handler)
+//   - thread-summary (06:30 MSK / config.threadSummaryCron)  — Plan 06-03 wires runThreadSummaryPipeline + sendThreadSummary
 //   - retention-sweep (04:00 MSK / config.retentionSweepCron) — STUB (Phase 7 implements)
 //
 // Each registerJob wraps the handler in per-job try/catch (SCHED-04) so a failing
@@ -15,6 +15,8 @@ import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
 import { runDigestPipeline } from '../modules/digest/digest.service.js';
 import { sendDigest } from '../modules/digest/digest.sender.js';
+import { runThreadSummaryPipeline } from '../modules/thread-summary/thread-summary.service.js';
+import { sendThreadSummary } from '../modules/thread-summary/thread-summary.sender.js';
 
 // Module-level registry. Singleton-by-import (mirrors tracking.service trackedSet pattern).
 const tasks = new Map<string, ScheduledTask>();
@@ -66,15 +68,36 @@ async function digestHandler(): Promise<void> {
 }
 
 /**
- * Phase 6 D-26 stub. Plan 06-03 replaces this body with the real
- * runThreadSummaryPipeline + sendThreadSummary call.
- *
- * The stub itself MUST exist — otherwise registerJob has no callable to wire,
- * and Phase 7 would have to refactor the registry. With this stub, Plan 06-03
- * is a body-replace not a structural change.
+ * Phase 6 Plan 06-03 — real thread-summary handler.
+ * Orchestrator handles idempotency internally (D-33 + DLV-10). Sender ships
+ * each chunk via sendMessageWithRetry. This handler is the cron-side glue.
  */
 async function threadSummaryHandler(): Promise<void> {
-  logger.warn('thread-summary stub — Plan 06-03 wires real handler');
+  // Phase 6 D-33 + DLV-10 — orchestrator handles idempotency internally.
+  const result = await runThreadSummaryPipeline();
+  if (result.alreadyPublished) {
+    logger.warn(
+      { date: result.date.toISOString() },
+      'Cron: thread-summary already published today, skipping send',
+    );
+    return;
+  }
+  if (result.chunks.length === 0) {
+    logger.warn('Cron: thread-summary returned 0 chunks, nothing to send');
+    return;
+  }
+  await sendThreadSummary(result.chunks);
+  logger.info(
+    {
+      event: 'thread-summary-published',
+      threadsSummarised: result.threadsSummarised,
+      threadsSkippedLowVolume: result.threadsSkippedLowVolume,
+      threadsSkippedError: result.threadsSkippedError,
+      totalMessageCount: result.totalMessageCount,
+      chunkCount: result.chunks.length,
+    },
+    'Cron: thread-summary cycle complete',
+  );
 }
 
 /**
