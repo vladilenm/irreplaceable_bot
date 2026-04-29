@@ -75,6 +75,17 @@ export interface TrackedThread {
   chatId: number;
   addedBy: number | null;            // NULL when seeded from ENV bootstrap (D-02)
   addedAt: string;
+  title: string | null;              // Phase 6 D-05: forum-topic name cache (NULL until first refresh)
+}
+
+// ─── Phase 6: Pipeline state (digest + thread-summary idempotency) ───
+// Owned by Plan 01 in src/types/index.ts; this plan consumes it via state.service.ts
+// and digest.service.ts. lastThreadSummaryDate added in Phase 6 D-28.
+export interface PipelineStateV2 {
+  lastDigestDate: string | null;
+  lastSkipped: boolean;
+  lastItemCount: number;
+  lastThreadSummaryDate: string | null;
 }
 
 export interface ForgottenUser {
