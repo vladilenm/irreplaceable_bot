@@ -1,28 +1,52 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { ThreadSummary, PipelineStateV2, CapturedMessage } from '../../types/index.js';
 
-// Mock factories — must be set BEFORE the SUT is imported.
-const mockState: { current: PipelineStateV2 } = {
-  current: { lastDigestDate: null, lastSkipped: false, lastItemCount: 0, lastThreadSummaryDate: null },
-};
-const mockReadState = vi.fn(() => mockState.current);
-const mockWriteState = vi.fn((s: PipelineStateV2) => {
-  mockState.current = s;
+// Mock factories — must be hoisted via vi.hoisted so the vi.mock factories
+// (which vitest hoists above imports) can reference these without
+// "Cannot access X before initialization" runtime errors.
+const {
+  mockState,
+  mockReadState,
+  mockWriteState,
+  mockIsThreadSummaryPublishedToday,
+  mockListTrackedThreadIds,
+  mockListTracked,
+  mockUpsertThreadTitle,
+  mockSelectMessagesInWindow,
+  mockSelectTopParticipants,
+  mockSummarizeThread,
+  mockGetForumTopic,
+} = vi.hoisted(() => {
+  const state: { current: PipelineStateV2 } = {
+    current: {
+      lastDigestDate: null,
+      lastSkipped: false,
+      lastItemCount: 0,
+      lastThreadSummaryDate: null,
+    },
+  };
+  return {
+    mockState: state,
+    mockReadState: vi.fn(() => state.current),
+    mockWriteState: vi.fn((s: PipelineStateV2) => {
+      state.current = s;
+    }),
+    mockIsThreadSummaryPublishedToday: vi.fn(() => false),
+    mockListTrackedThreadIds: vi.fn(() => [100, 200, 300]),
+    mockListTracked: vi.fn(() => [
+      { threadId: 100, chatId: -1, addedBy: null, addedAt: '', title: 'Cached100' },
+      { threadId: 200, chatId: -1, addedBy: null, addedAt: '', title: null },
+      { threadId: 300, chatId: -1, addedBy: null, addedAt: '', title: null },
+    ]),
+    mockUpsertThreadTitle: vi.fn(),
+    mockSelectMessagesInWindow: vi.fn(() => [] as CapturedMessage[]),
+    mockSelectTopParticipants: vi.fn(
+      () => [] as Array<{ authorName: string; messageCount: number }>,
+    ),
+    mockSummarizeThread: vi.fn(),
+    mockGetForumTopic: vi.fn(),
+  };
 });
-const mockIsThreadSummaryPublishedToday = vi.fn(() => false);
-const mockListTrackedThreadIds = vi.fn(() => [100, 200, 300]);
-const mockListTracked = vi.fn(() => [
-  { threadId: 100, chatId: -1, addedBy: null, addedAt: '', title: 'Cached100' },
-  { threadId: 200, chatId: -1, addedBy: null, addedAt: '', title: null },
-  { threadId: 300, chatId: -1, addedBy: null, addedAt: '', title: null },
-]);
-const mockUpsertThreadTitle = vi.fn();
-const mockSelectMessagesInWindow = vi.fn(() => [] as CapturedMessage[]);
-const mockSelectTopParticipants = vi.fn(
-  () => [] as Array<{ authorName: string; messageCount: number }>,
-);
-const mockSummarizeThread = vi.fn();
-const mockGetForumTopic = vi.fn();
 
 vi.mock('../../services/state.service.js', () => ({
   readState: mockReadState,
