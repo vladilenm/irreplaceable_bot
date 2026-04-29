@@ -11,6 +11,7 @@ files_modified:
   - src/scheduler/cron.ts
   - src/modules/thread-summary/thread-summary.formatter.test.ts
   - src/modules/thread-summary/thread-summary.service.test.ts
+  - src/modules/thread-summary/thread-summary.sender.test.ts
 autonomous: true
 requirements:
   - DLV-06
@@ -351,6 +352,11 @@ function formatFooter(skippedCount: number, totalThreads: number): string {
     return `тихо: ${skippedCount} из ${totalThreads}`;
   }
   if (skippedCount > 0) {
+    // D-08 fixed-form: "тихо: N тредов" — mil-tech idiom, intentional invariable plural.
+    // Russian grammar would expect "3 треда" / "5 тредов" — locked verbatim by user (D-08 in CONTEXT.md)
+    // because the bot tone is «штурман→пилот, прямой» where fixed military-style telegraphic
+    // forms are preferred over grammatical agreement. Do NOT "correct" this to plural-aware
+    // wording — that would violate the locked decision.
     return `тихо: ${skippedCount} тредов`;
   }
   return ''; // no skipped → no footer line
@@ -623,6 +629,7 @@ describe('formatThreadSummaryPost layout (D-01..D-04, D-36)', () => {
     - `grep -q "normalizeDisplayName" src/modules/thread-summary/thread-summary.formatter.ts` (D-24 second application site)
     - `grep -q "Открытые вопросы:" src/modules/thread-summary/thread-summary.formatter.ts` (D-11)
     - `grep -q "Тред #" src/modules/thread-summary/thread-summary.formatter.ts` (title fallback — D-06)
+    - `grep -q "fixed-form" src/modules/thread-summary/thread-summary.formatter.ts` (Issue 6: D-08 invariable plural "тихо: N тредов" is intentional, source-commented to prevent well-meaning grammatical "fixes" by future executors/reviewers)
     - `npm run typecheck` exits 0
     - `npm test -- thread-summary.formatter` exits 0 with all 13+ formatter tests passing
   </acceptance_criteria>
@@ -631,7 +638,7 @@ describe('formatThreadSummaryPost layout (D-01..D-04, D-36)', () => {
 
 <task type="auto" tdd="true">
   <name>Task 2: thread-summary.sender.ts (chunk loop) + thread-summary.service.ts orchestrator</name>
-  <files>src/modules/thread-summary/thread-summary.sender.ts, src/modules/thread-summary/thread-summary.service.ts, src/modules/thread-summary/thread-summary.service.test.ts</files>
+  <files>src/modules/thread-summary/thread-summary.sender.ts, src/modules/thread-summary/thread-summary.service.ts, src/modules/thread-summary/thread-summary.service.test.ts, src/modules/thread-summary/thread-summary.sender.test.ts</files>
   <read_first>
     - src/modules/digest/digest.sender.ts (one-shot pattern — sender mirrors with chunk loop)
     - src/utils/telegram.ts (sendMessageWithRetry signature — REUSE only, do not modify)
@@ -1014,28 +1021,53 @@ describe('runThreadSummaryPipeline (DLV-06, DLV-10, D-32..D-35)', () => {
   });
 });
 
+// NOTE: sendThreadSummary tests S1/S2 live in their OWN file
+// `src/modules/thread-summary/thread-summary.sender.test.ts` (created in this same task).
+// Issue 5 from plan-checker: a per-file `vi.mock('../../utils/telegram.js', ...)` factory
+// is scoped to the importing test file ONLY — using top-level vi.mock here AND in the
+// service test file would cause cross-file factory pollution. Separating them makes the
+// mock factory explicit per file, with no dynamic import + no flakiness.
+```
+
+3. **src/modules/thread-summary/thread-summary.sender.test.ts** (NEW FILE) — sender chunk-loop tests S1, S2 in their own file with a top-level static `vi.mock('../../utils/telegram.js', ...)`. No dynamic imports, no `vi.doMock`/`vi.doUnmock` dance.
+
+```ts
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+const mockSendMessageWithRetry = vi.fn();
+
+vi.mock('../../utils/telegram.js', () => ({
+  sendMessageWithRetry: mockSendMessageWithRetry,
+}));
+
+// Static import — the vi.mock factory above runs BEFORE this resolves (vitest hoists).
+import { sendThreadSummary } from './thread-summary.sender.js';
+
 describe('sendThreadSummary chunks loop (DLV-09, D-38)', () => {
+  beforeEach(() => {
+    mockSendMessageWithRetry.mockReset();
+  });
+
   it('S1: iterates chunks and calls sendMessageWithRetry per chunk', async () => {
-    const mockSend = vi.fn();
-    vi.doMock('../../utils/telegram.js', () => ({ sendMessageWithRetry: mockSend }));
-    const { sendThreadSummary } = await import('./thread-summary.sender.js');
     await sendThreadSummary(['c1', 'c2']);
-    expect(mockSend).toHaveBeenCalledTimes(2);
-    vi.doUnmock('../../utils/telegram.js');
+    expect(mockSendMessageWithRetry).toHaveBeenCalledTimes(2);
+    // First call payload — chunk c1 → threadSummaryThreadId
+    const firstCall = mockSendMessageWithRetry.mock.calls[0]?.[0];
+    expect(firstCall?.text).toBe('c1');
+    expect(firstCall?.parseMode).toBe('HTML');
   });
 
   it('S2: empty array no-op', async () => {
-    const mockSend = vi.fn();
-    vi.doMock('../../utils/telegram.js', () => ({ sendMessageWithRetry: mockSend }));
-    const { sendThreadSummary } = await import('./thread-summary.sender.js');
     await sendThreadSummary([]);
-    expect(mockSend).not.toHaveBeenCalled();
-    vi.doUnmock('../../utils/telegram.js');
+    expect(mockSendMessageWithRetry).not.toHaveBeenCalled();
+  });
+
+  it('S2b: empty-string chunks are skipped (defensive)', async () => {
+    await sendThreadSummary(['c1', '', 'c3']);
+    expect(mockSendMessageWithRetry).toHaveBeenCalledTimes(2);
   });
 });
 ```
-
-(Note: ESM mocking with `vi.doMock` and dynamic `import` is finicky. If S1/S2 prove flaky in execution, fall back to a thin wrapper test that intercepts at the module-resolution layer — e.g. instantiate the sender, mock `sendMessageWithRetry` BEFORE static import via top-level `vi.mock`, and accept O7 as a singular sender test.)
   </action>
   <verify>
     <automated>npm run typecheck 2>&1 | tail -5 && npm test -- thread-summary 2>&1 | tail -30</automated>
@@ -1057,6 +1089,10 @@ describe('sendThreadSummary chunks loop (DLV-09, D-38)', () => {
     - `grep -q "Date.now() - .* 3600 \\* 1000" src/modules/thread-summary/thread-summary.service.ts` OR `grep -q "windowHours \\* 3600" src/modules/thread-summary/thread-summary.service.ts` (sliding 24h window)
     - `! grep -q "AI_API_KEY\\|filterArticles" src/modules/thread-summary/thread-summary.service.ts` (does NOT touch AI service)
     - `npm run typecheck` exits 0
+    - `test -f src/modules/thread-summary/thread-summary.sender.test.ts` (Issue 5: dedicated sender test file with file-scoped vi.mock factory — no dynamic-import flakiness)
+    - `grep -q "vi.mock('../../utils/telegram.js'" src/modules/thread-summary/thread-summary.sender.test.ts` (top-level static vi.mock — hoisted before import)
+    - `! grep -q "vi.doMock\|vi.doUnmock" src/modules/thread-summary/thread-summary.sender.test.ts` (Issue 5: dynamic-mock dance EXPLICITLY removed; top-level vi.mock only)
+    - `npm test -- thread-summary.sender` exits 0 (S1, S2, S2b all pass)
     - `npm test -- thread-summary` exits 0 (formatter + sender + service tests all pass)
   </acceptance_criteria>
   <done>Orchestrator implements all 7 D-33 algorithm steps; per-thread try/catch isolates failures; state merge-write preserves digest fields; getForumTopic refresh per-thread try/catch isolated; windowHours configurable for /dev-summary Phase 7; sender reuses telegram.ts unchanged.</done>

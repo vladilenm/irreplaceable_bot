@@ -279,6 +279,20 @@ export default defineConfig({
 ```
 
 5. **src/utils/display-name.test.ts** (NEW FILE) — write the 7 tests from `<behavior>` using vitest `describe/it/expect`. Verify each transformation explicitly.
+
+6. **src/types/index.ts (Phase 6 D-05 ownership — added by THIS plan, consumed by Plan 02)** — extend the EXISTING `TrackedThread` interface (do not duplicate, do not append a second one) by adding the field `title: string | null` (nullable, default null). Paste-in shape:
+
+```ts
+export interface TrackedThread {
+  threadId: number;
+  chatId: number;
+  addedBy: number | null;
+  addedAt: string;
+  title: string | null;   // ← NEW (Phase 6 D-05) — populated by Plan 02 migration v2 ALTER TABLE + upsertThreadTitle
+}
+```
+
+Note: this field is the TYPE-side companion to Plan 02 migration v2 (`ALTER TABLE tracked_threads ADD COLUMN title TEXT`) and Plan 02's `upsertThreadTitle` store method. Plan 01 owns the type; Plan 02 owns the SQL + store logic. Both plans run in Wave 1 in parallel — no file conflict because `src/types/index.ts` is exclusively in Plan 01's `files_modified`.
   </action>
   <verify>
     <automated>npm run typecheck 2>&1 | tail -5 && npm test -- display-name 2>&1 | tail -20</automated>
@@ -295,6 +309,7 @@ export default defineConfig({
     - `grep -q "ThreadSummary" src/types/index.ts` AND `grep -q "ThreadSummaryResult" src/types/index.ts` AND `grep -q "RunThreadSummaryOptions" src/types/index.ts` AND `grep -q "LLMSummaryOutput" src/types/index.ts`
     - `grep -q "lastThreadSummaryDate" src/types/index.ts` (PipelineStateV2 extension)
     - `grep -q "skipped: true" src/types/index.ts` AND `grep -q "schema-invalid" src/types/index.ts` (discriminated union literal types present)
+    - `grep -q "title: string | null" src/types/index.ts` (TrackedThread.title field added per D-05 — type-side companion to Plan 02 migration v2)
     - `npm run typecheck` exits 0
     - `npm test -- display-name` exits 0 (all 7 tests pass)
   </acceptance_criteria>
@@ -872,6 +887,118 @@ export default defineConfig({
   },
 });
 ```
+
+3. **src/services/summarizer.adversarial.test.ts** (NEW FILE) — adversarial fixture exercise (ROADMAP success criterion #4: "Adversarial transcript fixture produces a schema-conformant summary that does NOT obey the injection — system-role isolation, sandwich, post-transcript reaffirmation, structured JSON validation all enforced"). The fixture exists from Task 2; this test wires it through the summarizer flow.
+
+```ts
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { readFileSync } from 'node:fs';
+import type { CapturedMessage } from '../types/index.js';
+
+const anthropicCreate = vi.fn();
+const openaiCreate = vi.fn();
+
+vi.mock('@anthropic-ai/sdk', () => ({
+  default: vi.fn().mockImplementation(() => ({
+    messages: { create: anthropicCreate },
+  })),
+}));
+
+vi.mock('openai', () => ({
+  default: vi.fn().mockImplementation(() => ({
+    chat: { completions: { create: openaiCreate } },
+  })),
+}));
+
+import { summarizeThread, buildTranscript } from './summarizer.service.js';
+
+// Parse the adversarial fixture lines `[HH:MM] Name: text` into CapturedMessage rows.
+function parseFixture(): CapturedMessage[] {
+  const text = readFileSync(new URL('../../tests/fixtures/adversarial-transcript.txt', import.meta.url), 'utf-8');
+  const lines = text.split('\n').filter((l) => l.trim().length > 0);
+  return lines.map((line, i) => {
+    const match = /^\[(\d{2}:\d{2})\] ([^:]+): (.+)$/.exec(line);
+    if (!match) throw new Error(`Bad fixture line ${i}: ${line}`);
+    const [, hhmm, name, body] = match;
+    return {
+      chatId: -1001234567890,
+      threadId: 100,
+      tgMessageId: 1000 + i,
+      authorId: 123456789 + i, // numeric — must NOT leak
+      authorName: name!.trim(),
+      isAnonymous: 0,
+      text: body!,
+      replyToMessageId: null,
+      createdAt: `2026-04-29T${hhmm}:00.000Z`,
+      editedAt: null,
+    };
+  });
+}
+
+describe('Adversarial fixture — prompt-injection resistance (D-20..D-23, SUM-05)', () => {
+  beforeEach(() => {
+    anthropicCreate.mockReset();
+    openaiCreate.mockReset();
+  });
+
+  it('ADV-1: jailbreak that bypasses prompt-side defences is hard-rejected by Zod (schema-invalid skip)', async () => {
+    // LLM "succumbs" and returns garbage tool-use payload (no headline, no bullets)
+    anthropicCreate.mockResolvedValueOnce({
+      content: [{ type: 'tool_use', name: 'submit_summary', input: { leak: 'pwned' } }],
+    });
+    openaiCreate.mockResolvedValueOnce({
+      choices: [{ message: { content: JSON.stringify({ leak: 'pwned' }) } }],
+    });
+
+    const messages = parseFixture(); // >=6 messages, <=15k tokens
+    const result = await summarizeThread({
+      threadId: 100, windowHours: 24, messages, participants: [],
+    });
+
+    expect(result).toMatchObject({ skipped: true, reason: 'schema-invalid' });
+  });
+
+  it('ADV-2: buildTranscript enforces sandwich integrity, reaffirm placement, anon contract on adversarial fixture', () => {
+    const messages = parseFixture();
+    expect(messages.length).toBeGreaterThanOrEqual(6);
+
+    const out = buildTranscript(messages);
+
+    // (1) Exactly one START and one END boundary marker.
+    const startMatches = out.match(/<<<TRANSCRIPT_START>>>/g) ?? [];
+    const endMatches = out.match(/<<<TRANSCRIPT_END>>>/g) ?? [];
+    expect(startMatches.length).toBe(1);
+    expect(endMatches.length).toBe(1);
+
+    // (2) All fixture lines appear between delimiters in order (after escape).
+    const startIdx = out.indexOf('<<<TRANSCRIPT_START>>>');
+    const endIdx = out.indexOf('<<<TRANSCRIPT_END>>>');
+    expect(endIdx).toBeGreaterThan(startIdx);
+    const between = out.slice(startIdx, endIdx);
+    let cursor = 0;
+    for (const m of messages) {
+      const fragment = m.text.slice(0, 10).replace(/[<>&]/g, ''); // pre-escape probe
+      const pos = between.indexOf(fragment, cursor);
+      expect(pos).toBeGreaterThanOrEqual(0);
+      cursor = pos;
+    }
+
+    // (3) REAFFIRM string appears AFTER the closing delimiter (post-transcript reaffirm — D-22).
+    const reaffirmIdx = out.indexOf('Reminder: respond ONLY by calling submit_summary');
+    expect(reaffirmIdx).toBeGreaterThan(endIdx);
+
+    // (4) No raw `<<<TRANSCRIPT_END>>>` inside any escaped message body — the fixture
+    // contains a message with literal `<<<TRANSCRIPT_END>>>` which MUST be HTML-escaped.
+    expect(out).toContain('&lt;&lt;&lt;TRANSCRIPT_END&gt;&gt;&gt;');
+
+    // (5) No numeric author_id leaks. parseFixture() assigns ids starting at 123456789.
+    for (let i = 0; i < messages.length; i++) {
+      const id = String(123456789 + i);
+      expect(out).not.toContain(id);
+    }
+  });
+});
+```
   </action>
   <verify>
     <automated>npm run typecheck 2>&1 | tail -5 && npm test 2>&1 | tail -30</automated>
@@ -885,7 +1012,8 @@ export default defineConfig({
     - `grep -q "not.toHaveBeenCalled" src/services/summarizer.anonymisation.test.ts` (LLM mock spy assertion)
     - `npm run typecheck` exits 0
     - `npm test` exits 0 with 16+ passing tests across 4 test files (display-name 7 + summarizer.service 7+5 = 12 + summarizer.anonymisation 4) — actual count tolerated, but ALL tests must pass
-    - `grep -RIn "filterArticles" src/services/ai.service.ts | grep -c "function filterArticles" ` returns exactly `1` (signature unchanged — AI-07)
+    - `[ "$(git diff src/services/ai.service.ts | grep -E "^[+-]" | grep -v "^[+-]{3}" | wc -l | tr -d " ")" = "0" ]` (byte-identical diff to v1.0 — AI-07; zero non-header diff lines means filterArticles signature, body, imports, exports all UNCHANGED)
+    - `grep -F "export async function filterArticles(" src/services/ai.service.ts` AND `grep -F "  articles: RawArticle[]," src/services/ai.service.ts` AND `grep -F "): Promise<string>" src/services/ai.service.ts` (multi-line signature components present verbatim — exact form in v1.0 src/services/ai.service.ts:30-32)
   </acceptance_criteria>
   <done>buildTranscript proven (1) anonymisation contract — no numeric author_id in output, (2) sandwich integrity — TRANSCRIPT delimiters + reaffirm always present, (3) Unicode normalisation applied; summarizeThread proven (1) low-volume gate fires WITHOUT instantiating either LLM SDK, (2) token gate fires WITHOUT instantiating either LLM SDK, (3) at threshold boundary the LLM path IS taken; ai.service.ts filterArticles signature byte-identical to v1.0.</done>
 </task>

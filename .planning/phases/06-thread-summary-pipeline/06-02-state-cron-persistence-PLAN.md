@@ -72,7 +72,7 @@ must_haves:
 Persistence + scheduler infrastructure that Plan 03 (orchestrator) will consume. Independent of Plan 01 (LLM core) — they share zero files and can run in parallel.
 
 Three deliverables:
-1. **Migration v2** + `tracked_threads.title` upsert + new message-store query helpers (selectMessagesInWindow, selectTopParticipants) — D-05, D-13, D-14.
+1. **Migration v2** + `tracked_threads.title` upsert + new message-store query helpers (selectMessagesInWindow, selectTopParticipants) — D-05, D-13, D-14. (The TypeScript `TrackedThread.title: string | null` field itself is added by Plan 01 in `src/types/index.ts` — Plan 01 owns that file in Wave 1 to keep parallel safety; this plan supplies the SQL + store logic.)
 2. **state.service.ts extraction** — atomic writes (D-29), throw-on-corrupt-JSON (D-30), `lastThreadSummaryDate` field, MSK-day idempotency check for thread-summary (D-31). digest.service.ts re-exports for back-compat. STATE-01, STATE-02.
 3. **Cron registry refactor** — `let task` → `Map<string, ScheduledTask>`, `registerJob` with per-job try/catch + cron.validate, named stop logs (D-25..D-27). Three jobs registered: `digest` (existing handler unchanged), `thread-summary` (stub that logs warn — Plan 03 wires real handler), `retention-sweep` (stub that logs info — Phase 7 wires real handler). SCHED-01..04.
 
@@ -82,7 +82,7 @@ Output: 6 files modified/created. ~250 LOC net. Strict TS, no `any`.
 
 **Behaviour change:** `readState()` no longer silently swallows JSON.parse errors (was: line 51-54 of digest.service.ts returns defaults; now: throws and caller logs ERROR + skips publish). This is intentional per STATE-02 — corrupt state could otherwise allow a duplicate digest publish.
 
-**This plan does NOT touch:** `src/services/ai.service.ts`, `src/services/summarizer.service.ts` (Plan 01), `src/utils/telegram.ts`, `src/index.ts main()`, `src/types/index.ts` (already extended in Plan 01 with `PipelineStateV2`), `src/modules/digest/digest.formatter.ts`, `src/modules/digest/digest.sender.ts`, `prompts/`, `src/utils/display-name.ts`.
+**This plan does NOT touch:** `src/services/ai.service.ts`, `src/services/summarizer.service.ts` (Plan 01), `src/utils/telegram.ts`, `src/index.ts main()`, `src/types/index.ts` (added by Plan 01 — `PipelineStateV2` AND `TrackedThread.title: string | null` field added there to keep Wave-1 parallel-safe; this plan supplies the SQL ALTER TABLE + `upsertThreadTitle` store method that consume that type), `src/modules/digest/digest.formatter.ts`, `src/modules/digest/digest.sender.ts`, `prompts/`, `src/utils/display-name.ts`.
 </objective>
 
 <execution_context>
@@ -187,12 +187,12 @@ config.retentionSweepCron      // '0 1 * * *' (04:00 MSK)
 
 <task type="auto" tdd="true">
   <name>Task 1: Migration v2 + tracked_threads.title + selectMessagesInWindow + selectTopParticipants</name>
-  <files>src/services/db.service.ts, src/stores/tracked-threads-store.ts, src/stores/message-store.ts, src/types/index.ts, src/stores/message-store.test.ts, src/stores/tracked-threads-store.test.ts</files>
+  <files>src/services/db.service.ts, src/stores/tracked-threads-store.ts, src/stores/message-store.ts, src/stores/message-store.test.ts, src/stores/tracked-threads-store.test.ts</files>
   <read_first>
     - src/services/db.service.ts (current MIGRATIONS array — append version 2 in same shape; do not modify version 1)
     - src/stores/tracked-threads-store.ts (current listTracked + lazy-prepared-statement pattern — mirror)
     - src/stores/message-store.ts (current upsertMessage + isAuthorForgotten + lazy `??=` pattern — mirror)
-    - src/types/index.ts (TrackedThread interface — add `title` field)
+    - src/types/index.ts (TrackedThread interface — `title: string | null` field added by Plan 01; this plan only consumes it via SQL ALTER TABLE + upsertThreadTitle UPDATE)
     - .planning/phases/06-thread-summary-pipeline/06-CONTEXT.md §D-05, §D-10, §D-13, §D-14 (migration + query semantics)
     - .planning/phases/04-message-capture-persistence/04-CONTEXT.md §D-04 (anon admin author_id=NULL handling)
   </read_first>
@@ -222,19 +222,7 @@ config.retentionSweepCron      // '0 1 * * *' (04:00 MSK)
 
 (Forward-only. SQLite supports ADD COLUMN as DDL inside transaction.)
 
-2. **src/types/index.ts** — modify `TrackedThread` interface to add `title: string | null`:
-
-```ts
-export interface TrackedThread {
-  threadId: number;
-  chatId: number;
-  addedBy: number | null;
-  addedAt: string;
-  title: string | null;   // ← NEW (Phase 6 D-05)
-}
-```
-
-3. **src/stores/tracked-threads-store.ts** — extend with `upsertThreadTitle` and update `listTracked` to read the new column:
+2. **src/stores/tracked-threads-store.ts** — extend with `upsertThreadTitle` and update `listTracked` to read the new column:
 
 Replace the existing `listStmt` and `listTracked` blocks with:
 
@@ -295,13 +283,18 @@ export function upsertThreadTitle(threadId: number, title: string): void {
 }
 ```
 
-4. **src/stores/message-store.ts** — APPEND (do not modify existing exports) two new query helpers using the same lazy-cached prepared-statement pattern:
+3. **src/stores/message-store.ts** — APPEND (do not modify existing exports) two new query helpers using the same lazy-cached prepared-statement pattern:
 
 ```ts
 // (existing imports unchanged)
 
+// Use the lazy-cached approach below — the inline 'rebuild via getDb().prepare per-call'
+// alternative was rejected (Issue 4 from plan-checker: caching avoids reparse cost; the
+// 5-tuple signature is captured by ReturnType<...> rather than a 3-tuple Statement<...>
+// since the correlated subquery binds 5 params, not 3).
+
 let _selectWindowStmt: Statement<[number, string]> | null = null;
-let _selectTopParticipantsStmt: Statement<[number, string, number]> | null = null;
+let _selectTopParticipantsStmt: ReturnType<ReturnType<typeof getDb>['prepare']> | null = null;
 
 interface CapturedMessageRow {
   chat_id: number;
@@ -327,15 +320,24 @@ function selectWindowStmt(): Statement<[number, string]> {
   return _selectWindowStmt;
 }
 
-function selectTopParticipantsStmt(): Statement<[number, string, number]> {
-  // Phase 6 D-13: latest author_name per group (handles rename mid-window).
-  // Phase 6 D-14: COALESCE(author_id, -1000000 - tg_message_id) so anon admins
-  // from different channels do not merge into one group.
-  _selectTopParticipantsStmt ??= getDb().prepare<[number, string, number]>(`
+/**
+ * Lazy-cached correlated-subquery statement for top-N participants.
+ * 5 placeholders total (thread_id, since, thread_id, since, limit) — the inner
+ * subquery needs thread_id+since to scope the latest-author_name lookup, and
+ * the outer query repeats them for the GROUP BY scope.
+ *
+ * NOTE (Issue 4 from plan-checker): an earlier draft typed this as
+ * `Statement<[number, string, number]>` (3-tuple) — that would NOT compile because
+ * better-sqlite3 type-checks the call signature against the placeholder count.
+ * The correct typing uses `ReturnType<...>` to keep the 5-tuple flexible.
+ */
+function selectTopParticipantsStmt() {
+  _selectTopParticipantsStmt ??= getDb().prepare(`
     SELECT
       COALESCE(author_id, -1000000 - tg_message_id) AS group_key,
       (SELECT m2.author_name FROM messages m2
-       WHERE COALESCE(m2.author_id, -1000000 - m2.tg_message_id) = COALESCE(messages.author_id, -1000000 - messages.tg_message_id)
+       WHERE COALESCE(m2.author_id, -1000000 - m2.tg_message_id) =
+             COALESCE(messages.author_id, -1000000 - messages.tg_message_id)
          AND m2.thread_id = ? AND m2.created_at >= ?
        ORDER BY m2.id DESC LIMIT 1) AS author_name,
       COUNT(*) AS msg_count
@@ -384,25 +386,7 @@ export function selectTopParticipants(
   sinceIso: string,
   limit = 3,
 ): ParticipantStat[] {
-  // Statement signature has 5 params total (thread_id, since, thread_id, since, limit)
-  // because the correlated subquery needs them too. The cached Statement<[a,b,c]>
-  // binding is rebuild-once; we override with a 5-tuple call.
-  const stmt = (getDb()).prepare(`
-    SELECT
-      COALESCE(author_id, -1000000 - tg_message_id) AS group_key,
-      (SELECT m2.author_name FROM messages m2
-       WHERE COALESCE(m2.author_id, -1000000 - m2.tg_message_id) =
-             COALESCE(messages.author_id, -1000000 - messages.tg_message_id)
-         AND m2.thread_id = ? AND m2.created_at >= ?
-       ORDER BY m2.id DESC LIMIT 1) AS author_name,
-      COUNT(*) AS msg_count
-    FROM messages
-    WHERE thread_id = ? AND created_at >= ?
-    GROUP BY group_key
-    ORDER BY msg_count DESC, group_key ASC
-    LIMIT ?
-  `);
-  const rows = stmt.all(threadId, sinceIso, threadId, sinceIso, limit) as Array<{
+  const rows = selectTopParticipantsStmt().all(threadId, sinceIso, threadId, sinceIso, limit) as Array<{
     group_key: number;
     author_name: string;
     msg_count: number;
@@ -414,39 +398,7 @@ export function selectTopParticipants(
 }
 ```
 
-(Note: `selectTopParticipants` re-prepares per call because the correlated subquery binds same params twice — for solo-dev simplicity at ~10 calls/day, this is acceptable. Optimisation deferred. Remove the unused `_selectTopParticipantsStmt` slot if linter complains; leave the lazy-cached `_selectWindowStmt` since it's hot-path simple.)
-
-Actually, simplify: delete the unused `_selectTopParticipantsStmt` slot entirely. Use a module-level `_selectTopParticipantsStmt` cached after first prepare:
-
-```ts
-let _selectTopParticipantsStmt: ReturnType<ReturnType<typeof getDb>['prepare']> | null = null;
-
-function selectTopParticipantsStmt() {
-  _selectTopParticipantsStmt ??= getDb().prepare(`
-    SELECT
-      COALESCE(author_id, -1000000 - tg_message_id) AS group_key,
-      (SELECT m2.author_name FROM messages m2
-       WHERE COALESCE(m2.author_id, -1000000 - m2.tg_message_id) =
-             COALESCE(messages.author_id, -1000000 - messages.tg_message_id)
-         AND m2.thread_id = ? AND m2.created_at >= ?
-       ORDER BY m2.id DESC LIMIT 1) AS author_name,
-      COUNT(*) AS msg_count
-    FROM messages
-    WHERE thread_id = ? AND created_at >= ?
-    GROUP BY group_key
-    ORDER BY msg_count DESC, group_key ASC
-    LIMIT ?
-  `);
-  return _selectTopParticipantsStmt;
-}
-
-export function selectTopParticipants(threadId: number, sinceIso: string, limit = 3): ParticipantStat[] {
-  const rows = selectTopParticipantsStmt().all(threadId, sinceIso, threadId, sinceIso, limit) as Array<{ group_key: number; author_name: string; msg_count: number }>;
-  return rows.map((r) => ({ authorName: r.author_name, messageCount: r.msg_count }));
-}
-```
-
-5. **src/stores/message-store.test.ts** (NEW FILE) — integration tests against in-memory SQLite (config.dbPath in test env is `:memory:` per Plan-01 setup.ts). Use `initDb` from db.service. Insert fixtures via existing `upsertMessage`. Test W1, W2, P1, P2, P3 from `<behavior>`.
+4. **src/stores/message-store.test.ts** (NEW FILE) — integration tests against in-memory SQLite (config.dbPath in test env is `:memory:` per Plan-01 setup.ts). Use `initDb` from db.service. Insert fixtures via existing `upsertMessage`. Test W1, W2, P1, P2, P3 from `<behavior>`.
 
 ```ts
 import { describe, it, expect, beforeEach } from 'vitest';
@@ -549,7 +501,7 @@ export function _resetForTests(): void {
 
 Update test `beforeEach` to call `_resetForTests()` then `initDb()`.
 
-6. **src/stores/tracked-threads-store.test.ts** (NEW FILE) — tests M1, M2, U1, U2:
+5. **src/stores/tracked-threads-store.test.ts** (NEW FILE) — tests M1, M2, U1, U2:
 
 ```ts
 import { describe, it, expect, beforeEach } from 'vitest';
@@ -603,7 +555,6 @@ describe('upsertThreadTitle (U1, U2)', () => {
     - `grep -q "ALTER TABLE tracked_threads ADD COLUMN title TEXT" src/services/db.service.ts` (exact SQL)
     - `grep -q "upsertThreadTitle" src/stores/tracked-threads-store.ts`
     - `grep -q "title: r.title" src/stores/tracked-threads-store.ts` (listTracked returns title field)
-    - `grep -q "title: string | null" src/types/index.ts` (TrackedThread.title type)
     - `grep -q "selectMessagesInWindow" src/stores/message-store.ts`
     - `grep -q "selectTopParticipants" src/stores/message-store.ts`
     - `grep -q "COALESCE(author_id, -1000000" src/stores/message-store.ts` (anon admin grouping per D-14)
@@ -1104,6 +1055,7 @@ describe('cron registry (SCHED-01..04)', () => {
     - `grep -q "export function startScheduler" src/scheduler/cron.ts` AND `grep -q "export function stopScheduler" src/scheduler/cron.ts` (signatures unchanged — SCHED-01)
     - `npm run typecheck` exits 0
     - `npm test -- cron` exits 0 with C1, C2, C2b, C3, C5 passing
+    - `grep -q "stopScheduler" src/index.ts` (Issue 3: SIGTERM/SIGINT signal-handler chain still wires stopScheduler — confirms ROADMAP success criterion #7 SIGTERM path; no code change in this task — pure regression-protection grep so a future refactor of index.ts that removes the stopScheduler call breaks this gate)
     - `npm test` exits 0 (full suite — verifies digest cycle still works with new state.service)
   </acceptance_criteria>
   <done>cron.ts uses Map registry; 3 named jobs registered; per-job try/catch isolates failures; stopScheduler logs each name; digest handler body unchanged; thread-summary + retention-sweep stubs in place for Plan 03 + Phase 7 to fill.</done>
