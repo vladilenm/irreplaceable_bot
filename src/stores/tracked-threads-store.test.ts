@@ -1,9 +1,14 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { initDb, getDb, _resetForTests } from '../services/db.service.js';
-import { listTracked, upsertThreadTitle } from './tracked-threads-store.js';
+import {
+  listTracked,
+  upsertThreadTitle,
+  _resetTrackedThreadsStoreForTests,
+} from './tracked-threads-store.js';
 
 beforeEach(() => {
   _resetForTests();
+  _resetTrackedThreadsStoreForTests();
   initDb();
 });
 

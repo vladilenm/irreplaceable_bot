@@ -4,6 +4,7 @@ import {
   upsertMessage,
   selectMessagesInWindow,
   selectTopParticipants,
+  _resetMessageStoreForTests,
 } from './message-store.js';
 import type { CapturedMessage } from '../types/index.js';
 
@@ -25,6 +26,7 @@ const baseMsg = (
 
 beforeEach(() => {
   _resetForTests();
+  _resetMessageStoreForTests();
   initDb();
   getDb().exec('DELETE FROM messages; DELETE FROM tracked_threads;');
 });
