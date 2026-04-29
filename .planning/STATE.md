@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-04-27)
 Phase: 7
 Plan: Not started
 Status: Executing Phase 06
-Last activity: 2026-04-29
+Last activity: 2026-04-29 - Completed quick task 260429-rm3: refresh cron MSK comments + TZ=UTC header in .env.example
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -125,6 +125,7 @@ None.
 | 260428-n9u | Расширить диагностический лог в ai.service.ts (finish_reason, refusal, reasoning_content, usage, choice JSON) и поднять max_tokens до 4000 | 2026-04-28 | 74ed5a6 | [260428-n9u-ai-service-ts-finish-reason-refusal-reas](./quick/260428-n9u-ai-service-ts-finish-reason-refusal-reas/) |
 | 260428-npl | max_tokens 4000 → 16000 + ужать description до 200 символов в formatArticlesForLLM | 2026-04-28 | b35a222 | [260428-npl-max-tokens-4000-16000-description-200-fo](./quick/260428-npl-max-tokens-4000-16000-description-200-fo/) |
 | 260428-o92 | Заголовок новости в дайджесте сделать кликабельной ссылкой вместо отдельной строки → ссылка | 2026-04-29 | 0347c6e | [260428-o92-digest-formatter-clickable-headline-link](./quick/260428-o92-digest-formatter-clickable-headline-link/) |
+| 260429-rm3 | Обновить устаревшие 06:00→09:00 MSK комментарии для digest в cron.ts и .env.example, добавить TZ=UTC заголовок ко всем cron-переменным | 2026-04-29 | 4f0ec5c | [260429-rm3-06-00-msk-09-00-msk-digest-src-scheduler](./quick/260429-rm3-06-00-msk-09-00-msk-digest-src-scheduler/) |
 
 ### Roadmap Evolution
 
