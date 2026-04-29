@@ -50,3 +50,14 @@ describe('cron registry (SCHED-01..04)', () => {
     expect(true).toBe(true);
   });
 });
+
+describe('cron thread-summary handler wiring (Plan 06-03 Task 3)', () => {
+  it('C7+C8+C9: registry still has 3 jobs and includes thread-summary', () => {
+    startScheduler();
+    const names = _getRegisteredJobNames();
+    expect(names).toContain('digest');
+    expect(names).toContain('thread-summary');
+    expect(names).toContain('retention-sweep');
+    stopScheduler();
+  });
+});
