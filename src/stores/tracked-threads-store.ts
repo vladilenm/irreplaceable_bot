@@ -33,5 +33,6 @@ export function listTracked(): TrackedThread[] {
     chatId: r.chat_id,
     addedBy: r.added_by,
     addedAt: r.added_at,
+    title: null,  // Phase 6 D-05: Plan 02 owns migration v2 + SELECT title; Plan 01 owns type-side. Default null until Plan 02 lands.
   }));
 }

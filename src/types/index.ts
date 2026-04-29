@@ -75,6 +75,7 @@ export interface TrackedThread {
   chatId: number;
   addedBy: number | null;            // NULL when seeded from ENV bootstrap (D-02)
   addedAt: string;
+  title: string | null;              // ← NEW (Phase 6 D-05) — populated by Plan 02 migration v2 ALTER TABLE + upsertThreadTitle
 }
 
 export interface ForgottenUser {
@@ -82,4 +83,65 @@ export interface ForgottenUser {
   forgottenAt: string;
   deletedCount: number;
   requestedVia: 'self' | 'admin' | 'bootstrap-test';
+}
+
+// ─── v2.0 Phase 6 — Thread summary pipeline (D-12, D-32, D-28) ───
+
+/**
+ * What the LLM returns BEFORE orchestrator merges in participants[] from DB.
+ * Schema-validated by Zod in summarizer.service.ts.
+ */
+export interface LLMSummaryOutput {
+  headline: string;          // ≤80 chars (truncated server-side per D-08)
+  bullets: string[];         // 1-6 items (D-09 soft 3-6)
+  openQuestions: string[];   // 0-3 (D-11)
+}
+
+export type ThreadSummary =
+  | {
+      skipped: false;
+      threadId: number;
+      windowHours: number;
+      messageCount: number;
+      headline: string;
+      bullets: string[];
+      participants: Array<{ displayName: string; messageCount: number }>;
+      openQuestions: string[];
+    }
+  | {
+      skipped: true;
+      threadId: number;
+      windowHours: number;
+      messageCount: number;
+      reason: 'low-volume' | 'transcript-too-large' | 'llm-error' | 'schema-invalid';
+    };
+
+export interface RunThreadSummaryOptions {
+  /** If true, bypass isThreadSummaryPublishedToday() short-circuit. Default: false. */
+  skipIdempotency?: boolean;
+  /** If true, write data/state.json after the run. Default: true. */
+  persistState?: boolean;
+  /** Override default 24h window (Phase 7 /dev-summary). Default: 24. */
+  windowHours?: number;
+}
+
+export interface ThreadSummaryResult {
+  alreadyPublished: boolean;
+  threadsSummarised: number;
+  threadsSkippedLowVolume: number;
+  threadsSkippedError: number;
+  totalMessageCount: number;
+  date: Date;
+  chunks: string[];   // formatted HTML chunks; empty array if alreadyPublished or zero tracked threads
+}
+
+/**
+ * State.json shape — Phase 6 D-28 extends with lastThreadSummaryDate.
+ * Mirrors PipelineState from digest.service.ts but lives in state.service.ts owned scope.
+ */
+export interface PipelineStateV2 {
+  lastDigestDate: string | null;
+  lastSkipped: boolean;
+  lastItemCount: number;
+  lastThreadSummaryDate: string | null;  // NEW Phase 6 D-28 — separate field
 }
