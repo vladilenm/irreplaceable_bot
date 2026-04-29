@@ -99,7 +99,10 @@ Full details: [milestones/v1.0-ROADMAP.md](milestones/v1.0-ROADMAP.md)
   10. Idempotency uses a new `lastThreadSummaryDate` field in `state.json` (separate from `lastDigestDate`); a double cron fire on the same MSK day produces ONE post and subsequent invocations no-op with INFO log (manual `/summary` and `/dev-summary` invocation idempotency is handled in Phase 7)
   11. `writeState()` writes are atomic (`writeFileSync(tmp)` + `renameSync(tmp, final)`); `readState()` does NOT swallow `JSON.parse` errors — corrupt file logs ERROR and blocks publish for that cycle (no silent default fallback)
   12. The 06:00 MSK AI-radar digest job continues firing exactly as in v1.0 with no regression (validated by digest publish on the same day as a thread-summary)
-**Plans**: TBD (estimated 5 plans: 6-01 prompts/thread-summarizer.md + summarizer.service.ts single-shot + token counter + dual-provider fixture, 6-02 anonymisation + Unicode normalisation + prompt-injection defence + schema validation, 6-03 cron registry refactor + state.service extraction + atomic writeState, 6-04 thread-summary.service orchestrator + iterate whitelist + new config fields, 6-05 thread-summary.formatter HTML + 4096 splitter + sender + idempotency state field)
+**Plans**: 3 plans (vertical slices, Wave 1 parallel: 06-01 + 06-02; Wave 2: 06-03)
+- [ ] 06-01-summarizer-core-PLAN.md — Pure summarizer service: Zod schema, dual-provider tool-use/json-schema, prompt-injection sandwich, Unicode display-name normaliser, low-volume + token gates, adversarial fixture (SUM-01..07, AI-07)
+- [ ] 06-02-state-cron-persistence-PLAN.md — Migration v2 (tracked_threads.title), message-store query helpers (selectMessagesInWindow, selectTopParticipants), state.service.ts extraction (atomic writes, throw-on-corrupt, lastThreadSummaryDate, MSK-day idempotency), cron registry Map refactor with 3 named jobs (STATE-01/02, SCHED-01..04)
+- [ ] 06-03-orchestrator-delivery-PLAN.md — Orchestrator runThreadSummaryPipeline + thread-summary.formatter (compact layout, sort, escape, splitter, footer тихо) + sender chunk loop reusing sendMessageWithRetry + cron handler swap (DLV-06..10)
 
 ### Phase 7: Operational & Privacy Commands
 **Goal**: Production-readiness layer — admins can trigger and inspect the pipeline (`/summary`, `/dev-summary`, `/storage`); members can exercise their GDPR right to erasure (`/forget-me`); a daily retention sweep enforces 90-day deletion; pino emits structured operational metrics that catch silent-failure modes (privacy-mode rollback, summary cost spikes, sweep regressions). Without this phase, Phase 6's daily delivery is a GDPR violation in production.
@@ -128,5 +131,5 @@ Full details: [milestones/v1.0-ROADMAP.md](milestones/v1.0-ROADMAP.md)
 | 0-Ops. Pre-Flight Checklist | v2.0 | manual gate | Not started | - |
 | 4. Message Capture & Persistence | v2.0 | 0/3 | Not started | - |
 | 5. Thread Tracking Commands | v2.0 | 0/TBD | Not started | - |
-| 6. Thread Summary Pipeline | v2.0 | 0/TBD | Not started | - |
+| 6. Thread Summary Pipeline | v2.0 | 0/3 | Planned | - |
 | 7. Operational & Privacy Commands | v2.0 | 0/TBD | Not started | - |
