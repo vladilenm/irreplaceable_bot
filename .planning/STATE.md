@@ -84,7 +84,7 @@ v2.0-specific decisions (locked, see PROJECT.md):
 - [Phase 04]: Migration v1 ships ALL 4 product tables (D-06): no schema change in Phase 5-8
 - [Phase 04]: ENV-seed dual-gated (empty table + non-empty CSV) for clean post-Phase-5 deactivation (D-02)
 - [Phase 04]: MESSAGE_RETENTION_DAYS readEnvIntWithDefault enforces MIN=7 to defeat PRIV-02 typo regression
-- [Phase 04]: THREAD_SUMMARY_THREAD_ID is requireEnvInt (no default) — gates Phase 7, fail-fast at boot
+- [Phase 04]: THREAD_SUMMARY_THREAD_ID is requireEnvInt (no default) — gates Phase 6 delivery, fail-fast at boot
 - [Phase 04]: No FKs in v1 (4 candidates rejected with documented rationale per RESEARCH §3)
 - [Phase 04]: [Phase 04 P02] Lazy module-level prepared statements via ??= cache pattern (STORE-04) — first call prepares, subsequent reuse
 - [Phase 04]: [Phase 04 P02] UPSERT uses ON CONFLICT(chat_id, tg_message_id) DO UPDATE with 3-column allowlist (text, author_name, edited_at) — preserves created_at on edit; INSERT OR IGNORE/REPLACE rejected
@@ -111,8 +111,8 @@ None.
 **Tech-debt items rolled into v2.0 phases (no longer blockers, owned by phases):**
 
 - Dockerfile native-build toolchain → owned by Phase 4
-- `state.json` not in volume + non-atomic write → owned by Phase 4 (volume) + Phase 7 (atomic write)
-- `cron.ts` single-task slot → owned by Phase 7-01
+- `state.json` not in volume + non-atomic write → owned by Phase 4 (volume) + Phase 6 (atomic write)
+- `cron.ts` single-task slot → owned by Phase 6 (cron registry refactor)
 
 ### Quick Tasks Completed
 

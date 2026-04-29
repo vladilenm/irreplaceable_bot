@@ -190,42 +190,43 @@ REQ-IDs continue from v1.0 archive (`.planning/milestones/v1.0-REQUIREMENTS.md`)
 | SUM-06 | Phase 6 | Pending |
 | SUM-07 | Phase 6 | Pending |
 | AI-07 | Phase 6 | Pending |
-| DLV-06 | Phase 7 | Pending |
-| DLV-07 | Phase 7 | Pending |
-| DLV-08 | Phase 7 | Pending |
-| DLV-09 | Phase 7 | Pending |
-| DLV-10 | Phase 7 | Pending |
-| STATE-01 | Phase 7 | Pending |
-| STATE-02 | Phase 7 | Pending |
-| SCHED-01 | Phase 7 | Pending |
-| SCHED-02 | Phase 7 | Pending |
-| SCHED-03 | Phase 7 | Pending |
-| SCHED-04 | Phase 7 | Pending |
-| CMD-04 | Phase 8 | Pending |
-| CMD-05 | Phase 8 | Pending |
-| CMD-06 | Phase 8 | Pending |
-| CMD-07 | Phase 8 | Pending |
-| CMD-08 | Phase 8 | Pending |
-| PRIV-01 | Phase 8 | Pending |
-| PRIV-02 | Phase 8 | Pending |
-| PRIV-03 | Phase 8 | Pending |
+| DLV-06 | Phase 6 | Pending |
+| DLV-07 | Phase 6 | Pending |
+| DLV-08 | Phase 6 | Pending |
+| DLV-09 | Phase 6 | Pending |
+| DLV-10 | Phase 6 | Pending |
+| STATE-01 | Phase 6 | Pending |
+| STATE-02 | Phase 6 | Pending |
+| SCHED-01 | Phase 6 | Pending |
+| SCHED-02 | Phase 6 | Pending |
+| SCHED-03 | Phase 6 | Pending |
+| SCHED-04 | Phase 6 | Pending |
+| CMD-04 | Phase 7 | Pending |
+| CMD-05 | Phase 7 | Pending |
+| CMD-06 | Phase 7 | Pending |
+| CMD-07 | Phase 7 | Pending |
+| CMD-08 | Phase 7 | Pending |
+| PRIV-01 | Phase 7 | Pending |
+| PRIV-02 | Phase 7 | Pending |
+| PRIV-03 | Phase 7 | Pending |
 | PRIV-04 | Phase 0-Ops | Pending |
-| PRIV-05 | Phase 8 | Pending |
-| OBS-01 | Phase 8 | Pending |
-| OBS-02 | Phase 8 | Pending |
-| OBS-03 | Phase 8 | Pending |
-| OBS-04 | Phase 8 | Pending |
+| PRIV-05 | Phase 7 | Pending |
+| OBS-01 | Phase 7 | Pending |
+| OBS-02 | Phase 7 | Pending |
+| OBS-03 | Phase 7 | Pending |
+| OBS-04 | Phase 7 | Pending |
 | REL-04 | Phase 4 | Complete |
-| REL-05 | Phase 8 | Pending |
+| REL-05 | Phase 7 | Pending |
 
 ### Coverage by Phase
+
+> 2026-04-29: original Phase 6 (Thread Summarizer Service) merged with original Phase 7 (Daily Summary Delivery) into Phase 6 (Thread Summary Pipeline); original Phase 8 renumbered to Phase 7.
 
 | Phase | REQ Count | REQ-IDs |
 |-------|-----------|---------|
 | Phase 0-Ops | 2 | SETUP-09, PRIV-04 |
 | Phase 4 | 17 | SETUP-05/06/07/08, MSG-01..08, STORE-01..04, REL-04 |
 | Phase 5 | 5 | TRK-01..05 |
-| Phase 6 | 8 | SUM-01..07, AI-07 |
-| Phase 7 | 11 | DLV-06..10, STATE-01..02, SCHED-01..04 |
-| Phase 8 | 14 | CMD-04..08, PRIV-01/02/03/05, OBS-01..04, REL-05 |
+| Phase 6 | 19 | SUM-01..07, AI-07, DLV-06..10, STATE-01..02, SCHED-01..04 |
+| Phase 7 | 14 | CMD-04..08, PRIV-01/02/03/05, OBS-01..04, REL-05 |
 | **Total** | **57** | **100% coverage** |
