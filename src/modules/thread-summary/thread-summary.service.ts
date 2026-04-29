@@ -1,13 +1,12 @@
 // Phase 6 orchestrator (D-32..D-35, DLV-06, DLV-07, DLV-10).
 // Pulls together: tracking whitelist + DB queries + summarizer + formatter + state.
 // Per-thread try/catch (D-34) — one LLM error doesn't abort cycle.
-// Title-refresh via getForumTopic with per-thread try/catch (D-06).
+// Title resolution: cached-only (DB) — see refreshThreadTitle JSDoc (WR-01 fix).
 // Sliding 24h window from cron-fire (CONTEXT "Window semantics" Claude's Discretion).
 
-import { bot } from '../../bot.js';
 import { logger } from '../../utils/logger.js';
 import { listTrackedThreadIds } from '../../services/tracking.service.js';
-import { listTracked, upsertThreadTitle } from '../../stores/tracked-threads-store.js';
+import { listTracked } from '../../stores/tracked-threads-store.js';
 import {
   selectMessagesInWindow,
   selectTopParticipants,
@@ -19,7 +18,6 @@ import {
   isThreadSummaryPublishedToday,
 } from '../../services/state.service.js';
 import { formatThreadSummaryPost } from './thread-summary.formatter.js';
-import { config } from '../../config.js';
 import type {
   PipelineStateV2,
   RunThreadSummaryOptions,
@@ -33,36 +31,20 @@ function nowMinusHoursIso(hours: number): string {
   return new Date(Date.now() - hours * 3600 * 1000).toISOString();
 }
 
-// Telegram Bot API does not expose a documented `getForumTopic` method as of
-// Bot API 7.x — only create/edit/close/etc. Some clients (e.g. raw HTTP) accept
-// a `getForumTopic` call that returns a ForumTopic-shaped object; tests mock it.
-// We type the bot.api surface narrowly here so the orchestrator can attempt the
-// call. If the method is unavailable at runtime (older bot API or library),
-// the call rejects and we fall back to cached title (D-06).
-interface ForumTopicLike {
-  message_thread_id: number;
-  name: string;
-}
-interface ForumTopicCapableApi {
-  getForumTopic?: (chatId: string, messageThreadId: number) => Promise<ForumTopicLike>;
-}
-
-async function refreshThreadTitle(threadId: number): Promise<string> {
-  // D-06: 1 API call per thread per day. Per-thread try/catch — never blocks cycle.
-  // On failure: read cached title from listTracked() snapshot or fall back to "Тред #N".
-  const api = bot.api as unknown as ForumTopicCapableApi;
-  try {
-    if (typeof api.getForumTopic === 'function') {
-      const topic = await api.getForumTopic(config.targetChatId, threadId);
-      if (topic.name) {
-        upsertThreadTitle(threadId, topic.name);
-        return topic.name;
-      }
-    }
-  } catch (err: unknown) {
-    logger.warn({ err, threadId }, 'getForumTopic failed, falling back to cached title');
-  }
-  // Fallback: cached title from DB or generic.
+/**
+ * Resolve a thread title for display.
+ *
+ * Phase 6 originally attempted to call `bot.api.getForumTopic(chatId, threadId)`
+ * before each cycle to refresh `tracked_threads.title`. That method does NOT
+ * exist on Telegram Bot API 7.x (only `getForumTopicIconStickers` is exposed
+ * by grammy 1.42.0), so the runtime guard `typeof api.getForumTopic === 'function'`
+ * was always false — the refresh was permanently dead code (WR-01).
+ *
+ * Until Telegram exposes a real source-of-truth, this resolver is cached-only:
+ * it reads the title written by `/track` (Phase 5) or migration v2 bootstrap.
+ * If no cached title exists, fall back to a generic `Тред #N` label.
+ */
+function refreshThreadTitle(threadId: number): string {
   const cached = listTracked().find((t) => t.threadId === threadId)?.title;
   return cached ?? `Тред #${threadId}`;
 }
@@ -125,7 +107,7 @@ export async function runThreadSummaryPipeline(
   for (const threadId of threadIds) {
     // Per-thread try/catch (D-34) — one fail doesn't abort cycle.
     try {
-      const title = await refreshThreadTitle(threadId);
+      const title = refreshThreadTitle(threadId);
       titles.set(threadId, title);
 
       const messages = selectMessagesInWindow(threadId, sinceIso);

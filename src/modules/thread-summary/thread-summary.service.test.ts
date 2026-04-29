@@ -11,11 +11,9 @@ const {
   mockIsThreadSummaryPublishedToday,
   mockListTrackedThreadIds,
   mockListTracked,
-  mockUpsertThreadTitle,
   mockSelectMessagesInWindow,
   mockSelectTopParticipants,
   mockSummarizeThread,
-  mockGetForumTopic,
 } = vi.hoisted(() => {
   const state: { current: PipelineStateV2 } = {
     current: {
@@ -38,13 +36,11 @@ const {
       { threadId: 200, chatId: -1, addedBy: null, addedAt: '', title: null },
       { threadId: 300, chatId: -1, addedBy: null, addedAt: '', title: null },
     ]),
-    mockUpsertThreadTitle: vi.fn(),
     mockSelectMessagesInWindow: vi.fn(() => [] as CapturedMessage[]),
     mockSelectTopParticipants: vi.fn(
       () => [] as Array<{ authorName: string; messageCount: number }>,
     ),
     mockSummarizeThread: vi.fn(),
-    mockGetForumTopic: vi.fn(),
   };
 });
 
@@ -58,7 +54,6 @@ vi.mock('../../services/tracking.service.js', () => ({
 }));
 vi.mock('../../stores/tracked-threads-store.js', () => ({
   listTracked: mockListTracked,
-  upsertThreadTitle: mockUpsertThreadTitle,
 }));
 vi.mock('../../stores/message-store.js', () => ({
   selectMessagesInWindow: mockSelectMessagesInWindow,
@@ -66,11 +61,6 @@ vi.mock('../../stores/message-store.js', () => ({
 }));
 vi.mock('../../services/summarizer.service.js', () => ({
   summarizeThread: mockSummarizeThread,
-}));
-vi.mock('../../bot.js', () => ({
-  bot: {
-    api: { getForumTopic: mockGetForumTopic },
-  },
 }));
 
 import { runThreadSummaryPipeline } from './thread-summary.service.js';
@@ -96,14 +86,12 @@ beforeEach(() => {
   mockReadState.mockClear();
   mockReadState.mockImplementation(() => mockState.current);
   mockWriteState.mockClear();
+  mockIsThreadSummaryPublishedToday.mockClear();
   mockIsThreadSummaryPublishedToday.mockReturnValue(false);
   mockListTrackedThreadIds.mockReturnValue([100, 200, 300]);
-  mockUpsertThreadTitle.mockClear();
   mockSelectMessagesInWindow.mockReturnValue([]);
   mockSelectTopParticipants.mockReturnValue([]);
   mockSummarizeThread.mockReset();
-  mockGetForumTopic.mockReset();
-  mockGetForumTopic.mockResolvedValue({ message_thread_id: 100, name: 'Topic' });
 });
 
 describe('runThreadSummaryPipeline (DLV-06, DLV-10, D-32..D-35)', () => {
@@ -167,11 +155,16 @@ describe('runThreadSummaryPipeline (DLV-06, DLV-10, D-32..D-35)', () => {
     expect(call?.windowHours).toBe(48);
   });
 
-  it('O7: getForumTopic failure does NOT throw — fallback used', async () => {
-    mockGetForumTopic.mockRejectedValue(new Error('Telegram API down'));
+  it('O7: WR-01 — refreshThreadTitle is cached-only (no Bot API call); pipeline succeeds', async () => {
+    // Phase 6 WR-01 fix: bot.api.getForumTopic does not exist on Telegram Bot
+    // API 7.x. The pipeline now resolves titles purely from listTracked()
+    // cache — no Telegram round-trip is attempted, so there is no failure
+    // path to test for the API call. We assert that listTracked() is consulted
+    // and that the pipeline proceeds end-to-end.
     mockSummarizeThread.mockResolvedValue(okSummary(100, 5));
     const r = await runThreadSummaryPipeline();
     expect(r.threadsSummarised).toBe(3);
+    expect(mockListTracked).toHaveBeenCalled();
   });
 
   it('S3: corrupt state read → returns empty result, blocks publish', async () => {
