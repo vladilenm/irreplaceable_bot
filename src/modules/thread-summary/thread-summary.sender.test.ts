@@ -1,6 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const mockSendMessageWithRetry = vi.fn();
+// vi.hoisted: factory variables must be hoisted with vi.mock to avoid
+// "Cannot access X before initialization" — vitest hoists vi.mock above imports.
+const { mockSendMessageWithRetry } = vi.hoisted(() => ({
+  mockSendMessageWithRetry: vi.fn(),
+}));
 
 vi.mock('../../utils/telegram.js', () => ({
   sendMessageWithRetry: mockSendMessageWithRetry,
