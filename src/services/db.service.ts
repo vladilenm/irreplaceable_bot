@@ -64,6 +64,13 @@ const MIGRATIONS: ReadonlyArray<Migration> = [
       );
     `,
   },
+  {
+    version: 2,
+    description: 'Phase 6 D-05: tracked_threads.title (forum-topic display name cache)',
+    sql: `
+      ALTER TABLE tracked_threads ADD COLUMN title TEXT;
+    `,
+  },
   // future versions append here
 ];
 
@@ -85,11 +92,18 @@ export function initDb(): void {
   // ─── Pragma application order (RESEARCH §1.5, sqlite.org) ───
   // 1. journal_mode = WAL — FIRST, OUTSIDE any transaction.
   //    sqlite.org: "journal_mode cannot be changed while a transaction is active".
-  _db.pragma('journal_mode = WAL');
+  //    sqlite.org also: `:memory:` databases cannot use WAL — silently fall
+  //    back to 'memory' journal mode. Skip the WAL pragma + check for
+  //    in-memory DBs (test env). Production DB_PATH is always file-backed.
+  const isMemoryDb = config.dbPath === ':memory:';
+  if (!isMemoryDb) {
+    _db.pragma('journal_mode = WAL');
+  }
 
-  // 2. Verify WAL active (PITFALLS DB-01: silent fallback to 'delete' if dir perms denied).
+  // 2. Verify WAL active for file-backed DBs (PITFALLS DB-01: silent fallback
+  //    to 'delete' if dir perms denied). For :memory: we just record the mode.
   const mode = _db.pragma('journal_mode', { simple: true });
-  if (mode !== 'wal') {
+  if (!isMemoryDb && mode !== 'wal') {
     throw new Error(
       `WAL mode not active — got '${String(mode)}'. ` +
         `Check directory permissions on ${config.dbPath} parent ` +
@@ -180,5 +194,20 @@ export function closeDb(): void {
     _db.close();
     _db = null;
     logger.info('Database closed');
+  }
+}
+
+// Test-only: reset the cached connection so a fresh initDb() reopens :memory:.
+// The `_` prefix signals private; not called by any production code path.
+// Required because better-sqlite3 with `:memory:` creates a fresh DB on every
+// `Database(':memory:')` call, but `_db` is module-level cached.
+export function _resetForTests(): void {
+  if (_db) {
+    try {
+      _db.close();
+    } catch {
+      /* ignore */
+    }
+    _db = null;
   }
 }
