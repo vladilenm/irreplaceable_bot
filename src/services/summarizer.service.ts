@@ -151,7 +151,23 @@ async function callOpenAICompatible(userMessage: string): Promise<LLMSummaryOutp
   if (content === '') {
     throw new Error('OpenAI-compatible response empty content');
   }
-  return JSON.parse(content) as LLMSummaryOutput;
+  try {
+    return JSON.parse(content) as LLMSummaryOutput;
+  } catch (err) {
+    // WR-02 fix: malformed JSON from an OpenAI-compatible provider is a SCHEMA
+    // failure (model went off-schema), not a TRANSPORT failure. Tag the error
+    // with `kind: 'schema-invalid'` so the outer summarizeThread() catch can
+    // classify it correctly. Without this tag the parse failure was silently
+    // routed to `reason: 'llm-error'`, masking model regressions in operator
+    // logs.
+    const preview = content.slice(0, 100);
+    const e: Error & { kind?: string } = new Error(
+      `OpenAI-compatible response is not valid JSON (first 100 chars): ${preview}`,
+    );
+    e.kind = 'schema-invalid';
+    if (err instanceof Error) e.cause = err;
+    throw e;
+  }
 }
 
 // ─── Public API ───
@@ -207,6 +223,21 @@ export async function summarizeThread(input: SummarizeThreadInput): Promise<Thre
       llmOutput = await callOpenAICompatible(userMessage);
     }
   } catch (err: unknown) {
+    // WR-02: an OpenAI-compatible provider returning non-JSON content tags the
+    // error with `kind: 'schema-invalid'` so we route it to the schema reason
+    // bucket instead of the transport (`llm-error`) bucket. Other failures
+    // (network, auth, rate-limit) fall through to `llm-error`.
+    const kind =
+      err instanceof Error && typeof (err as Error & { kind?: unknown }).kind === 'string'
+        ? (err as Error & { kind: string }).kind
+        : null;
+    if (kind === 'schema-invalid') {
+      logger.warn(
+        { err, threadId, messageCount, model: config.aiModel },
+        'summarizeThread: schema-invalid (malformed JSON from provider)',
+      );
+      return { skipped: true, threadId, windowHours, messageCount, reason: 'schema-invalid' };
+    }
     logger.error(
       { err, threadId, messageCount, model: config.aiModel },
       'summarizeThread: LLM call failed',
