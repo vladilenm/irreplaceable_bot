@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { readFile } from 'node:fs/promises';
 import { logger } from '../utils/logger.js';
 import {
   startScheduler,
@@ -59,5 +60,21 @@ describe('cron thread-summary handler wiring (Plan 06-03 Task 3)', () => {
     expect(names).toContain('thread-summary');
     expect(names).toContain('retention-sweep');
     stopScheduler();
+  });
+});
+
+describe('cron retention-sweep wiring (Phase 7, Plan 07-01 Task 2)', () => {
+  it('R1 (Phase 7): retention-sweep registered as third job after digest+thread-summary', () => {
+    startScheduler();
+    const names = _getRegisteredJobNames();
+    expect(names).toContain('retention-sweep');
+    expect(names).toHaveLength(3);
+    stopScheduler();
+  });
+
+  it('R2 (Phase 7): cron.ts no longer contains the stub log line and imports runRetentionSweep', async () => {
+    const src = await readFile(new URL('./cron.ts', import.meta.url), 'utf-8');
+    expect(src).not.toContain('retention sweep stub — Phase 7 implements');
+    expect(src).toContain('runRetentionSweep');
   });
 });

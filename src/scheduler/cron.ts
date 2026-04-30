@@ -18,6 +18,7 @@ import { runDigestPipeline } from '../modules/digest/digest.service.js';
 import { sendDigest } from '../modules/digest/digest.sender.js';
 import { runThreadSummaryPipeline } from '../modules/thread-summary/thread-summary.service.js';
 import { sendThreadSummary } from '../modules/thread-summary/thread-summary.sender.js';
+import { runRetentionSweep } from '../services/retention.service.js';
 
 // Module-level registry. Singleton-by-import (mirrors tracking.service trackedSet pattern).
 const tasks = new Map<string, ScheduledTask>();
@@ -102,11 +103,13 @@ async function threadSummaryHandler(): Promise<void> {
 }
 
 /**
- * Phase 6 D-26 stub. Phase 7 replaces this body with the retention-sweep batch
- * delete (90-day cutoff, ≤1000 rows per iteration).
+ * Phase 7 PRIV-03: реальный retention sweep.
+ * Делегирует в runRetentionSweep — батчевый DELETE LIMIT 1000 + structured pino-лог.
+ * registerJob оборачивает вызов в try/catch (SCHED-04), так что брошенная отсюда
+ * ошибка изолирована от digest и thread-summary jobs.
  */
 async function retentionSweepHandler(): Promise<void> {
-  logger.info('retention sweep stub — Phase 7 implements');
+  await runRetentionSweep();
 }
 
 // ─── Public API (unchanged signature — SCHED-01) ───
