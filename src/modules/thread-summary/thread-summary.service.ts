@@ -82,10 +82,7 @@ export async function runThreadSummaryPipeline(
     return emptyResult(false);
   }
 
-  // WR-03 fix: idempotency check uses the already-loaded prevState — no second
-  // readState() call. The prior implementation read state.json twice per cycle
-  // (once here, once inside isThreadSummaryPublishedToday) with no consistency
-  // guarantee between reads.
+  // WR-03: idempotency check uses already-loaded prevState (single readState per cycle).
   if (!skipIdempotency && isThreadSummaryPublishedTodayWithState(prevState)) {
     logger.warn(
       { lastThreadSummaryDate: prevState.lastThreadSummaryDate },
