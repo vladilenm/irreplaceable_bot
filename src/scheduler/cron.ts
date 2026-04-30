@@ -5,7 +5,7 @@
 // MSK times below are the rendering of the *default* values from .env.example):
 //   - digest         (09:00 MSK / config.digestCron)         — existing v1.0 handler, unchanged
 //   - thread-summary (06:30 MSK / config.threadSummaryCron)  — Plan 06-03 wires runThreadSummaryPipeline + sendThreadSummary
-//   - retention-sweep (04:00 MSK / config.retentionSweepCron) — STUB (Phase 7 implements)
+//   - retention-sweep (04:00 MSK / config.retentionSweepCron) — Plan 07-01: calls runRetentionSweep (PRIV-03)
 //
 // Each registerJob wraps the handler in per-job try/catch (SCHED-04) so a failing
 // job does not affect siblings. cron.validate() called per registration; invalid

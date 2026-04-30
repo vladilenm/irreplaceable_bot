@@ -35,7 +35,7 @@ REQ-IDs continue from v1.0 archive (`.planning/milestones/v1.0-REQUIREMENTS.md`)
 
 - [x] **STORE-01**: `better-sqlite3` connection singleton with `journal_mode=WAL`, `foreign_keys=ON`, `synchronous=NORMAL`; opened during `initDb()` before scheduler/polling
 - [x] **STORE-02**: `schema_migrations(version, applied_at)` table from day one; migrations array applied inside a single transaction; on each boot, only un-applied versions run
-- [x] **STORE-03**: Schema includes `messages`, `tracked_threads`, `users`, `forgotten_users` tables with proper FKs and indexes
+- [x] **STORE-03**: Schema includes `messages`, `tracked_threads`, `users` tables with proper FKs and indexes (`forgotten_users` was added in Phase 4 migration v2 and dropped in Phase 7 migration v3 — CMD-07 de-scoped 2026-04-29)
 - [x] **STORE-04**: Prepared statements cached per store as module-level constants (lazy-init on first `getDb()` call); capture insert latency p95 <50ms in WAL mode
 
 ### Summarizer (SUM-*)
