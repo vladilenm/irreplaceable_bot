@@ -37,10 +37,10 @@ Full details: [milestones/v1.0-ROADMAP.md](milestones/v1.0-ROADMAP.md)
 **Milestone Goal:** Bot captures whitelisted forum-thread messages, summarises last 24h via LLM, publishes a single consolidated post at 06:30 MSK to a dedicated «🧵 Сводки тредов» topic. GDPR-compliant via `/forget-me` + 90-day retention.
 
 - [ ] **Phase 0-Ops: Operational Pre-Flight Checklist** — manual gate before Phase 4 verification: BotFather privacy off, admin status, summary topic, volume permissions, consent announcement
-- [ ] **Phase 4: Message Capture & Persistence** — SQLite infra + `bot.on('message'|'edited_message')` handler with whitelist filter and idempotent insert
+- [x] **Phase 4: Message Capture & Persistence** — SQLite infra + `bot.on('message'|'edited_message')` handler with whitelist filter and idempotent insert
 - ⊘ **Phase 5: Thread Tracking Commands** — ~~admin `/track`, `/untrack`, `/tracked` with hot-reload Set + DB persistence~~ **CANCELLED 2026-04-29** (whitelist managed via env-seed/DB only, no in-chat commands)
 - [x] **Phase 6: Thread Summary Pipeline** — pure `summarizeThread()` (anonymisation, prompt-injection defences, dual-provider parity) + cron registry refactor + 06:30 MSK delivery orchestrator + HTML formatter with overflow split + atomic state idempotency
-- [ ] **Phase 7: v2.0 Closure** — retention sweep impl (PRIV-03), удаление `/forget-me` инфраструктуры (forgotten_users table + capture guard), зачистка мёртвого кода и documentation drift, Phase 0-Ops ручной чек-лист, 10 отложенных live E2E тестов
+- [x] **Phase 7: v2.0 Closure** — retention sweep impl (PRIV-03), удаление `/forget-me` инфраструктуры (forgotten_users table + capture guard), зачистка мёртвого кода и documentation drift, Phase 0-Ops ручной чек-лист, 10 отложенных live E2E тестов
 
 ## Phase Details
 
