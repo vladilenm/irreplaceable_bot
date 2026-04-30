@@ -115,4 +115,9 @@ Full details: [milestones/v1.0-ROADMAP.md](milestones/v1.0-ROADMAP.md)
   4. REQUIREMENTS.md drift fixed: MSG-04 wording updated to `ON CONFLICT(chat_id, tg_message_id) DO UPDATE`; 18 Phase 6 requirements flipped `[ ]`→`[x]` (SUM-01..07, AI-07, DLV-06..10, STATE-01/02, SCHED-01..04); 18 cancelled requirements removed (TRK-01..05, CMD-04..08, PRIV-01/02/05, OBS-01..04, REL-05); traceability table + coverage refreshed; PRIV-03 reassigned to Phase 7 with `[x]`
   5. Phase 6 SUMMARY.md frontmatter `requirements-completed` filled in 06-01/06-02/06-03 (lists exist in body but missing from machine-readable YAML)
   6. Phase 0-Ops manual artifact `04-OPS-CHECKLIST.md` exists with: privacy-mode startup-log evidence (`can_read_all_group_messages === true`), `THREAD_SUMMARY_THREAD_ID` capture, host volume permissions confirmation (`docker compose exec bot id` + `touch /app/data/.write_test`), GDPR consent announcement URL/screenshot, results of 10 deferred live E2E tests (7 Phase 4 + 3 Phase 6), manual `/forget-me` runbook
-**Plans**: TBD via `/gsd-plan-phase 07`
+**Plans**: 5 plans (all wave 1, parallel — no shared file modifications)
+- [ ] 07-01-retention-sweep-PLAN.md — Retention sweep impl (PRIV-03): batched DELETE LIMIT 1000 + structured pino log; replace cron stub
+- [ ] 07-02-migration-v3-forget-me-cleanup-PLAN.md — Migration v3 drops forgotten_users; capture handler + message-store strip isAuthorForgotten
+- [ ] 07-03-dead-code-cleanup-PLAN.md — Remove isThreadSummaryPublishedToday + upsertThreadTitle + stale Phase 5/7/8 comments + .env.example MESSAGE_RETENTION_DAYS 2→90
+- [ ] 07-04-requirements-md-summary-frontmatter-PLAN.md — REQUIREMENTS.md drift fix (MSG-04 wording, 19 checkbox flips, 18 cancelled-req removals, traceability rebuild) + 06-01/02/03 SUMMARY frontmatter requirements_completed backfill
+- [ ] 07-05-phase-0-ops-checklist-PLAN.md — Scaffold .planning/phases/04-message-capture-persistence/04-OPS-CHECKLIST.md (autonomous=false for operator-fill steps; closes SETUP-09 + PRIV-04 after operator execution)
