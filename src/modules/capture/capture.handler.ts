@@ -1,7 +1,7 @@
 import type { Bot, Context } from 'grammy';
 import { logger } from '../../utils/logger.js';
 import { isThreadTracked } from '../../services/tracking.service.js';
-import { upsertMessage, isAuthorForgotten } from '../../stores/message-store.js';
+import { upsertMessage } from '../../stores/message-store.js';
 import { mapTelegramMessageToCaptured } from './capture.mapper.js';
 
 /**
@@ -51,13 +51,6 @@ async function captureHandler(ctx: Context): Promise<void> {
     // Pure mapping: Telegram update → row.
     const captured = mapTelegramMessageToCaptured(ctx);
     if (captured === null) return;
-
-    // Forgotten-user guard (D-12, closes PRIV-02 ahead of Phase 8 /forget-me).
-    // Anon admins (authorId === null) skip this check — NULL never matches.
-    if (captured.authorId !== null && isAuthorForgotten(captured.authorId)) {
-      logger.debug({ author_id: captured.authorId }, 'Skipping message from forgotten user');
-      return;
-    }
 
     // Idempotent UPSERT (MSG-02 + MSG-04, OPS-05 long-polling redelivery).
     upsertMessage(captured);

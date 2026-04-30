@@ -7,7 +7,6 @@ import type { CapturedMessage } from '../types/index.js';
 // initDb() hasn't run, so we defer .prepare() until first call.
 
 let _upsertStmt: Statement<[CapturedMessage]> | null = null;
-let _forgottenStmt: Statement<[number]> | null = null;
 let _selectWindowStmt: Statement<[number, string]> | null = null;
 // Top-participants statement uses 5 positional placeholders:
 // (thread_id, since, thread_id, since, limit). better-sqlite3's
@@ -46,13 +45,6 @@ function upsertStmt(): Statement<[CapturedMessage]> {
       edited_at   = excluded.edited_at
   `);
   return _upsertStmt;
-}
-
-function forgottenStmt(): Statement<[number]> {
-  _forgottenStmt ??= getDb().prepare<[number]>(
-    'SELECT 1 FROM forgotten_users WHERE author_id = ?',
-  );
-  return _forgottenStmt;
 }
 
 function selectWindowStmt(): Statement<[number, string]> {
@@ -111,18 +103,6 @@ function selectTopParticipantsStmt(): Statement<TopParticipantsArgs> {
  */
 export function upsertMessage(m: CapturedMessage): void {
   upsertStmt().run(m);
-}
-
-/**
- * Pre-INSERT forgotten-user guard (D-12, closes PRIV-02 in Phase 4 ahead of
- * Phase 8 /forget-me). Returns true if author_id has a row in forgotten_users.
- *
- * Caller (capture handler) MUST short-circuit when this returns true — never
- * write a captured row for a forgotten user. Anon admins (author_id === null)
- * never call this function (NULL never matches anything).
- */
-export function isAuthorForgotten(authorId: number): boolean {
-  return forgottenStmt().get(authorId) !== undefined;
 }
 
 /**
@@ -186,7 +166,6 @@ export function selectTopParticipants(
 // connection. Production never calls this — _db is opened once per boot.
 export function _resetMessageStoreForTests(): void {
   _upsertStmt = null;
-  _forgottenStmt = null;
   _selectWindowStmt = null;
   _selectTopParticipantsStmt = null;
 }
