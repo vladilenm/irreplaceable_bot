@@ -63,6 +63,7 @@ metrics:
   test_files: 4
   files_created: 11
   files_modified: 4
+requirements_completed: [SUM-01, SUM-02, SUM-03, SUM-04, SUM-05, SUM-06, SUM-07, AI-07]
 ---
 
 # Phase 6 Plan 01: Summarizer Core Summary

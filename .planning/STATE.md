@@ -107,7 +107,7 @@ None.
 - BotFather privacy mode currently ON → must be OFF, bot kicked + re-invited + re-promoted to admin
 - `«🧵 Сводки тредов»` forum topic must be created and `THREAD_SUMMARY_THREAD_ID` captured
 - Host `./data` ownership for uid 1001; `docker-compose.yml` volume entry
-- In-chat consent announcement (GDPR Art. 13) URL/screenshot captured at `.planning/phases/04-message-capture/04-OPS-CHECKLIST.md`
+- In-chat consent announcement (GDPR Art. 13) URL/screenshot captured at `.planning/phases/04-message-capture-persistence/04-OPS-CHECKLIST.md`
 
 **Tech-debt items rolled into v2.0 phases (no longer blockers, owned by phases):**
 
