@@ -71,6 +71,13 @@ const MIGRATIONS: ReadonlyArray<Migration> = [
       ALTER TABLE tracked_threads ADD COLUMN title TEXT;
     `,
   },
+  {
+    version: 3,
+    description: 'Phase 7: drop forgotten_users (CMD-07 de-scoped 2026-04-29)',
+    sql: `
+      DROP TABLE IF EXISTS forgotten_users;
+    `,
+  },
   // future versions append here
 ];
 
