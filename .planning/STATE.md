@@ -126,7 +126,7 @@ None.
 | 260428-npl | max_tokens 4000 → 16000 + ужать description до 200 символов в formatArticlesForLLM | 2026-04-28 | b35a222 | [260428-npl-max-tokens-4000-16000-description-200-fo](./quick/260428-npl-max-tokens-4000-16000-description-200-fo/) |
 | 260428-o92 | Заголовок новости в дайджесте сделать кликабельной ссылкой вместо отдельной строки → ссылка | 2026-04-29 | 0347c6e | [260428-o92-digest-formatter-clickable-headline-link](./quick/260428-o92-digest-formatter-clickable-headline-link/) |
 | 260429-rm3 | Обновить устаревшие 06:00→09:00 MSK комментарии для digest в cron.ts и .env.example, добавить TZ=UTC заголовок ко всем cron-переменным | 2026-04-29 | 4f0ec5c | [260429-rm3-06-00-msk-09-00-msk-digest-src-scheduler](./quick/260429-rm3-06-00-msk-09-00-msk-digest-src-scheduler/) |
-| 260430-iju | финальная верификация v2.0: запустить все проверки (grep, vitest, typecheck), создать SUMMARY.md и сделать финальный коммит | 2026-04-30 | TBD | [260430-iju-v2-0-grep-vitest-typecheck-summary-md](./quick/260430-iju-v2-0-grep-vitest-typecheck-summary-md/) |
+| 260430-iju | финальная верификация v2.0: запустить все проверки (grep, vitest, typecheck), создать SUMMARY.md и сделать финальный коммит | 2026-04-30 | f326aa8 | [260430-iju-v2-0-grep-vitest-typecheck-summary-md](./quick/260430-iju-v2-0-grep-vitest-typecheck-summary-md/) |
 
 ### Roadmap Evolution
 
