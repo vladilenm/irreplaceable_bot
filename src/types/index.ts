@@ -117,7 +117,7 @@ export type ThreadSummary =
     };
 
 export interface RunThreadSummaryOptions {
-  /** If true, bypass isThreadSummaryPublishedToday() short-circuit. Default: false. */
+  /** If true, bypass isThreadSummaryPublishedTodayWithState() short-circuit. Default: false. */
   skipIdempotency?: boolean;
   /** If true, write data/state.json after the run. Default: true. */
   persistState?: boolean;

@@ -96,16 +96,6 @@ export function isDigestPublishedToday(): boolean {
 }
 
 /**
- * Phase 6 D-31: idempotency check for thread-summary job. Same MSK-day pattern,
- * separate state field per DLV-10.
- */
-export function isThreadSummaryPublishedToday(): boolean {
-  const state = readState();
-  if (state.lastThreadSummaryDate === null) return false;
-  return todayMsk() === toMskDate(state.lastThreadSummaryDate);
-}
-
-/**
  * WR-03 helper: pure idempotency check on a caller-provided state snapshot.
  * Use this in pipelines that already loaded `state` via `readState()` to avoid
  * a second `readFileSync` + `JSON.parse` per cycle.

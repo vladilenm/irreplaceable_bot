@@ -18,8 +18,9 @@ import {
   readState,
   writeState,
   isDigestPublishedToday,
-  isThreadSummaryPublishedToday,
+  isThreadSummaryPublishedTodayWithState,
 } from './state.service.js';
+import type { PipelineStateV2 } from '../types/index.js';
 
 describe('state.service atomic writes (STATE-01)', () => {
   it('S1: writeState then readState round-trip', () => {
@@ -96,14 +97,14 @@ describe('state.service idempotency checks (D-31)', () => {
     expect(isDigestPublishedToday()).toBe(true);
   });
 
-  it('S7: isThreadSummaryPublishedToday — separate from digest, same MSK-day pattern', () => {
-    writeState({
+  it('S7: isThreadSummaryPublishedTodayWithState — separate from digest, same MSK-day pattern', () => {
+    const state: PipelineStateV2 = {
       lastDigestDate: null,
       lastSkipped: false,
       lastItemCount: 0,
       lastThreadSummaryDate: new Date().toISOString(),
-    });
-    expect(isThreadSummaryPublishedToday()).toBe(true);
+    };
+    expect(isThreadSummaryPublishedTodayWithState(state)).toBe(true);
     expect(isDigestPublishedToday()).toBe(false);
   });
 
