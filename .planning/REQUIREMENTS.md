@@ -164,7 +164,7 @@ REQ-IDs continue from v1.0 archive (`.planning/milestones/v1.0-REQUIREMENTS.md`)
 | SETUP-06 | Phase 4 | Complete |
 | SETUP-07 | Phase 4 | Complete |
 | SETUP-08 | Phase 4 | Complete |
-| SETUP-09 | Phase 0-Ops | Pending |
+| SETUP-09 | Phase 7 | Pending |
 | MSG-01 | Phase 4 | Complete |
 | MSG-02 | Phase 4 | Complete |
 | MSG-03 | Phase 4 | Complete |
@@ -209,7 +209,7 @@ REQ-IDs continue from v1.0 archive (`.planning/milestones/v1.0-REQUIREMENTS.md`)
 | PRIV-01 | Phase 7 | Pending |
 | PRIV-02 | Phase 7 | Pending |
 | PRIV-03 | Phase 7 | Pending |
-| PRIV-04 | Phase 0-Ops | Pending |
+| PRIV-04 | Phase 7 | Pending |
 | PRIV-05 | Phase 7 | Pending |
 | OBS-01 | Phase 7 | Pending |
 | OBS-02 | Phase 7 | Pending |

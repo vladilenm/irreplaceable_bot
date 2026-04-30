@@ -18,6 +18,7 @@ v2.0 turns the bot from a publish-only RSS agent into a *listening* agent: it ca
 - 2026-04-29: original Phase 6 (Thread Summarizer Service) merged with original Phase 7 (Daily Summary Delivery) into single Phase 6 (Thread Summary Pipeline); original Phase 8 (Operational & Privacy Commands) renumbered to Phase 7
 - 2026-04-29: Phase 7 (Operational & Privacy Commands) removed from roadmap — out of scope for v2.0
 - 2026-04-29: Phase 5 (Thread Tracking Commands) cancelled — admin whitelist managed via env-seed/DB without in-chat commands; numbering preserved (Phase 6 stays Phase 6) to keep git history and `.planning/phases/06-thread-summary-pipeline/` artifacts consistent
+- 2026-04-30: Phase 7 slot reused for `v2.0 Closure` — gap-closure phase per `v2.0-MILESTONE-AUDIT.md` (retention sweep impl + forget-me infra removal + tech-debt + doc cleanup + Phase 0-Ops execution)
 
 <details>
 <summary>✅ v1.0 MVP — AI Radar Digest (Phases 1-3 + 03.1) — SHIPPED 2026-04-27</summary>
@@ -38,7 +39,8 @@ Full details: [milestones/v1.0-ROADMAP.md](milestones/v1.0-ROADMAP.md)
 - [ ] **Phase 0-Ops: Operational Pre-Flight Checklist** — manual gate before Phase 4 verification: BotFather privacy off, admin status, summary topic, volume permissions, consent announcement
 - [ ] **Phase 4: Message Capture & Persistence** — SQLite infra + `bot.on('message'|'edited_message')` handler with whitelist filter and idempotent insert
 - ⊘ **Phase 5: Thread Tracking Commands** — ~~admin `/track`, `/untrack`, `/tracked` with hot-reload Set + DB persistence~~ **CANCELLED 2026-04-29** (whitelist managed via env-seed/DB only, no in-chat commands)
-- [ ] **Phase 6: Thread Summary Pipeline** — pure `summarizeThread()` (anonymisation, prompt-injection defences, dual-provider parity) + cron registry refactor + 06:30 MSK delivery orchestrator + HTML formatter with overflow split + atomic state idempotency
+- [x] **Phase 6: Thread Summary Pipeline** — pure `summarizeThread()` (anonymisation, prompt-injection defences, dual-provider parity) + cron registry refactor + 06:30 MSK delivery orchestrator + HTML formatter with overflow split + atomic state idempotency
+- [ ] **Phase 7: v2.0 Closure** — retention sweep impl (PRIV-03), удаление `/forget-me` инфраструктуры (forgotten_users table + capture guard), зачистка мёртвого кода и documentation drift, Phase 0-Ops ручной чек-лист, 10 отложенных live E2E тестов
 
 ## Phase Details
 
@@ -100,3 +102,17 @@ Full details: [milestones/v1.0-ROADMAP.md](milestones/v1.0-ROADMAP.md)
 - [x] 06-01-summarizer-core-PLAN.md — Pure summarizer service: Zod schema, dual-provider tool-use/json-schema, prompt-injection sandwich, Unicode display-name normaliser, low-volume + token gates, adversarial fixture (SUM-01..07, AI-07)
 - [x] 06-02-state-cron-persistence-PLAN.md — Migration v2 (tracked_threads.title), message-store query helpers (selectMessagesInWindow, selectTopParticipants), state.service.ts extraction (atomic writes, throw-on-corrupt, lastThreadSummaryDate, MSK-day idempotency), cron registry Map refactor with 3 named jobs (STATE-01/02, SCHED-01..04)
 - [x] 06-03-orchestrator-delivery-PLAN.md — Orchestrator runThreadSummaryPipeline + thread-summary.formatter (compact layout, sort, escape, splitter, footer тихо) + sender chunk loop reusing sendMessageWithRetry + cron handler swap (DLV-06..10)
+
+### Phase 7: v2.0 Closure
+**Goal**: Закрыть milestone v2.0 — реализовать 90-дневный retention sweep (PRIV-03), снести неиспользуемую `/forget-me` инфраструктуру (`forgotten_users` table + capture guard) с миграцией v3, зачистить мёртвый код и documentation drift, выполнить ручной Phase 0-Ops чек-лист (SETUP-09 + PRIV-04), провести 10 отложенных live E2E тестов.
+**Depends on**: Phase 4 (capture handler + DB schema), Phase 6 (scheduler registry, state.service)
+**History**: 2026-04-30 — slot reused after Phase 7 (Operational & Privacy Commands) removal 2026-04-29; gap-closure phase per `.planning/v2.0-MILESTONE-AUDIT.md`
+**Requirements**: SETUP-09, PRIV-03, PRIV-04
+**Success Criteria** (what must be TRUE):
+  1. Retention cron at 04:00 MSK actually deletes messages older than `MESSAGE_RETENTION_DAYS` (no longer a stub); batch ≤1000 rows per iteration with `LIMIT`; pino emits `{event: 'retention-sweep', rows_deleted: N, duration_ms: D}` per run
+  2. Migration v3 drops `forgotten_users` table; capture handler no longer references the guard; manual `/forget-me` procedure (sqlite3 `DELETE FROM messages WHERE author_id = ?`) is documented in `04-OPS-CHECKLIST.md` for GDPR Art. 17 compliance
+  3. Dead code removed: `upsertThreadTitle` (`tracked-threads-store.ts:60`), `isThreadSummaryPublishedToday` (`state.service.ts:102`), `ForumTopicCapableApi` double-cast (`thread-summary.service.ts:53`) simplified, stale comments in `tracking.service.ts:37-38,44-46` cleaned, `.env.example MESSAGE_RETENTION_DAYS=2` → `=90`
+  4. REQUIREMENTS.md drift fixed: MSG-04 wording updated to `ON CONFLICT(chat_id, tg_message_id) DO UPDATE`; 18 Phase 6 requirements flipped `[ ]`→`[x]` (SUM-01..07, AI-07, DLV-06..10, STATE-01/02, SCHED-01..04); 18 cancelled requirements removed (TRK-01..05, CMD-04..08, PRIV-01/02/05, OBS-01..04, REL-05); traceability table + coverage refreshed; PRIV-03 reassigned to Phase 7 with `[x]`
+  5. Phase 6 SUMMARY.md frontmatter `requirements-completed` filled in 06-01/06-02/06-03 (lists exist in body but missing from machine-readable YAML)
+  6. Phase 0-Ops manual artifact `04-OPS-CHECKLIST.md` exists with: privacy-mode startup-log evidence (`can_read_all_group_messages === true`), `THREAD_SUMMARY_THREAD_ID` capture, host volume permissions confirmation (`docker compose exec bot id` + `touch /app/data/.write_test`), GDPR consent announcement URL/screenshot, results of 10 deferred live E2E tests (7 Phase 4 + 3 Phase 6), manual `/forget-me` runbook
+**Plans**: TBD via `/gsd-plan-phase 07`
