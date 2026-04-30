@@ -2,7 +2,6 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { initDb, getDb, _resetForTests } from '../services/db.service.js';
 import {
   listTracked,
-  upsertThreadTitle,
   _resetTrackedThreadsStoreForTests,
 } from './tracked-threads-store.js';
 
@@ -33,23 +32,8 @@ describe('migration v2 — tracked_threads.title', () => {
   });
 });
 
-describe('upsertThreadTitle (U1, U2)', () => {
-  it('U1: upserts title for existing thread, overwrites on second call, no-op on missing', () => {
-    getDb()
-      .prepare(
-        'INSERT INTO tracked_threads (thread_id, chat_id, added_by, added_at) VALUES (?, ?, NULL, ?)',
-      )
-      .run(100, -1001, '2026-04-29T10:00:00.000Z');
-    upsertThreadTitle(100, 'Стена результатов');
-    expect(listTracked().find((t) => t.threadId === 100)?.title).toBe('Стена результатов');
-    upsertThreadTitle(100, 'Renamed');
-    expect(listTracked().find((t) => t.threadId === 100)?.title).toBe('Renamed');
-    // No-op for missing thread:
-    expect(() => upsertThreadTitle(999, 'NoSuch')).not.toThrow();
-    expect(listTracked().find((t) => t.threadId === 999)).toBeUndefined();
-  });
-
-  it('U2: listTracked returns title=null for thread that was never refreshed', () => {
+describe('listTracked — title column from migration v2', () => {
+  it('returns title=null for thread that was never refreshed', () => {
     getDb()
       .prepare(
         'INSERT INTO tracked_threads (thread_id, chat_id, added_by, added_at) VALUES (?, ?, NULL, ?)',

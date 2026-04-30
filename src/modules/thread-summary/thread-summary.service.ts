@@ -40,9 +40,11 @@ function nowMinusHoursIso(hours: number): string {
  * by grammy 1.42.0), so the runtime guard `typeof api.getForumTopic === 'function'`
  * was always false — the refresh was permanently dead code (WR-01).
  *
- * Until Telegram exposes a real source-of-truth, this resolver is cached-only:
- * it reads the title written by `/track` (Phase 5) or migration v2 bootstrap.
- * If no cached title exists, fall back to a generic `Тред #N` label.
+ * Phase 5 (`/track` command which would have INSERTed titles) was cancelled
+ * 2026-04-29; the title-writer function was removed in Phase 7. As a result,
+ * `tracked_threads.title` is NULL for every thread today — this resolver always
+ * returns the `Тред #{threadId}` fallback. If a future phase reintroduces a
+ * title-writer, this function continues to work without modification.
  */
 function refreshThreadTitle(threadId: number): string {
   const cached = listTracked().find((t) => t.threadId === threadId)?.title;

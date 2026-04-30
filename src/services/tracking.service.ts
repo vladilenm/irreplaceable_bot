@@ -3,8 +3,8 @@ import { listTracked } from '../stores/tracked-threads-store.js';
 
 // Private module-singleton Set — source of truth for the capture hot path.
 // O(1) lookup vs ~0.1ms SELECT per message (RESEARCH §"Don't Hand-Roll" table).
-// Phase 5 will add track()/untrack() that mutate this Set + write to DB
-// (D-01 contract: Phase 4 ships read-side only).
+// Phase 5 (track/untrack in-chat commands) was cancelled 2026-04-29 — whitelist
+// is managed via env-seed (INITIAL_TRACKED_THREAD_IDS) and direct DB writes only.
 const trackedSet = new Set<number>();
 
 /**
@@ -34,13 +34,11 @@ export function isThreadTracked(threadId: number): boolean {
 }
 
 /**
- * Snapshot of currently-tracked thread IDs. Used by future Phase 5 /tracked
- * command and Phase 7 thread-summary orchestrator.
+ * Snapshot of currently-tracked thread IDs. Consumed by the thread-summary
+ * orchestrator (src/modules/thread-summary/thread-summary.service.ts) on every
+ * 06:30 MSK cron tick.
  */
 export function listTrackedThreadIds(): number[] {
   return [...trackedSet];
 }
 
-// Phase 5 will add track(threadId, addedBy: number) and untrack(threadId)
-// functions here that mutate trackedSet AND write through to the store.
-// Phase 4 ships read-side only — no placeholders, no throwing stubs (D-01).

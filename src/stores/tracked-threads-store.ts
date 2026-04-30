@@ -2,14 +2,12 @@ import type { Statement } from 'better-sqlite3';
 import { getDb } from '../services/db.service.js';
 import type { TrackedThread } from '../types/index.js';
 
-// Lazy-cached prepared statements (STORE-04). Phase 5 will add
-// insertTrackedThread / deleteTrackedThread here; Phase 4 ships read-side only
-// (D-01 contract: no refactor required when Phase 5 adds the writers).
-// Phase 6 D-05/D-06: extends listTracked to return title; adds upsertThreadTitle
-// (UPDATE-only — Phase 5 owns INSERT via /track command).
+// Lazy-cached prepared statements (STORE-04). Phase 4 ships read-side only;
+// Phase 5 (track/untrack in-chat commands) was cancelled 2026-04-29, so the writer
+// path stays out of v2.0. tracked_threads.title remains nullable; thread-summary
+// orchestrator falls back to `Тред #N` when title is NULL (see refreshThreadTitle).
 
 let _listStmt: Statement<[]> | null = null;
-let _upsertTitleStmt: Statement<[string, number]> | null = null;
 
 interface TrackedThreadRow {
   thread_id: number;
@@ -26,14 +24,6 @@ function listStmt(): Statement<[]> {
   return _listStmt;
 }
 
-function upsertTitleStmt(): Statement<[string, number]> {
-  // No INSERT path — Phase 6 D-07: orchestrator only updates titles for
-  // already-tracked threads. Phase 5 owns INSERT via /track command.
-  _upsertTitleStmt ??= getDb().prepare<[string, number]>(
-    'UPDATE tracked_threads SET title = ? WHERE thread_id = ?',
-  );
-  return _upsertTitleStmt;
-}
 
 /**
  * Read all currently-tracked threads from DB (TRK-05 restart resilience).
@@ -52,19 +42,10 @@ export function listTracked(): TrackedThread[] {
   }));
 }
 
-/**
- * Phase 6 D-06: orchestrator calls this once per day per thread to refresh
- * the cached forum-topic title from getForumTopic API. No-op for non-existent
- * thread_id (UPDATE matches 0 rows; safe).
- */
-export function upsertThreadTitle(threadId: number, title: string): void {
-  upsertTitleStmt().run(title, threadId);
-}
 
 // Test-only: invalidate cached prepared statements so a subsequent
 // initDb() (e.g. between vitest cases) re-prepares against the fresh
 // connection. Production never calls this — _db is opened once per boot.
 export function _resetTrackedThreadsStoreForTests(): void {
   _listStmt = null;
-  _upsertTitleStmt = null;
 }

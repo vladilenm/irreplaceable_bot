@@ -75,7 +75,7 @@ export interface TrackedThread {
   chatId: number;
   addedBy: number | null;            // NULL when seeded from ENV bootstrap (D-02)
   addedAt: string;
-  title: string | null;              // Phase 6 D-05 — forum-topic name cache, populated by Plan 02 migration v2 + upsertThreadTitle
+  title: string | null;              // Phase 6 D-05 — forum-topic name cache; NULL until a future title-writer is introduced
 }
 
 export interface ForgottenUser {
