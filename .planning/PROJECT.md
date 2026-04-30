@@ -161,4 +161,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-29 — Phase 6 (Thread Summary Pipeline) code complete, awaiting Phase 0-Ops + live E2E (3 scenarios in 06-HUMAN-UAT.md)*
+*Last updated: 2026-04-30 — Phase 7 (v2.0 Closure) complete. All v2.0 code gaps closed: retention sweep (PRIV-03), forget-me infra removal, dead code cleanup, docs drift fix, Phase 0-Ops checklist scaffold. v2.0 is code-complete — single remaining gate is Phase 0-Ops manual execution.*
