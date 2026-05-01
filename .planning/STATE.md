@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-04-27)
 Phase: 07
 Plan: Not started
 Status: Executing Phase 07
-Last activity: 2026-05-01 - Completed quick task 260501-ce4: docker-compose.yml Timeweb App Platform compat
+Last activity: 2026-05-01 - Completed quick task 260501-cov: strip volumes from docker-compose.yml for Timeweb sanitizer
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -129,6 +129,7 @@ None.
 | 260429-rm3 | Обновить устаревшие 06:00→09:00 MSK комментарии для digest в cron.ts и .env.example, добавить TZ=UTC заголовок ко всем cron-переменным | 2026-04-29 | 4f0ec5c | [260429-rm3-06-00-msk-09-00-msk-digest-src-scheduler](./quick/260429-rm3-06-00-msk-09-00-msk-digest-src-scheduler/) |
 | 260430-iju | финальная верификация v2.0: запустить все проверки (grep, vitest, typecheck), создать SUMMARY.md и сделать финальный коммит | 2026-04-30 | f326aa8 | [260430-iju-v2-0-grep-vitest-typecheck-summary-md](./quick/260430-iju-v2-0-grep-vitest-typecheck-summary-md/) |
 | 260501-ce4 | Make docker-compose.yml compatible with Timeweb App Platform: remove env_file and switch data bind-mount to named volume | 2026-05-01 | 25f7b39 | [260501-ce4-make-docker-compose-yml-compatible-with-](./quick/260501-ce4-make-docker-compose-yml-compatible-with-/) |
+| 260501-cov | Remove volumes from docker-compose.yml (Timeweb sanitizer rejects them) and gitignore docker-compose.override.yml | 2026-05-01 | 26fd410 | [260501-cov-remove-volumes-from-docker-compose-yml-t](./quick/260501-cov-remove-volumes-from-docker-compose-yml-t/) |
 
 ### Roadmap Evolution
 
