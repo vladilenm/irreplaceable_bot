@@ -5,3 +5,4 @@ dist/
 data/
 .env.development
 .env.production
+docker-compose.override.yml
