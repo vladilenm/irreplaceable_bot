@@ -28,6 +28,15 @@ RUN npm ci --omit=dev
 
 COPY --from=builder /app/dist ./dist
 
+# Runtime assets read at startup via import.meta.url:
+#   - src/services/rss.service.ts        → ../../config/feeds.json
+#   - src/services/ai.service.ts         → ../../prompts/curator.md
+#   - src/services/summarizer.service.ts → ../../prompts/thread-summarizer.md
+# These resolve to /app/config and /app/prompts at runtime (dist sits at /app/dist).
+# Without these COPYs the container ENOENTs on first scheduled run.
+COPY config ./config
+COPY prompts ./prompts
+
 # v2.0 SETUP-07: pre-create /app/data with botuser ownership BEFORE USER directive.
 # When bind-mount overlay arrives empty, container inherits these perms;
 # when bind-mount has host perms, host-side `chown -R 1001:1001 ./data` covers it

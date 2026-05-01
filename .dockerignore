@@ -4,3 +4,7 @@ dist
 .git
 .planning
 *.md
+# Re-allow runtime prompt files consumed by ai.service.ts and summarizer.service.ts.
+# `*.md` excludes them by default, so the COPY prompts ./prompts in Dockerfile
+# would otherwise produce an empty directory and ENOENT at first scheduled run.
+!prompts/*.md
