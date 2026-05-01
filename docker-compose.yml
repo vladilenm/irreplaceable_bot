@@ -25,6 +25,35 @@ services:
     # automatically merges `docker-compose.override.yml` on `docker compose
     # up`, so production builds stay clean while local dev keeps its bind
     # mount and .env loading. The override file is in .gitignore.
+    #
+    # Env-var injection (production): Timeweb's compose sanitizer ONLY forwards
+    # dashboard-defined env vars into the container when each var is explicitly
+    # listed in this service's `environment:` block via `${VAR}` interpolation.
+    # Without the block below, dashboard values are dropped and the bot
+    # crash-loops with "Missing required environment variable: BOT_TOKEN" at
+    # config.ts boot. Required vars use bare `${VAR}` (fail-fast if unset);
+    # optional vars use `${VAR:-default}` mirroring src/config.ts defaults.
+    # Local dev: docker-compose.override.yml supplies env_file + volumes; the
+    # interpolation tokens here are also resolved from the local `.env` file
+    # which Compose v2 reads automatically next to this file.
+    environment:
+      # ── Required (fail-fast in src/config.ts via requireEnv / requireEnvInt) ──
+      BOT_TOKEN: "${BOT_TOKEN}"
+      TARGET_CHAT_ID: "${TARGET_CHAT_ID}"
+      AI_RADAR_THREAD_ID: "${AI_RADAR_THREAD_ID}"
+      AI_API_KEY: "${AI_API_KEY}"
+      THREAD_SUMMARY_THREAD_ID: "${THREAD_SUMMARY_THREAD_ID}"
+      # ── Optional (defaults mirror src/config.ts) ──
+      DIGEST_CRON: "${DIGEST_CRON:-0 6 * * *}"
+      AI_MODEL: "${AI_MODEL:-claude-sonnet-4-20250514}"
+      AI_BASE_URL: "${AI_BASE_URL:-}"
+      LOG_LEVEL: "${LOG_LEVEL:-info}"
+      NODE_ENV: "${NODE_ENV:-production}"
+      THREAD_SUMMARY_CRON: "${THREAD_SUMMARY_CRON:-30 3 * * *}"
+      MESSAGE_RETENTION_DAYS: "${MESSAGE_RETENTION_DAYS:-90}"
+      RETENTION_SWEEP_CRON: "${RETENTION_SWEEP_CRON:-0 1 * * *}"
+      DB_PATH: "${DB_PATH:-data/messages.db}"
+      INITIAL_TRACKED_THREAD_IDS: "${INITIAL_TRACKED_THREAD_IDS:-}"
     logging:
       driver: json-file
       options:
