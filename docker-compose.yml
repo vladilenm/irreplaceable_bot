@@ -3,29 +3,30 @@ services:
     build: .
     restart: unless-stopped
     # v2.0 SETUP-06 (Timeweb App Platform compatible):
-    # Persistence uses the Docker named volume `botdata` mounted at /app/data,
-    # which is where SQLite (better-sqlite3) and state.json live.
+    # Timeweb App Platform's compose sanitizer REJECTS any `volumes:`
+    # declarations (both service-level and top-level). Attempting to declare
+    # them yields: `Sanitizer check error volumes is not allowed in
+    # docker-compose.yml`. Therefore this file MUST contain zero `volumes:`
+    # entries.
     #
-    # Timeweb App Platform: attach a Persistent Disk to /app/data via the
-    # platform UI — Timeweb's runtime maps the disk over this mountpoint, so
-    # the named volume declaration here is what tells the platform which
-    # container path needs persistent storage.
+    # Persistence (production): configured entirely via the Timeweb dashboard
+    # Disk UI. Create a Disk in the dashboard and mount it to `/app/data` —
+    # this is where SQLite (better-sqlite3) and state.json live. The platform
+    # injects the disk into the container without any compose-level
+    # declaration.
     #
-    # Local dev: Docker Engine manages `botdata` automatically. It SURVIVES
-    # `docker compose down` and host reboots. It is DESTROYED by
-    # `docker compose down -v` or `docker volume rm club-bot_botdata`
-    # (PITFALLS DB-03).
+    # Env vars (production): NOT loaded from a `.env` file. Set every required
+    # variable via the Timeweb dashboard UI; the platform injects them into
+    # the container at runtime.
     #
-    # Env vars: NOT loaded from a .env file. Timeweb App Platform injects
-    # them into the container at runtime via its dashboard UI. For local dev,
-    # use `docker compose --env-file .env up` or export vars in your shell.
-    volumes:
-      - botdata:/app/data
+    # Local dev: create a gitignored `docker-compose.override.yml` next to
+    # this file with the bot service overrides you need locally — typically
+    # `env_file: .env` and `volumes: - ./data:/app/data`. Docker Compose
+    # automatically merges `docker-compose.override.yml` on `docker compose
+    # up`, so production builds stay clean while local dev keeps its bind
+    # mount and .env loading. The override file is in .gitignore.
     logging:
       driver: json-file
       options:
         max-size: "10m"
         max-file: "3"
-
-volumes:
-  botdata:
