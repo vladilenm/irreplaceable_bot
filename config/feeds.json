@@ -1,11 +1,15 @@
 [
-  { "url": "https://habr.com/ru/rss/hub/artificial_intelligence/all/score10/?fl=ru&limit=30", "name": "Habr AI Hub", "sourceKey": "habr" },
+  { "url": "https://habr.com/ru/rss/hubs/artificial_intelligence/articles/all/?fl=ru", "name": "Habr AI Hub", "sourceKey": "habr_ai" },
   { "url": "https://vc.ru/rss", "name": "vc.ru", "sourceKey": "vcru" },
   { "url": "https://openai.com/news/rss.xml", "name": "OpenAI News", "sourceKey": "openai" },
   { "url": "https://huggingface.co/blog/feed.xml", "name": "Hugging Face Blog", "sourceKey": "huggingface" },
-  { "url": "https://blog.langchain.dev/rss/", "name": "LangChain Blog", "sourceKey": "langchain" },
   { "url": "https://venturebeat.com/category/ai/feed/", "name": "VentureBeat AI", "sourceKey": "venturebeat" },
-  { "url": "https://www.anthropic.com/news/rss.xml", "name": "Anthropic News", "sourceKey": "anthropic" },
-  { "url": "https://cursor.com/changelog/rss", "name": "Cursor Blog", "sourceKey": "cursor" },
-  { "url": "https://tproger.ru/feed", "name": "Tproger", "sourceKey": "tproger" }
+  { "url": "https://raw.githubusercontent.com/Olshansk/rss-feeds/main/feeds/feed_anthropic_news.xml", "name": "Anthropic News (scraped)", "sourceKey": "anthropic" },
+  { "url": "https://tproger.ru/feed", "name": "Tproger", "sourceKey": "tproger" },
+  { "url": "https://kod.ru/rss", "name": "KOD", "sourceKey": "kod" },
+  { "url": "https://news.mit.edu/topic/mitartificial-intelligence2-rss.xml", "name": "MIT News AI", "sourceKey": "mit" },
+  { "url": "https://deepmind.google/blog/rss.xml", "name": "Google DeepMind", "sourceKey": "deepmind" },
+  { "url": "https://machinelearning.apple.com/rss.xml", "name": "Apple Machine Learning", "sourceKey": "apple_ml" },
+  { "url": "https://aws.amazon.com/blogs/machine-learning/feed/", "name": "AWS Machine Learning", "sourceKey": "aws_ml" },
+  { "url": "https://techcrunch.com/category/artificial-intelligence/feed/", "name": "TechCrunch AI", "sourceKey": "techcrunch_ai" }
 ]
