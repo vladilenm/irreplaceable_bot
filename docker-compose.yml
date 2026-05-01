@@ -1,16 +1,31 @@
 services:
   bot:
     build: .
-    env_file:
-      - .env
     restart: unless-stopped
-    # v2.0 SETUP-06: bind-mount ./data:/app/data so SQLite + state.json
-    # survive `docker compose down`. Note: `down -v` does NOT affect bind mounts;
-    # only `rm -rf ./data` deletes (PITFALLS DB-03).
+    # v2.0 SETUP-06 (Timeweb App Platform compatible):
+    # Persistence uses the Docker named volume `botdata` mounted at /app/data,
+    # which is where SQLite (better-sqlite3) and state.json live.
+    #
+    # Timeweb App Platform: attach a Persistent Disk to /app/data via the
+    # platform UI — Timeweb's runtime maps the disk over this mountpoint, so
+    # the named volume declaration here is what tells the platform which
+    # container path needs persistent storage.
+    #
+    # Local dev: Docker Engine manages `botdata` automatically. It SURVIVES
+    # `docker compose down` and host reboots. It is DESTROYED by
+    # `docker compose down -v` or `docker volume rm club-bot_botdata`
+    # (PITFALLS DB-03).
+    #
+    # Env vars: NOT loaded from a .env file. Timeweb App Platform injects
+    # them into the container at runtime via its dashboard UI. For local dev,
+    # use `docker compose --env-file .env up` or export vars in your shell.
     volumes:
-      - ./data:/app/data
+      - botdata:/app/data
     logging:
       driver: json-file
       options:
         max-size: "10m"
         max-file: "3"
+
+volumes:
+  botdata:
