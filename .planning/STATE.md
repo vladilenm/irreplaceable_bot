@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-04-27)
 Phase: 07
 Plan: Not started
 Status: Executing Phase 07
-Last activity: 2026-05-01 - Completed quick task 260501-cov: strip volumes from docker-compose.yml for Timeweb sanitizer
+Last activity: 2026-05-01 - Completed quick task 260501-g11: add environment block to docker-compose.yml for Timeweb sanitizer
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -130,6 +130,7 @@ None.
 | 260430-iju | финальная верификация v2.0: запустить все проверки (grep, vitest, typecheck), создать SUMMARY.md и сделать финальный коммит | 2026-04-30 | f326aa8 | [260430-iju-v2-0-grep-vitest-typecheck-summary-md](./quick/260430-iju-v2-0-grep-vitest-typecheck-summary-md/) |
 | 260501-ce4 | Make docker-compose.yml compatible with Timeweb App Platform: remove env_file and switch data bind-mount to named volume | 2026-05-01 | 25f7b39 | [260501-ce4-make-docker-compose-yml-compatible-with-](./quick/260501-ce4-make-docker-compose-yml-compatible-with-/) |
 | 260501-cov | Remove volumes from docker-compose.yml (Timeweb sanitizer rejects them) and gitignore docker-compose.override.yml | 2026-05-01 | 26fd410 | [260501-cov-remove-volumes-from-docker-compose-yml-t](./quick/260501-cov-remove-volumes-from-docker-compose-yml-t/) |
+| 260501-g11 | Add environment block to docker-compose.yml so Timeweb sanitizer forwards dashboard env vars to container (fixes BOT_TOKEN crash loop) | 2026-05-01 | ca07eb6 | [260501-g11-add-environment-section-to-docker-compos](./quick/260501-g11-add-environment-section-to-docker-compos/) |
 
 ### Roadmap Evolution
 
