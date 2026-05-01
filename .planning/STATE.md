@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-04-27)
 Phase: 07
 Plan: Not started
 Status: Executing Phase 07
-Last activity: 2026-05-01 - Completed quick task 260501-g11: add environment block to docker-compose.yml for Timeweb sanitizer
+Last activity: 2026-05-01 - Completed quick task 260501-h3t: copy config/ and prompts/ into prod image so runtime assets resolve
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -131,6 +131,7 @@ None.
 | 260501-ce4 | Make docker-compose.yml compatible with Timeweb App Platform: remove env_file and switch data bind-mount to named volume | 2026-05-01 | 25f7b39 | [260501-ce4-make-docker-compose-yml-compatible-with-](./quick/260501-ce4-make-docker-compose-yml-compatible-with-/) |
 | 260501-cov | Remove volumes from docker-compose.yml (Timeweb sanitizer rejects them) and gitignore docker-compose.override.yml | 2026-05-01 | 26fd410 | [260501-cov-remove-volumes-from-docker-compose-yml-t](./quick/260501-cov-remove-volumes-from-docker-compose-yml-t/) |
 | 260501-g11 | Add environment block to docker-compose.yml so Timeweb sanitizer forwards dashboard env vars to container (fixes BOT_TOKEN crash loop) | 2026-05-01 | ca07eb6 | [260501-g11-add-environment-section-to-docker-compos](./quick/260501-g11-add-environment-section-to-docker-compos/) |
+| 260501-h3t | Copy config/ and prompts/ into prod Docker stage and unblock prompts/*.md in .dockerignore so runtime asset reads (feeds.json, curator.md, thread-summarizer.md) resolve in container | 2026-05-01 | 7906c66 | [260501-h3t-copy-config-and-prompts-into-dockerfile-](./quick/260501-h3t-copy-config-and-prompts-into-dockerfile-/) |
 
 ### Roadmap Evolution
 
