@@ -51,7 +51,11 @@ function refreshThreadTitle(threadId: number): string {
   return cached ?? `Тред #${threadId}`;
 }
 
-function emptyResult(alreadyPublished: boolean): ThreadSummaryResult {
+function emptyResult(
+  alreadyPublished: boolean,
+  prevState: PipelineStateV2,
+  persistState: boolean,
+): ThreadSummaryResult {
   return {
     alreadyPublished,
     threadsSummarised: 0,
@@ -60,7 +64,34 @@ function emptyResult(alreadyPublished: boolean): ThreadSummaryResult {
     totalMessageCount: 0,
     date: new Date(),
     chunks: [],
+    persistState,
+    prevState,
   };
+}
+
+const FALLBACK_STATE: PipelineStateV2 = {
+  lastDigestDate: null,
+  lastSkipped: false,
+  lastItemCount: 0,
+  lastThreadSummaryDate: null,
+};
+
+/**
+ * Phase 8 fix A: post-send state-write helper. Cron handler (or any caller)
+ * invokes this AFTER sendThreadSummary resolves successfully so
+ * lastThreadSummaryDate is persisted ONLY on confirmed delivery. Idempotent
+ * — safe to call multiple times in the same cycle (it just overwrites with
+ * the same value). Honours the D-33 merge-write contract by passing
+ * prevState through unchanged for non-thread-summary fields.
+ */
+export function markThreadSummaryPublished(
+  prevState: PipelineStateV2,
+  date: Date,
+): void {
+  writeState({
+    ...prevState,
+    lastThreadSummaryDate: date.toISOString(),
+  });
 }
 
 export async function runThreadSummaryPipeline(
@@ -81,7 +112,7 @@ export async function runThreadSummaryPipeline(
       { err },
       'runThreadSummaryPipeline: state read failed (corrupt state.json), publish blocked',
     );
-    return emptyResult(false);
+    return emptyResult(false, FALLBACK_STATE, persistState);
   }
 
   // WR-03: idempotency check uses already-loaded prevState (single readState per cycle).
@@ -90,7 +121,7 @@ export async function runThreadSummaryPipeline(
       { lastThreadSummaryDate: prevState.lastThreadSummaryDate },
       'Thread-summary already published today (MSK), skipping',
     );
-    return emptyResult(true);
+    return emptyResult(true, prevState, persistState);
   }
 
   const sinceIso = nowMinusHoursIso(windowHours);
@@ -148,13 +179,10 @@ export async function runThreadSummaryPipeline(
   const date = new Date();
   const chunks = formatThreadSummaryPost({ summaries, titles, date });
 
-  // D-33 step 7: merge-write — preserve digest fields.
-  if (persistState) {
-    writeState({
-      ...prevState,
-      lastThreadSummaryDate: date.toISOString(),
-    });
-  }
+  // Phase 8 fix A: state-write was here. Moved to cron handler / sender path —
+  // markThreadSummaryPublished(prevState, date) is now called ONLY after
+  // sendThreadSummary resolves successfully, so a Telegram failure does not
+  // burn the idempotency flag for the remainder of the MSK day.
 
   logger.info(
     {
@@ -176,5 +204,7 @@ export async function runThreadSummaryPipeline(
     totalMessageCount,
     date,
     chunks,
+    persistState,
+    prevState,
   };
 }

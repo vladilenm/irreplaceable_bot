@@ -13,6 +13,13 @@ export interface DigestResult {
   skipped: boolean;
   date: Date;
   alreadyPublished: boolean;
+  /**
+   * Phase 8 fix A: when true, sender persists `lastDigestDate` AFTER a successful
+   * sendMessageWithRetry. When false (e.g. /dev-digest), sender does NOT touch
+   * state.json. Skip-path state-writes (no-articles, itemCount<1) are still
+   * applied INSIDE this pipeline because there is nothing to send.
+   */
+  persistState: boolean;
 }
 
 export interface RunPipelineOptions {
@@ -27,8 +34,12 @@ export interface RunPipelineOptions {
 // command in Phase 03.1) that imported these from the digest module.
 export { readState, writeState, isDigestPublishedToday } from '../../services/state.service.js';
 
-function emptyResult(alreadyPublished: boolean, skipped: boolean): DigestResult {
-  return { text: '', itemCount: 0, skipped, date: new Date(), alreadyPublished };
+function emptyResult(
+  alreadyPublished: boolean,
+  skipped: boolean,
+  persistState: boolean,
+): DigestResult {
+  return { text: '', itemCount: 0, skipped, date: new Date(), alreadyPublished, persistState };
 }
 
 function countDigestItems(text: string): number {
@@ -52,7 +63,7 @@ export async function runDigestPipeline(
       { lastDigestDate: state.lastDigestDate },
       'Digest already published today (MSK), skipping',
     );
-    return emptyResult(true, false);
+    return emptyResult(true, false, persistState);
   }
 
   const hoursBack = state.lastSkipped ? 48 : 24;
@@ -84,7 +95,14 @@ export async function runDigestPipeline(
         lastItemCount: 0,
       });
     }
-    return { text: '', itemCount: 0, skipped: true, date: new Date(), alreadyPublished: false };
+    return {
+      text: '',
+      itemCount: 0,
+      skipped: true,
+      date: new Date(),
+      alreadyPublished: false,
+      persistState,
+    };
   }
 
   logger.info(
@@ -105,16 +123,28 @@ export async function runDigestPipeline(
     logger.info({ itemCount }, 'Digest ready');
   }
 
-  if (persistState) {
+  // Phase 8 fix A: split state-write between skip-path (here, nothing to send)
+  // and success-path (sender, after Telegram confirms delivery). The skip-path
+  // write below preserves lastSkipped/lastItemCount semantics for the next
+  // cycle's `hoursBack = 48` lookback. The success-path write was removed —
+  // sendDigest now writes lastDigestDate ONLY after sendMessageWithRetry resolves.
+  if (skipped && persistState) {
     // Phase 6 D-33: merge-write — preserve lastThreadSummaryDate.
     const prev = readState();
     writeState({
       ...prev,
       lastDigestDate: new Date().toISOString(),
-      lastSkipped: skipped,
+      lastSkipped: true,
       lastItemCount: itemCount,
     });
   }
 
-  return { text, itemCount, skipped, date: new Date(), alreadyPublished: false };
+  return {
+    text,
+    itemCount,
+    skipped,
+    date: new Date(),
+    alreadyPublished: false,
+    persistState,
+  };
 }

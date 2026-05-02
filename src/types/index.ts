@@ -133,6 +133,18 @@ export interface ThreadSummaryResult {
   totalMessageCount: number;
   date: Date;
   chunks: string[];   // formatted HTML chunks; empty array if alreadyPublished or zero tracked threads
+  /**
+   * Phase 8 fix A: when true, cron handler (or any caller) MUST call
+   * markThreadSummaryPublished(prevState, date) AFTER successful
+   * sendThreadSummary so lastThreadSummaryDate persists ONLY on confirmed
+   * delivery. When false (e.g. /dev-summary), the caller MUST NOT write state.
+   */
+  persistState: boolean;
+  /**
+   * Phase 8 fix A: snapshot of state read at the start of the cycle, used by
+   * the post-send merge-write so lastDigestDate is preserved (D-33).
+   */
+  prevState: PipelineStateV2;
 }
 
 /**

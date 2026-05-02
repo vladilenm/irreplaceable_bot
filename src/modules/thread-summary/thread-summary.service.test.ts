@@ -63,7 +63,10 @@ vi.mock('../../services/summarizer.service.js', () => ({
   summarizeThread: mockSummarizeThread,
 }));
 
-import { runThreadSummaryPipeline } from './thread-summary.service.js';
+import {
+  runThreadSummaryPipeline,
+  markThreadSummaryPublished,
+} from './thread-summary.service.js';
 
 const okSummary = (threadId: number, mc = 10): ThreadSummary => ({
   skipped: false,
@@ -142,7 +145,7 @@ describe('runThreadSummaryPipeline (DLV-06, DLV-10, D-32..D-35)', () => {
     expect(r.threadsSkippedError).toBe(1);
   });
 
-  it('O5: state merge-write preserves lastDigestDate', async () => {
+  it('O5 (Phase 8 fix A): pipeline NO LONGER writes state; markThreadSummaryPublished merge-write preserves lastDigestDate', async () => {
     mockState.current = {
       lastDigestDate: '2026-04-29T06:00:00.000Z',
       lastSkipped: false,
@@ -150,11 +153,40 @@ describe('runThreadSummaryPipeline (DLV-06, DLV-10, D-32..D-35)', () => {
       lastThreadSummaryDate: null,
     };
     mockSummarizeThread.mockResolvedValue(okSummary(100, 5));
-    await runThreadSummaryPipeline();
+    const r = await runThreadSummaryPipeline();
+    // Phase 8 fix A: pipeline returns prevState + persistState and does NOT
+    // mutate state.json itself — the cron handler is responsible for the
+    // post-send write.
+    expect(mockWriteState).not.toHaveBeenCalled();
+    expect(r.persistState).toBe(true);
+    expect(r.prevState.lastDigestDate).toBe('2026-04-29T06:00:00.000Z');
+
+    // Simulate cron handler's post-send write contract.
+    markThreadSummaryPublished(r.prevState, r.date);
     expect(mockWriteState).toHaveBeenCalledTimes(1);
     const written = mockWriteState.mock.calls[0]?.[0];
     expect(written?.lastDigestDate).toBe('2026-04-29T06:00:00.000Z');
     expect(written?.lastThreadSummaryDate).not.toBeNull();
+  });
+
+  it('O5b (Phase 8 fix A): persistState:false → result flag is false and helper is never called by cron contract', async () => {
+    mockSummarizeThread.mockResolvedValue(okSummary(100, 5));
+    const r = await runThreadSummaryPipeline({ persistState: false });
+    expect(r.persistState).toBe(false);
+    expect(mockWriteState).not.toHaveBeenCalled();
+  });
+
+  it('O5c (Phase 8 fix A): on idempotency short-circuit result still carries persistState + prevState', async () => {
+    mockIsThreadSummaryPublishedTodayWithState.mockReturnValue(true);
+    mockState.current = {
+      ...mockState.current,
+      lastThreadSummaryDate: new Date().toISOString(),
+    };
+    const r = await runThreadSummaryPipeline();
+    expect(r.alreadyPublished).toBe(true);
+    expect(r.persistState).toBe(true);
+    expect(r.prevState.lastThreadSummaryDate).not.toBeNull();
+    expect(mockWriteState).not.toHaveBeenCalled();
   });
 
   it('O6: windowHours override propagates to summarizeThread input', async () => {

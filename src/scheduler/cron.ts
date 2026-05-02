@@ -16,7 +16,10 @@ import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
 import { runDigestPipeline } from '../modules/digest/digest.service.js';
 import { sendDigest } from '../modules/digest/digest.sender.js';
-import { runThreadSummaryPipeline } from '../modules/thread-summary/thread-summary.service.js';
+import {
+  runThreadSummaryPipeline,
+  markThreadSummaryPublished,
+} from '../modules/thread-summary/thread-summary.service.js';
 import { sendThreadSummary } from '../modules/thread-summary/thread-summary.sender.js';
 import { runRetentionSweep } from '../services/retention.service.js';
 
@@ -89,6 +92,13 @@ async function threadSummaryHandler(): Promise<void> {
     return;
   }
   await sendThreadSummary(result.chunks);
+  // Phase 8 fix A: persist lastThreadSummaryDate AFTER sendThreadSummary
+  // resolves. If any chunk-level send threw, we never get here — the registerJob
+  // try/catch catches it and the idempotency flag stays UNCHANGED so the next
+  // cycle (or a manual /dev-summary) can re-publish.
+  if (result.persistState) {
+    markThreadSummaryPublished(result.prevState, result.date);
+  }
   logger.info(
     {
       event: 'thread-summary-published',
