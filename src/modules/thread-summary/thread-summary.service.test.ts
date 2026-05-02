@@ -219,3 +219,98 @@ describe('runThreadSummaryPipeline (DLV-06, DLV-10, D-32..D-35)', () => {
     expect(mockSummarizeThread).not.toHaveBeenCalled();
   });
 });
+
+describe('runThreadSummaryPipeline LLM-outage detection (Phase 8 fix B)', () => {
+  it('B1: ALL threads skipped with reason:llm-error → llmOutage:true, chunks=[]; pipeline writes NO state', async () => {
+    mockSummarizeThread.mockImplementation((input: { threadId: number }) =>
+      Promise.resolve({
+        skipped: true,
+        threadId: input.threadId,
+        windowHours: 24,
+        messageCount: 0,
+        reason: 'llm-error' as const,
+      }),
+    );
+    const r = await runThreadSummaryPipeline();
+    expect(r.llmOutage).toBe(true);
+    expect(r.chunks).toEqual([]);
+    expect(r.threadsSkippedError).toBe(3);
+    // Pipeline never writes state on its own (Phase 8 fix A) and the cron
+    // handler must skip the post-send write when llmOutage is set, so we
+    // assert the helper-via-pipeline path stayed put.
+    expect(mockWriteState).not.toHaveBeenCalled();
+  });
+
+  it('B2: thrown errors inside per-thread try/catch ALSO count as llm-error → llmOutage:true', async () => {
+    mockSummarizeThread.mockImplementation(async () => {
+      throw new Error('LLM transport down');
+    });
+    const r = await runThreadSummaryPipeline();
+    expect(r.llmOutage).toBe(true);
+    expect(r.chunks).toEqual([]);
+    expect(r.threadsSkippedError).toBe(3);
+  });
+
+  it('B3: mixed skip-reasons (one low-volume, rest llm-error) → llmOutage:false, chunks NOT empty', async () => {
+    mockSummarizeThread.mockImplementation((input: { threadId: number }) => {
+      if (input.threadId === 100) {
+        return Promise.resolve({
+          skipped: true as const,
+          threadId: 100,
+          windowHours: 24,
+          messageCount: 2,
+          reason: 'low-volume' as const,
+        });
+      }
+      return Promise.resolve({
+        skipped: true as const,
+        threadId: input.threadId,
+        windowHours: 24,
+        messageCount: 0,
+        reason: 'llm-error' as const,
+      });
+    });
+    const r = await runThreadSummaryPipeline();
+    expect(r.llmOutage).toBe(false);
+    expect(r.chunks.length).toBeGreaterThan(0);
+  });
+
+  it('B4: genuine quiet day (all low-volume) → llmOutage:false, formatter publishes «тихо: N из N»', async () => {
+    mockSummarizeThread.mockImplementation((input: { threadId: number }) =>
+      Promise.resolve({
+        skipped: true as const,
+        threadId: input.threadId,
+        windowHours: 24,
+        messageCount: 1,
+        reason: 'low-volume' as const,
+      }),
+    );
+    const r = await runThreadSummaryPipeline();
+    expect(r.llmOutage).toBe(false);
+    expect(r.chunks.length).toBe(1);
+    expect(r.chunks[0]).toContain('тихо: 3 из 3');
+  });
+
+  it('B5: zero tracked threads → llmOutage:false (vacuously not an outage)', async () => {
+    mockListTrackedThreadIds.mockReturnValue([]);
+    const r = await runThreadSummaryPipeline();
+    expect(r.llmOutage).toBe(false);
+  });
+
+  it('B6: at least one thread succeeded → llmOutage:false even if others llm-error', async () => {
+    mockSummarizeThread.mockImplementation((input: { threadId: number }) => {
+      if (input.threadId === 100) return Promise.resolve(okSummary(100, 7));
+      return Promise.resolve({
+        skipped: true as const,
+        threadId: input.threadId,
+        windowHours: 24,
+        messageCount: 0,
+        reason: 'llm-error' as const,
+      });
+    });
+    const r = await runThreadSummaryPipeline();
+    expect(r.llmOutage).toBe(false);
+    expect(r.threadsSummarised).toBe(1);
+    expect(r.chunks.length).toBeGreaterThan(0);
+  });
+});

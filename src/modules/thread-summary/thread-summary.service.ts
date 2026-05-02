@@ -66,6 +66,7 @@ function emptyResult(
     chunks: [],
     persistState,
     prevState,
+    llmOutage: false,
   };
 }
 
@@ -177,7 +178,38 @@ export async function runThreadSummaryPipeline(
   }
 
   const date = new Date();
-  const chunks = formatThreadSummaryPost({ summaries, titles, date });
+
+  // Phase 8 fix B: distinguish full LLM-outage from a genuine quiet day. If
+  // every tracked thread skipped with reason:'llm-error', publishing the
+  // formatter's «тихо: N из N» chunk would silently mask the outage as a
+  // normal low-activity day. Detect this case BEFORE building chunks so the
+  // pipeline returns chunks=[] and llmOutage=true; the cron handler refuses
+  // to publish AND refuses to advance lastThreadSummaryDate.
+  // Mixed skip-reasons (some low-volume, some llm-error) and genuine quiet
+  // days (all low-volume / transcript-too-large) keep their existing «тихо»
+  // chunk — that's a real signal, not a masked failure.
+  const llmOutage =
+    summaries.length > 0 &&
+    summaries.every(
+      (s): s is Extract<ThreadSummary, { skipped: true }> =>
+        s.skipped === true && s.reason === 'llm-error',
+    );
+
+  const chunks = llmOutage
+    ? []
+    : formatThreadSummaryPost({ summaries, titles, date });
+
+  if (llmOutage) {
+    logger.error(
+      {
+        event: 'thread-summary-llm-outage',
+        threadsSkippedError,
+        totalThreads: summaries.length,
+        model: undefined,
+      },
+      'Thread-summary: ALL threads failed with llm-error — refusing to publish a misleading «тихо» post; lastThreadSummaryDate NOT advanced so the next cycle can retry',
+    );
+  }
 
   // Phase 8 fix A: state-write was here. Moved to cron handler / sender path —
   // markThreadSummaryPublished(prevState, date) is now called ONLY after
@@ -192,6 +224,7 @@ export async function runThreadSummaryPipeline(
       threadsSkippedError,
       totalMessageCount,
       chunkCount: chunks.length,
+      llmOutage,
     },
     'Thread-summary pipeline complete',
   );
@@ -206,5 +239,6 @@ export async function runThreadSummaryPipeline(
     chunks,
     persistState,
     prevState,
+    llmOutage,
   };
 }

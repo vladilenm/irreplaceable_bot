@@ -87,6 +87,19 @@ async function threadSummaryHandler(): Promise<void> {
     );
     return;
   }
+  if (result.llmOutage) {
+    // Phase 8 fix B: orchestrator already logged ERROR and produced chunks=[].
+    // Cron handler must NOT publish AND MUST NOT advance lastThreadSummaryDate
+    // so the next cycle can retry once the LLM is back.
+    logger.error(
+      {
+        event: 'thread-summary-llm-outage-skip',
+        threadsSkippedError: result.threadsSkippedError,
+      },
+      'Cron: thread-summary skipped due to full LLM outage; state.json untouched',
+    );
+    return;
+  }
   if (result.chunks.length === 0) {
     logger.warn('Cron: thread-summary returned 0 chunks, nothing to send');
     return;

@@ -145,6 +145,16 @@ export interface ThreadSummaryResult {
    * the post-send merge-write so lastDigestDate is preserved (D-33).
    */
   prevState: PipelineStateV2;
+  /**
+   * Phase 8 fix B: true when there is at least one tracked thread AND every
+   * thread was skipped with reason:'llm-error'. The cron handler MUST refuse
+   * to publish in this case (publishing would put a misleading «тихо: N из N»
+   * in the group, masking an LLM outage as a quiet day) AND MUST NOT advance
+   * lastThreadSummaryDate, so the next cycle can re-attempt once the LLM is
+   * back. A genuine quiet day (low-volume / transcript-too-large / mixed
+   * skip-reasons) keeps current behaviour and publishes the «тихо» chunk.
+   */
+  llmOutage: boolean;
 }
 
 /**
