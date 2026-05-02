@@ -5,6 +5,10 @@ import { startScheduler, stopScheduler } from './scheduler/cron.js';
 import { initDb, closeDb } from './services/db.service.js';
 import { loadTrackingWhitelist } from './services/tracking.service.js';
 import { runPreflight } from './utils/preflight.js';
+import {
+  classifyStartupError,
+  POLLING_CONFLICT_BACKOFF_MS,
+} from './utils/startup-error.js';
 
 async function main(): Promise<void> {
   logger.info('Starting bot...');
@@ -31,6 +35,31 @@ async function main(): Promise<void> {
       void runPreflight(bot);
     },
   }).catch((err: unknown) => {
+    // Phase 8 fix D — soften the 409 Conflict path. grammy rethrows 409 out of
+    // bot.start() when another long-polling client (rolling-deploy lingering
+    // pod, parallel local dev process, replicas>1) is talking to the same
+    // BOT_TOKEN. Immediate process.exit(1) under `restart: unless-stopped`
+    // produces a busy-loop that floods logs without resolving anything; sleep
+    // 60s before exiting so:
+    //   • a transient parallel process (rolling-deploy old pod) usually
+    //     finishes shutting down within the wait → next restart succeeds,
+    //   • a permanent parallel process still surfaces as repeated FATALs but
+    //     at one entry/minute instead of dozens/second.
+    // The retry strategy is documented in src/utils/startup-error.ts so the
+    // operator can see the design decision next to the constant.
+    const kind = classifyStartupError(err);
+    if (kind === 'polling-conflict-409') {
+      logger.fatal(
+        { err, backoffMs: POLLING_CONFLICT_BACKOFF_MS },
+        'bot.start() failed: another bot instance is already polling Telegram (409 Conflict). Sleeping before exit so docker-compose `restart: unless-stopped` does not busy-loop.',
+      );
+      setTimeout(() => process.exit(1), POLLING_CONFLICT_BACKOFF_MS);
+      // Note: we deliberately do NOT call process.exit(1) here. The setTimeout
+      // keeps the event loop alive long enough that pino has time to flush the
+      // FATAL line, and the host process supervisor (docker-compose,
+      // Timeweb App Platform) sees a slow-loop instead of a tight one.
+      return;
+    }
     logger.fatal({ err }, 'bot.start() failed');
     process.exit(1);
   });
