@@ -1,0 +1,14 @@
+# GSD Debug Knowledge Base
+
+Resolved debug sessions. Used by `gsd-debugger` to surface known-pattern hypotheses at the start of new investigations.
+
+---
+
+## prod-digest-delivery-conflict — restart-loop + ложный success в логах + потеря digest при failed send + пустая thread-summary при LLM outage
+- **Date:** 2026-05-02
+- **Error patterns:** Digest message sent to Telegram, Telegram sendMessage failed after retry, bot.start() failed, Privacy mode OFF, 409 Conflict, getUpdates, thread-summary chunk sent, тихо: N из N, isDigestPublishedToday, restart loop, GrammyError, polling, long-polling, /digest no response, /dev-digest no response
+- **Root cause:** Главное — два long-polling клиента с одним BOT_TOKEN; Telegram отдаёт 409 Conflict, grammy 1.42 пробрасывает GrammyError(error_code=409) из bot.start(), src/index.ts ловит и зовёт process.exit(1), а docker-compose `restart: unless-stopped` создаёт busy-loop. Соп-баги: (1) sendMessageWithRetry пишет «Digest message sent to Telegram» для обеих pipelines (digest и thread-summary), маскируя успешный thread-summary chunk под digest-success после failed digest send; (2) summarizer возвращает {skipped:true, reason:'llm-error'} без throw, formatter рендерит «тихо: N из N», sender отправляет — outage маскируется под тихий день, lastThreadSummaryDate всё равно ставится; (3) writeState({lastDigestDate}) выполняется ВНУТРИ runDigestPipeline ДО sendDigest, поэтому failed send «сжигает» idempotency-флаг и следующий /digest отвечает «уже опубликован сегодня».
+- **Fix:** A) split state-write — skip-path остаётся в pipeline, success-path переехал в sendDigest и в helper markThreadSummaryPublished, вызываемый cron handler'ом ПОСЛЕ успешного send; DigestResult/ThreadSummaryResult пробрасывают persistState и prevState для D-33 merge-write. B) детектор llmOutage в runThreadSummaryPipeline — если ВСЕ summaries skipped с reason:'llm-error', возвращаем chunks=[] и llmOutage:true, cron handler отказывается публиковать и НЕ продвигает lastThreadSummaryDate. C) переименование log-message в utils/telegram.ts на нейтральное «Telegram sendMessage ok», добавлен опциональный pipeline-tag в SendMessageParams и в pino-binding. D) classifyStartupError(err) в utils/startup-error.ts проверяет err instanceof GrammyError && err.error_code===409; на 409 — FATAL log + setTimeout(60s) до process.exit(1), превращая busy-loop в slow-loop. Non-409 ошибки — exit(1) сразу.
+- **Files changed:** src/modules/digest/digest.service.ts, src/modules/digest/digest.service.test.ts, src/modules/digest/digest.sender.ts, src/modules/digest/digest.sender.test.ts, src/modules/thread-summary/thread-summary.service.ts, src/modules/thread-summary/thread-summary.service.test.ts, src/modules/thread-summary/thread-summary.sender.ts, src/scheduler/cron.ts, src/types/index.ts, src/utils/telegram.ts, src/utils/telegram.test.ts, src/utils/startup-error.ts, src/utils/startup-error.test.ts, src/index.ts
+---
+
