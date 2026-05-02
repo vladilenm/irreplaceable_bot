@@ -28,6 +28,7 @@ export async function sendDigest(result: DigestResult): Promise<void> {
     threadId: config.aiRadarThreadId,
     text: html,
     parseMode: 'HTML',
+    pipeline: 'digest',
   });
 
   if (result.persistState) {

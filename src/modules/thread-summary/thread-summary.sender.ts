@@ -22,6 +22,7 @@ export async function sendThreadSummary(chunks: string[]): Promise<void> {
       threadId: config.threadSummaryThreadId,
       text: chunk,
       parseMode: 'HTML',
+      pipeline: 'thread-summary',
     });
     logger.info(
       { chunkIndex: i + 1, chunkCount: chunks.length, chunkLength: chunk.length },

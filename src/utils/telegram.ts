@@ -2,11 +2,21 @@
 import { bot } from '../bot.js';
 import { logger } from './logger.js';
 
+/**
+ * Phase 8 fix C: pipeline tag distinguishes digest sends from thread-summary
+ * sends in structured logs. Without it, a successful thread-summary chunk
+ * shipped immediately after a failed digest send looked like a delayed digest
+ * success in the log stream — see prod-digest-delivery-conflict Соп-баг 1.
+ */
+export type SendMessagePipeline = 'digest' | 'thread-summary';
+
 export interface SendMessageParams {
   chatId: string;
   threadId: string;
   text: string;
   parseMode: 'HTML';
+  /** Optional: tags structured log entries with the originating pipeline. */
+  pipeline?: SendMessagePipeline;
 }
 
 const RETRY_DELAY_MS = 3000;
@@ -24,24 +34,23 @@ async function attemptSend(params: SendMessageParams): Promise<void> {
 }
 
 export async function sendMessageWithRetry(params: SendMessageParams): Promise<void> {
+  const logBinding = {
+    chatId: params.chatId,
+    threadId: params.threadId,
+    pipeline: params.pipeline,
+  };
   try {
     await attemptSend(params);
-    logger.info(
-      { chatId: params.chatId, threadId: params.threadId },
-      'Digest message sent to Telegram',
-    );
+    logger.info(logBinding, 'Telegram sendMessage ok');
     return;
   } catch (err: unknown) {
-    logger.error({ err }, 'Telegram sendMessage failed, retrying in 3s');
+    logger.error({ ...logBinding, err }, 'Telegram sendMessage failed, retrying in 3s');
     await delay(RETRY_DELAY_MS);
     try {
       await attemptSend(params);
-      logger.info(
-        { chatId: params.chatId, threadId: params.threadId },
-        'Digest message sent to Telegram (after retry)',
-      );
+      logger.info(logBinding, 'Telegram sendMessage ok (after retry)');
     } catch (retryErr: unknown) {
-      logger.fatal({ err: retryErr }, 'Telegram sendMessage failed after retry');
+      logger.fatal({ ...logBinding, err: retryErr }, 'Telegram sendMessage failed after retry');
       throw retryErr;
     }
   }
