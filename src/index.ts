@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { bot } from './bot.js';
-import { logger } from './utils/logger.js';
+import { logger, bootId } from './utils/logger.js';
 import { startScheduler, stopScheduler } from './scheduler/cron.js';
 import { initDb, closeDb } from './services/db.service.js';
 import { loadTrackingWhitelist } from './services/tracking.service.js';
@@ -11,7 +11,8 @@ import {
 } from './utils/startup-error.js';
 
 async function main(): Promise<void> {
-  logger.info('Starting bot...');
+  // bootId in msg (not just bindings) so it stays visible in dashboards that surface only `msg`.
+  logger.info(`Starting bot... bootId=${bootId}`);
 
   // v2.0 Phase 4: synchronous DB init BEFORE scheduler/polling.
   // Throws on WAL pragma failure (DB-01) — exit-fast preferred over silent
