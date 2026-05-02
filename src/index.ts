@@ -10,9 +10,15 @@ import {
   POLLING_CONFLICT_BACKOFF_MS,
 } from './utils/startup-error.js';
 
+// step counter on main() entry — if main() runs twice in one process, we see
+// step=1 then step=2; if the dashboard merely double-renders one emit, both
+// shown lines carry the same step. Diagnostic for prod-digest-delivery-conflict.
+let mainStep = 0;
+
 async function main(): Promise<void> {
-  // bootId in msg (not just bindings) so it stays visible in dashboards that surface only `msg`.
-  logger.info(`Starting bot... bootId=${bootId}`);
+  mainStep += 1;
+  // bootId+step in msg so dashboards that surface only `msg` still show them.
+  logger.info(`Starting bot... bootId=${bootId} step=${mainStep}`);
 
   // v2.0 Phase 4: synchronous DB init BEFORE scheduler/polling.
   // Throws on WAL pragma failure (DB-01) — exit-fast preferred over silent
