@@ -112,8 +112,10 @@ describe('sendMessageWithRetry log shape (Phase 8 fix C)', () => {
       parseMode: 'HTML',
       pipeline: 'thread-summary',
     });
+    // Attach .rejects before timers fire so the rejection has a handler.
+    const expectation = expect(promise).rejects.toThrow('flaky-2');
     await vi.advanceTimersByTimeAsync(3500);
-    await expect(promise).rejects.toThrow('flaky-2');
+    await expectation;
 
     const fatalCall = fatalSpy.mock.calls.find(
       (c) => c[1] === 'Telegram sendMessage failed after retry',
