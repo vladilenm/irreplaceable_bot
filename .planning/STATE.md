@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-04-27)
 Phase: 07
 Plan: Not started
 Status: Executing Phase 07
-Last activity: 2026-05-01 - Completed quick task 260501-h3t: copy config/ and prompts/ into prod image so runtime assets resolve
+Last activity: 2026-05-03 - Completed quick task 260503-cq1: surface Telegram sendMessage error details in pino msg for Timeweb dashboard visibility
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -132,6 +132,7 @@ None.
 | 260501-cov | Remove volumes from docker-compose.yml (Timeweb sanitizer rejects them) and gitignore docker-compose.override.yml | 2026-05-01 | 26fd410 | [260501-cov-remove-volumes-from-docker-compose-yml-t](./quick/260501-cov-remove-volumes-from-docker-compose-yml-t/) |
 | 260501-g11 | Add environment block to docker-compose.yml so Timeweb sanitizer forwards dashboard env vars to container (fixes BOT_TOKEN crash loop) | 2026-05-01 | ca07eb6 | [260501-g11-add-environment-section-to-docker-compos](./quick/260501-g11-add-environment-section-to-docker-compos/) |
 | 260501-h3t | Copy config/ and prompts/ into prod Docker stage and unblock prompts/*.md in .dockerignore so runtime asset reads (feeds.json, curator.md, thread-summarizer.md) resolve in container | 2026-05-01 | 7906c66 | [260501-h3t-copy-config-and-prompts-into-dockerfile-](./quick/260501-h3t-copy-config-and-prompts-into-dockerfile-/) |
+| 260503-cq1 | Diagnostic patch: surface Telegram sendMessage error details (error_code, description, chatId, threadId) in pino msg so Timeweb dashboard exposes root cause of `Telegram sendMessage failed after retry` | 2026-05-03 | 53d3329 | [260503-cq1-diagnostic-patch-surface-telegram-sendme](./quick/260503-cq1-diagnostic-patch-surface-telegram-sendme/) |
 
 ### Roadmap Evolution
 
