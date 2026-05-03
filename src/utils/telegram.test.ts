@@ -86,10 +86,16 @@ describe('sendMessageWithRetry log shape (Phase 8 fix C)', () => {
     await promise;
 
     const errorCall = errorSpy.mock.calls.find(
-      (c) => c[1] === 'Telegram sendMessage failed, retrying in 3s',
+      (c) =>
+        typeof c[1] === 'string' &&
+        c[1].startsWith('Telegram sendMessage failed, retrying in 3s'),
     );
     expect(errorCall).toBeDefined();
     expect((errorCall?.[0] as { pipeline: string }).pipeline).toBe('digest');
+    // Diagnostic contract (prod-digest-delivery-conflict): error fields surface in msg.
+    expect(errorCall?.[1] as string).toContain('error_code=');
+    expect(errorCall?.[1] as string).toContain('chatId=-100');
+    expect(errorCall?.[1] as string).toContain('threadId=42');
 
     const retrySuccess = infoSpy.mock.calls.find(
       (c) => c[1] === 'Telegram sendMessage ok (after retry)',
@@ -118,10 +124,16 @@ describe('sendMessageWithRetry log shape (Phase 8 fix C)', () => {
     await expectation;
 
     const fatalCall = fatalSpy.mock.calls.find(
-      (c) => c[1] === 'Telegram sendMessage failed after retry',
+      (c) =>
+        typeof c[1] === 'string' &&
+        c[1].startsWith('Telegram sendMessage failed after retry'),
     );
     expect(fatalCall).toBeDefined();
     expect((fatalCall?.[0] as { pipeline: string }).pipeline).toBe('thread-summary');
+    // Diagnostic contract (prod-digest-delivery-conflict): error fields surface in msg.
+    // Note: error from `new Error('flaky-2')` is a plain Error, so error_code falls back to 'no-code'.
+    expect(fatalCall?.[1] as string).toContain('error_code=no-code');
+    expect(fatalCall?.[1] as string).toContain('description=flaky-2');
   });
 
   it('C5: pipeline is optional — omitted call still works and binding has pipeline:undefined', async () => {
