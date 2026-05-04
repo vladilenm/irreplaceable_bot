@@ -1,6 +1,6 @@
 import { Bot, type Context } from 'grammy';
 import { config } from './config.js';
-import { logger } from './utils/logger.js';
+import { logger, errMsg } from './utils/logger.js';
 import {
   runDigestPipeline,
   isDigestPublishedToday,
@@ -13,7 +13,7 @@ export const bot = new Bot(config.botToken);
 
 // Error handler -- log errors, don't crash (REL-02)
 bot.catch((err) => {
-  logger.error({ err: err.error, update: err.ctx?.update?.update_id }, 'Bot error caught');
+  logger.error({ err: err.error, update: err.ctx?.update?.update_id }, `Bot error caught: ${errMsg(err.error)}`);
 });
 
 // Admin-only guard (D-13, D-17, T-03-07, T-03-08).
@@ -40,7 +40,7 @@ async function isAdmin(ctx: Context): Promise<boolean> {
     adminCache.set(ctx.chat.id, { ids, expires: now + ADMIN_CACHE_TTL_MS });
     return ids.has(ctx.from.id);
   } catch (err: unknown) {
-    logger.error({ err }, 'Failed to check admin status');
+    logger.error({ err }, `Failed to check admin status: ${errMsg(err)}`);
     return false;
   }
 }
@@ -98,7 +98,7 @@ bot.command('digest', async (ctx) => {
       `Дайджест опубликован: ${result.itemCount} новостей.`,
     );
   } catch (err: unknown) {
-    logger.error({ err }, '/digest command failed');
+    logger.error({ err }, `/digest command failed: ${errMsg(err)}`);
     await ctx.api
       .editMessageText(
         statusMsg.chat.id,
@@ -202,7 +202,7 @@ bot.command('dev-digest', async (ctx) => {
       `Dev-run: опубликовано ${result.itemCount} новостей. state.json не изменён.`,
     );
   } catch (err: unknown) {
-    logger.error({ err, devRun: true }, '/dev-digest command failed');
+    logger.error({ err, devRun: true }, `/dev-digest command failed: ${errMsg(err)}`);
     await ctx.api
       .editMessageText(
         statusMsg.chat.id,

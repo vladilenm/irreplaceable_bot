@@ -3,7 +3,7 @@ import { z } from 'zod';
 import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai';
 import { config } from '../config.js';
-import { logger } from '../utils/logger.js';
+import { logger, errMsg } from '../utils/logger.js';
 import { normalizeDisplayName } from '../utils/display-name.js';
 import type {
   CapturedMessage,
@@ -240,7 +240,7 @@ export async function summarizeThread(input: SummarizeThreadInput): Promise<Thre
     }
     logger.error(
       { err, threadId, messageCount, model: config.aiModel },
-      'summarizeThread: LLM call failed',
+      `summarizeThread: LLM call failed: threadId=${threadId} model=${config.aiModel} err=${errMsg(err)}`,
     );
     return { skipped: true, threadId, windowHours, messageCount, reason: 'llm-error' };
   }

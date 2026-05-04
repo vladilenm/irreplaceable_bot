@@ -7,6 +7,16 @@ import { config } from '../config.js';
 // prod-digest-delivery-conflict where two parallel polling clients caused a 409.
 export const bootId = randomBytes(4).toString('hex');
 
+/** Extract a printable message from any thrown value. Used to surface error
+ *  details inside pino `msg` strings for dashboards that render only `msg`. */
+export function errMsg(err: unknown): string {
+  if (err instanceof Error) {
+    const status = (err as Error & { status?: unknown }).status;
+    return status !== undefined ? `status=${String(status)} ${err.message}` : err.message;
+  }
+  return String(err);
+}
+
 export const logger = pino({
   level: config.logLevel,
   transport:

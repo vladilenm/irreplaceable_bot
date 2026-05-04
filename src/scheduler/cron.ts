@@ -13,7 +13,7 @@
 import cron from 'node-cron';
 import type { ScheduledTask } from 'node-cron';
 import { config } from '../config.js';
-import { logger } from '../utils/logger.js';
+import { logger, errMsg } from '../utils/logger.js';
 import { runDigestPipeline } from '../modules/digest/digest.service.js';
 import { sendDigest } from '../modules/digest/digest.sender.js';
 import {
@@ -48,7 +48,7 @@ function registerJob(name: string, cronExpr: string, handler: CronHandler): bool
       await handler();
     } catch (err: unknown) {
       // SCHED-04: per-job isolation — log + swallow so other jobs continue ticking.
-      logger.error({ err, name }, 'Cron job handler failed');
+      logger.error({ err, name }, `Cron job handler failed: name=${name} err=${errMsg(err)}`);
     }
   });
   tasks.set(name, task);
@@ -154,7 +154,7 @@ export function stopScheduler(): void {
       task.stop();
       logger.info({ name }, 'Cron job stopped');
     } catch (err: unknown) {
-      logger.error({ err, name }, 'Cron job stop failed');
+      logger.error({ err, name }, `Cron job stop failed: name=${name} err=${errMsg(err)}`);
     }
   }
   tasks.clear();

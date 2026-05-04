@@ -4,7 +4,7 @@
 // Title resolution: cached-only (DB) — see refreshThreadTitle JSDoc (WR-01 fix).
 // Sliding 24h window from cron-fire (CONTEXT "Window semantics" Claude's Discretion).
 
-import { logger } from '../../utils/logger.js';
+import { logger, errMsg } from '../../utils/logger.js';
 import { listTrackedThreadIds } from '../../services/tracking.service.js';
 import { listTracked } from '../../stores/tracked-threads-store.js';
 import {
@@ -165,7 +165,7 @@ export async function runThreadSummaryPipeline(
         totalMessageCount += summary.messageCount;
       }
     } catch (err: unknown) {
-      logger.error({ err, threadId }, 'Per-thread summary failed, isolating');
+      logger.error({ err, threadId }, `Per-thread summary failed, isolating: threadId=${threadId} err=${errMsg(err)}`);
       summaries.push({
         skipped: true,
         threadId,

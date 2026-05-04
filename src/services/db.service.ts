@@ -1,6 +1,6 @@
 import Database from 'better-sqlite3';
 import { config } from '../config.js';
-import { logger } from '../utils/logger.js';
+import { logger, errMsg } from '../utils/logger.js';
 
 interface Migration {
   version: number;
@@ -196,7 +196,7 @@ export function closeDb(): void {
     try {
       _db.pragma('wal_checkpoint(TRUNCATE)');
     } catch (err: unknown) {
-      logger.warn({ err }, 'WAL checkpoint failed on close (non-fatal)');
+      logger.warn({ err }, `WAL checkpoint failed on close (non-fatal): ${errMsg(err)}`);
     }
     _db.close();
     _db = null;

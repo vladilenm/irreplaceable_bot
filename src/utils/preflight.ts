@@ -1,6 +1,6 @@
 import type { Bot } from 'grammy';
 import { config } from '../config.js';
-import { logger } from './logger.js';
+import { logger, errMsg } from './logger.js';
 
 /**
  * Boot-time self-check (MSG-08, OPS-03). Logs WARN on misconfig but does NOT
@@ -56,6 +56,6 @@ export async function runPreflight(bot: Bot): Promise<void> {
       );
     }
   } catch (err: unknown) {
-    logger.error({ err }, 'Preflight check failed (non-fatal)');
+    logger.error({ err }, `Preflight check failed (non-fatal): ${errMsg(err)}`);
   }
 }

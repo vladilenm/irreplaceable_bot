@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { bot } from './bot.js';
-import { logger, bootId } from './utils/logger.js';
+import { logger, bootId, errMsg } from './utils/logger.js';
 import { startScheduler, stopScheduler } from './scheduler/cron.js';
 import { initDb, closeDb } from './services/db.service.js';
 import { loadTrackingWhitelist } from './services/tracking.service.js';
@@ -30,13 +30,16 @@ async function main(): Promise<void> {
   // an empty Set on the first ms of messages.
   loadTrackingWhitelist();
 
-  startScheduler();
-
   // Start long-polling — fire-and-forget with explicit .catch so startup
   // errors are logged and cause a clean exit rather than an unhandled rejection.
+  // startScheduler() is called inside onStart so cron jobs only tick AFTER the
+  // bot successfully establishes long-polling. This prevents a rolling-deploy
+  // TOCTOU where the new container's cron fires while the old container is still
+  // alive, causing both to pass the idempotency guard and double-publish.
   void bot.start({
     onStart: () => {
       logger.info('Bot is running (long-polling mode)');
+      startScheduler();
       // v2.0 Phase 4 (MSG-08, OPS-03): non-blocking preflight self-check.
       // Logs WARN if privacy mode ON or bot is not admin in target chat.
       void runPreflight(bot);
@@ -58,7 +61,7 @@ async function main(): Promise<void> {
     if (kind === 'polling-conflict-409') {
       logger.fatal(
         { err, backoffMs: POLLING_CONFLICT_BACKOFF_MS },
-        'bot.start() failed: another bot instance is already polling Telegram (409 Conflict). Sleeping before exit so docker-compose `restart: unless-stopped` does not busy-loop.',
+        `bot.start() failed: 409 Conflict — another instance is already polling. Sleeping ${String(POLLING_CONFLICT_BACKOFF_MS)}ms before exit. err=${errMsg(err)}`,
       );
       setTimeout(() => process.exit(1), POLLING_CONFLICT_BACKOFF_MS);
       // Note: we deliberately do NOT call process.exit(1) here. The setTimeout
@@ -67,7 +70,7 @@ async function main(): Promise<void> {
       // Timeweb App Platform) sees a slow-loop instead of a tight one.
       return;
     }
-    logger.fatal({ err }, 'bot.start() failed');
+    logger.fatal({ err }, `bot.start() failed: ${errMsg(err)}`);
     process.exit(1);
   });
 }
@@ -89,16 +92,16 @@ process.on('SIGINT', () => void shutdown('SIGINT'));
 
 // Uncaught error handlers (REL-02) -- log but exit cleanly
 process.on('uncaughtException', (err) => {
-  logger.fatal({ err }, 'Uncaught exception');
+  logger.fatal({ err }, `Uncaught exception: ${errMsg(err)}`);
   process.exit(1);
 });
 
 process.on('unhandledRejection', (reason) => {
-  logger.fatal({ reason }, 'Unhandled rejection');
+  logger.fatal({ reason }, `Unhandled rejection: ${errMsg(reason)}`);
   process.exit(1);
 });
 
 main().catch((err: unknown) => {
-  logger.fatal({ err }, 'Failed to start bot');
+  logger.fatal({ err }, `Failed to start bot: ${errMsg(err)}`);
   process.exit(1);
 });
