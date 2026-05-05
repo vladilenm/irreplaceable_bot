@@ -130,22 +130,48 @@ async function callOpenAICompatible(userMessage: string): Promise<LLMSummaryOutp
     apiKey: config.aiApiKey,
     ...(config.aiBaseUrl ? { baseURL: config.aiBaseUrl } : {}),
   });
-  const response = await client.chat.completions.create({
-    model: config.aiModel,
-    max_tokens: 4000,
-    messages: [
-      { role: 'system', content: SUMMARIZER_PROMPT },
-      { role: 'user', content: userMessage },
-    ],
-    response_format: {
-      type: 'json_schema',
-      json_schema: {
-        name: 'thread_summary',
-        schema: THREAD_SUMMARIZER_JSON_SCHEMA,
-        strict: true,
+
+  let response: OpenAI.Chat.ChatCompletion;
+  try {
+    response = await client.chat.completions.create({
+      model: config.aiModel,
+      max_tokens: 4000,
+      messages: [
+        { role: 'system', content: SUMMARIZER_PROMPT },
+        { role: 'user', content: userMessage },
+      ],
+      response_format: {
+        type: 'json_schema',
+        json_schema: {
+          name: 'thread_summary',
+          schema: THREAD_SUMMARIZER_JSON_SCHEMA,
+          strict: true,
+        },
       },
-    },
-  });
+    });
+  } catch (err: unknown) {
+    // Fallback: if provider rejects json_schema (e.g. DeepSeek disables it),
+    // retry with json_object + schema instruction in system prompt.
+    const status = (err as { status?: number }).status;
+    if (status === 400) {
+      logger.warn('json_schema response_format rejected (400), falling back to json_object');
+      const schemaHint = JSON.stringify(THREAD_SUMMARIZER_JSON_SCHEMA, null, 2);
+      response = await client.chat.completions.create({
+        model: config.aiModel,
+        max_tokens: 4000,
+        messages: [
+          {
+            role: 'system',
+            content: `${SUMMARIZER_PROMPT}\n\nIMPORTANT: Output ONLY valid JSON matching this schema:\n${schemaHint}`,
+          },
+          { role: 'user', content: userMessage },
+        ],
+        response_format: { type: 'json_object' },
+      });
+    } else {
+      throw err;
+    }
+  }
 
   const content = response.choices[0]?.message?.content ?? '';
   if (content === '') {
