@@ -18,11 +18,18 @@ const SUMMARIZER_PROMPT = readFileSync(
   'utf-8',
 );
 
-/** Zod schema for LLM-side output (LLMSummaryOutput). D-15 + D-08/D-09/D-11. */
+/** Zod schema for LLM-side output (LLMSummaryOutput). quick-260507-cni topic-style contract. */
 export const ThreadSummarySchema = z.object({
-  headline: z.string().max(80),
-  bullets: z.array(z.string()).min(1).max(6),
-  openQuestions: z.array(z.string()).max(3),
+  emoji: z.string().min(1),
+  title: z.string().min(1).max(100),
+  links: z
+    .array(
+      z.object({
+        url: z.string().url(),
+        description: z.string().min(1).max(80),
+      }),
+    )
+    .max(5),
 });
 
 /**
@@ -32,20 +39,23 @@ export const ThreadSummarySchema = z.object({
 export const THREAD_SUMMARIZER_JSON_SCHEMA = {
   type: 'object' as const,
   properties: {
-    headline: { type: 'string' as const, maxLength: 80 },
-    bullets: {
+    emoji: { type: 'string' as const, minLength: 1 },
+    title: { type: 'string' as const, minLength: 1, maxLength: 100 },
+    links: {
       type: 'array' as const,
-      items: { type: 'string' as const },
-      minItems: 1,
-      maxItems: 6,
-    },
-    openQuestions: {
-      type: 'array' as const,
-      items: { type: 'string' as const },
-      maxItems: 3,
+      maxItems: 5,
+      items: {
+        type: 'object' as const,
+        properties: {
+          url: { type: 'string' as const, format: 'uri' },
+          description: { type: 'string' as const, minLength: 1, maxLength: 80 },
+        },
+        required: ['url', 'description'],
+        additionalProperties: false as const,
+      },
     },
   },
-  required: ['headline', 'bullets', 'openQuestions'],
+  required: ['emoji', 'title', 'links'],
   additionalProperties: false as const,
 };
 
@@ -202,7 +212,7 @@ export interface SummarizeThreadInput {
   threadId: number;
   windowHours: number;
   messages: CapturedMessage[];
-  participants: Array<{ displayName: string; messageCount: number }>;
+  firstMessageId: number;
 }
 
 /**
@@ -215,7 +225,7 @@ export interface SummarizeThreadInput {
  * - Display names NFC-normalised + RTL/zero-width/control stripped (SUM-07)
  */
 export async function summarizeThread(input: SummarizeThreadInput): Promise<ThreadSummary> {
-  const { threadId, windowHours, messages, participants } = input;
+  const { threadId, windowHours, messages, firstMessageId } = input;
   const messageCount = messages.length;
 
   // Gate 1: low-volume skip (SUM-02). LLM client NEVER constructed.
@@ -287,22 +297,19 @@ export async function summarizeThread(input: SummarizeThreadInput): Promise<Thre
     return { skipped: true, threadId, windowHours, messageCount, reason: 'schema-invalid' };
   }
 
-  // Server-side truncation safeguards (D-08 headline overflow guard — defensive even though schema enforces ≤80).
+  // Server-side truncation safeguard (defensive even though schema enforces ≤100).
   const validated = parsed.data;
-  const headline =
-    validated.headline.length > 80
-      ? `${validated.headline.slice(0, 79)}…`
-      : validated.headline;
-  const bullets = validated.bullets.slice(0, 6);
-  const openQuestions = validated.openQuestions.slice(0, 3);
+  const title =
+    validated.title.length > 100
+      ? `${validated.title.slice(0, 99)}…`
+      : validated.title;
 
   logger.info(
     {
       threadId,
       messageCount,
-      headlineLength: headline.length,
-      bulletCount: bullets.length,
-      openQuestionCount: openQuestions.length,
+      titleLength: title.length,
+      linkCount: validated.links.length,
       model: config.aiModel,
       provider: isClaude(config.aiModel) ? 'anthropic' : 'openai-compatible',
       latencyMs,
@@ -316,10 +323,10 @@ export async function summarizeThread(input: SummarizeThreadInput): Promise<Thre
     threadId,
     windowHours,
     messageCount,
-    headline,
-    bullets,
-    participants,
-    openQuestions,
+    emoji: validated.emoji,
+    title,
+    links: validated.links,
+    firstMessageId,
   };
 }
 

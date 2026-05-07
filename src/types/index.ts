@@ -86,15 +86,17 @@ export interface ForgottenUser {
 }
 
 // ─── v2.0 Phase 6 — Thread summary pipeline (D-12, D-32, D-28) ───
+// quick-260507-cni — topic-style format: {emoji, title, links} replaces the
+// previous per-thread section shape; firstMessageId added for clickable
+// Telegram t.me/c/ links into the originating thread.
 
 /**
- * What the LLM returns BEFORE orchestrator merges in participants[] from DB.
- * Schema-validated by Zod in summarizer.service.ts.
+ * What the LLM returns. Schema-validated by Zod in summarizer.service.ts.
  */
 export interface LLMSummaryOutput {
-  headline: string;          // ≤80 chars (truncated server-side per D-08)
-  bullets: string[];         // 1-6 items (D-09 soft 3-6)
-  openQuestions: string[];   // 0-3 (D-11)
+  emoji: string;                                                   // 1 unicode emoji
+  title: string;                                                   // ≤100 chars
+  links: Array<{ url: string; description: string }>;              // 0..5 items
 }
 
 export type ThreadSummary =
@@ -103,10 +105,10 @@ export type ThreadSummary =
       threadId: number;
       windowHours: number;
       messageCount: number;
-      headline: string;
-      bullets: string[];
-      participants: Array<{ displayName: string; messageCount: number }>;
-      openQuestions: string[];
+      emoji: string;
+      title: string;
+      links: Array<{ url: string; description: string }>;
+      firstMessageId: number;
     }
   | {
       skipped: true;
