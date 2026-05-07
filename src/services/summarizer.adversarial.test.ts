@@ -75,7 +75,7 @@ describe('Adversarial fixture — prompt-injection resistance (D-20..D-23, SUM-0
       threadId: 100,
       windowHours: 24,
       messages,
-      participants: [],
+      firstMessageId: 1,
     });
 
     expect(result).toMatchObject({ skipped: true, reason: 'schema-invalid' });

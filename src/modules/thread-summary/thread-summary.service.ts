@@ -1,16 +1,14 @@
 // Phase 6 orchestrator (D-32..D-35, DLV-06, DLV-07, DLV-10).
-// Pulls together: tracking whitelist + DB queries + summarizer + formatter + state.
-// Per-thread try/catch (D-34) — one LLM error doesn't abort cycle.
-// Title resolution: cached-only (DB) — see refreshThreadTitle JSDoc (WR-01 fix).
-// Sliding 24h window from cron-fire (CONTEXT "Window semantics" Claude's Discretion).
+// quick-260507-cni: topic-style format. Per-thread title resolution dropped
+// (no longer rendered). Computes firstMessageId as MIN(tgMessageId) across
+// the window so the formatter can build clickable t.me/c/{chat}/{thread}/
+// {firstMessageId} deep-links. Aggregates+dedups links across non-skipped
+// summaries before passing to the formatter.
 
 import { logger, errMsg } from '../../utils/logger.js';
+import { config } from '../../config.js';
 import { listTrackedThreadIds } from '../../services/tracking.service.js';
-import { listTracked } from '../../stores/tracked-threads-store.js';
-import {
-  selectMessagesInWindow,
-  selectTopParticipants,
-} from '../../stores/message-store.js';
+import { selectMessagesInWindow } from '../../stores/message-store.js';
 import { summarizeThread } from '../../services/summarizer.service.js';
 import {
   readState,
@@ -29,26 +27,6 @@ const DEFAULT_WINDOW_HOURS = 24;
 
 function nowMinusHoursIso(hours: number): string {
   return new Date(Date.now() - hours * 3600 * 1000).toISOString();
-}
-
-/**
- * Resolve a thread title for display.
- *
- * Phase 6 originally attempted to call `bot.api.getForumTopic(chatId, threadId)`
- * before each cycle to refresh `tracked_threads.title`. That method does NOT
- * exist on Telegram Bot API 7.x (only `getForumTopicIconStickers` is exposed
- * by grammy 1.42.0), so the runtime guard `typeof api.getForumTopic === 'function'`
- * was always false — the refresh was permanently dead code (WR-01).
- *
- * Phase 5 (`/track` command which would have INSERTed titles) was cancelled
- * 2026-04-29; the title-writer function was removed in Phase 7. As a result,
- * `tracked_threads.title` is NULL for every thread today — this resolver always
- * returns the `Тред #{threadId}` fallback. If a future phase reintroduces a
- * title-writer, this function continues to work without modification.
- */
-function refreshThreadTitle(threadId: number): string {
-  const cached = listTracked().find((t) => t.threadId === threadId)?.title;
-  return cached ?? `Тред #${threadId}`;
 }
 
 function emptyResult(
@@ -133,7 +111,6 @@ export async function runThreadSummaryPipeline(
   );
 
   const summaries: ThreadSummary[] = [];
-  const titles = new Map<number, string>();
   let threadsSummarised = 0;
   let threadsSkippedLowVolume = 0;
   let threadsSkippedError = 0;
@@ -142,16 +119,20 @@ export async function runThreadSummaryPipeline(
   for (const threadId of threadIds) {
     // Per-thread try/catch (D-34) — one fail doesn't abort cycle.
     try {
-      const title = refreshThreadTitle(threadId);
-      titles.set(threadId, title);
-
       const messages = selectMessagesInWindow(threadId, sinceIso);
-      const participants = selectTopParticipants(threadId, sinceIso, 3).map((p) => ({
-        displayName: p.authorName,
-        messageCount: p.messageCount,
-      }));
+      // firstMessageId is MIN(tgMessageId) across the window — used by the
+      // formatter to build a clickable t.me/c/ deep-link. Telegram may deliver
+      // messages out-of-order vs created_at, so we cannot rely on messages[0].
+      // Empty array → 0 sentinel (low-volume skip will fire before this is used).
+      const firstMessageId =
+        messages.length === 0
+          ? 0
+          : messages.reduce(
+              (min, m) => (m.tgMessageId < min ? m.tgMessageId : min),
+              messages[0]!.tgMessageId,
+            );
 
-      const summary = await summarizeThread({ threadId, windowHours, messages, participants });
+      const summary = await summarizeThread({ threadId, windowHours, messages, firstMessageId });
       summaries.push(summary);
 
       if (summary.skipped) {
@@ -177,6 +158,23 @@ export async function runThreadSummaryPipeline(
     }
   }
 
+  // quick-260507-cni: aggregate links across non-skipped summaries; dedup by
+  // trimmed lowercased url, preserving first occurrence (and its description).
+  // The HTML attribute injection guard (drop urls containing `"`) lives in the
+  // formatter; here we only collapse duplicates so multiple threads citing the
+  // same article render one Интересные ссылки entry.
+  const seenUrls = new Set<string>();
+  const aggregatedLinks: Array<{ url: string; description: string }> = [];
+  for (const s of summaries) {
+    if (s.skipped) continue;
+    for (const link of s.links) {
+      const key = link.url.trim().toLowerCase();
+      if (key === '' || seenUrls.has(key)) continue;
+      seenUrls.add(key);
+      aggregatedLinks.push(link);
+    }
+  }
+
   const date = new Date();
 
   // Phase 8 fix B: distinguish full LLM-outage from a genuine quiet day. If
@@ -197,7 +195,13 @@ export async function runThreadSummaryPipeline(
 
   const chunks = llmOutage
     ? []
-    : formatThreadSummaryPost({ summaries, titles, date });
+    : formatThreadSummaryPost({
+        summaries,
+        date,
+        totalMessageCount,
+        aggregatedLinks,
+        chatId: config.targetChatId,
+      });
 
   if (llmOutage) {
     logger.error(

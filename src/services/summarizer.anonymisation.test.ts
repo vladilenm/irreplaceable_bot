@@ -50,7 +50,7 @@ describe('summarizeThread gating (SUM-02 + SUM-04)', () => {
       threadId: 1,
       windowHours: 24,
       messages: [fakeMsg(1), fakeMsg(2), fakeMsg(3), fakeMsg(4)],
-      participants: [],
+      firstMessageId: 1,
     });
     expect(result).toMatchObject({ skipped: true, reason: 'low-volume' });
     expect(anthropicCreate).not.toHaveBeenCalled();
@@ -62,7 +62,7 @@ describe('summarizeThread gating (SUM-02 + SUM-04)', () => {
       threadId: 1,
       windowHours: 24,
       messages: [],
-      participants: [],
+      firstMessageId: 1,
     });
     expect(result).toMatchObject({ skipped: true, reason: 'low-volume' });
     expect(anthropicCreate).not.toHaveBeenCalled();
@@ -77,7 +77,7 @@ describe('summarizeThread gating (SUM-02 + SUM-04)', () => {
       threadId: 1,
       windowHours: 24,
       messages,
-      participants: [],
+      firstMessageId: 1,
     });
     expect(result).toMatchObject({ skipped: true, reason: 'transcript-too-large' });
     expect(anthropicCreate).not.toHaveBeenCalled();
@@ -92,7 +92,7 @@ describe('summarizeThread gating (SUM-02 + SUM-04)', () => {
         {
           type: 'tool_use',
           name: 'submit_summary',
-          input: { headline: 'h', bullets: ['b'], openQuestions: [] },
+          input: { emoji: '💻', title: 't', links: [] },
         },
       ],
     });
@@ -100,7 +100,7 @@ describe('summarizeThread gating (SUM-02 + SUM-04)', () => {
       choices: [
         {
           message: {
-            content: JSON.stringify({ headline: 'h', bullets: ['b'], openQuestions: [] }),
+            content: JSON.stringify({ emoji: '💻', title: 't', links: [] }),
           },
         },
       ],
@@ -110,7 +110,7 @@ describe('summarizeThread gating (SUM-02 + SUM-04)', () => {
       threadId: 1,
       windowHours: 24,
       messages,
-      participants: [],
+      firstMessageId: 1,
     });
     if (result.skipped) {
       expect(result.reason).not.toBe('low-volume');
