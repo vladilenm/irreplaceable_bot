@@ -1,22 +1,26 @@
+// quick-260507-cni — formatter tests for the topic-style daily summary.
 import { describe, it, expect } from 'vitest';
 import { formatThreadSummaryPost, MAX_CHUNK_LENGTH } from './thread-summary.formatter.js';
 import type { ThreadSummary } from '../../types/index.js';
 
+const CHAT_ID = '-1003096173975';
+const CHAT_ID_NOPREFIX = '3096173975';
+
 const ok = (over: Partial<Extract<ThreadSummary, { skipped: false }>>): ThreadSummary => ({
   skipped: false,
-  threadId: 100,
+  threadId: 7457,
   windowHours: 24,
-  messageCount: 10,
-  headline: 'Обсуждали оркестратор',
-  bullets: ['обсуждали A', 'обсуждали B'],
-  participants: [{ displayName: 'Маша', messageCount: 5 }],
-  openQuestions: [],
+  messageCount: 12,
+  emoji: '💻',
+  title: 'Запуск ИИ моделей на локальных устройствах',
+  links: [],
+  firstMessageId: 7471,
   ...over,
 });
 
 const skip = (
   reason: 'low-volume' | 'transcript-too-large' | 'llm-error' | 'schema-invalid',
-  threadId = 100,
+  threadId = 200,
 ): ThreadSummary => ({
   skipped: true,
   threadId,
@@ -25,181 +29,228 @@ const skip = (
   reason,
 });
 
-describe('formatThreadSummaryPost layout (D-01..D-04, D-36)', () => {
-  it('F1: header contains MSK calendar day DD.MM.YYYY', () => {
-    const out = formatThreadSummaryPost({
-      summaries: [],
-      titles: new Map(),
-      date: new Date('2026-04-29T03:30:00Z'),
-    });
-    expect(out[0]).toContain('🧵 Сводки тредов · 29.04.2026');
-    expect(out[0]).toMatch(/^<b>🧵 Сводки тредов · 29\.04\.2026<\/b>/);
-  });
+const baseInput = (
+  over: Partial<Parameters<typeof formatThreadSummaryPost>[0]> = {},
+): Parameters<typeof formatThreadSummaryPost>[0] => ({
+  summaries: [],
+  date: new Date('2026-05-07T03:30:00Z'),
+  totalMessageCount: 0,
+  aggregatedLinks: [],
+  chatId: CHAT_ID,
+  ...over,
+});
 
-  it('F2: threads sorted by messageCount DESC', () => {
-    const summaries: ThreadSummary[] = [
-      ok({ threadId: 1, messageCount: 10, headline: 'low' }),
-      ok({ threadId: 2, messageCount: 50, headline: 'high' }),
-    ];
-    const titles = new Map([
-      [1, 'LowThread'],
-      [2, 'HighThread'],
-    ]);
-    const out = formatThreadSummaryPost({
-      summaries,
-      titles,
-      date: new Date('2026-04-29T03:30:00Z'),
-    });
-    const text = out.join('\n');
-    expect(text.indexOf('HighThread')).toBeLessThan(text.indexOf('LowThread'));
-  });
-
-  it('F3: compact layout — title, italic headline, bullets, participants line, no labels', () => {
-    const summaries = [
-      ok({
-        headline: 'Обсуждали X',
-        bullets: ['а', 'б'],
-        participants: [{ displayName: 'М', messageCount: 5 }],
-        messageCount: 5,
+describe('formatThreadSummaryPost — topic-style layout (quick-260507-cni)', () => {
+  it('FT-H1: first line is `📆 Что обсуждалось вчера DD.MM.YYYY` (MSK)', () => {
+    const out = formatThreadSummaryPost(
+      baseInput({
+        summaries: [ok({})],
+        totalMessageCount: 12,
       }),
-    ];
-    const titles = new Map([[100, 'Тестовый']]);
-    const out = formatThreadSummaryPost({ summaries, titles, date: new Date() }).join('\n');
-    expect(out).toContain('<b>📄 Тестовый</b>');
-    expect(out).toContain('<i>Обсуждали X</i>');
-    expect(out).toContain('• а');
-    expect(out).toContain('• б');
-    expect(out).toContain('👥 М · 💬 5');
-    expect(out).not.toContain('Главное:');
-    expect(out).not.toContain('Пункты:');
+    );
+    expect(out[0]).toMatch(/^📆 Что обсуждалось вчера 07\.05\.2026/);
   });
 
-  it('F4: title with HTML special chars is escaped', () => {
-    const summaries = [ok({})];
-    const titles = new Map([[100, '<script>alert(1)</script>']]);
-    const out = formatThreadSummaryPost({ summaries, titles, date: new Date() }).join('\n');
+  it('FT-H2: second line is `Всего было написано N сообщений`', () => {
+    const out = formatThreadSummaryPost(
+      baseInput({
+        summaries: [ok({})],
+        totalMessageCount: 42,
+      }),
+    );
+    const lines = out[0]!.split('\n');
+    expect(lines[1]).toBe('Всего было написано 42 сообщений');
+  });
+
+  it('FT-T1: each non-skipped thread renders one topic line with t.me/c link', () => {
+    const out = formatThreadSummaryPost(
+      baseInput({
+        summaries: [ok({ threadId: 7457, firstMessageId: 7471, messageCount: 12 })],
+        totalMessageCount: 12,
+      }),
+    ).join('\n');
+    expect(out).toMatch(
+      new RegExp(
+        `💻 .+ \\(<a href="https://t\\.me/c/${CHAT_ID_NOPREFIX}/7457/7471">12 сообщений</a>\\)`,
+      ),
+    );
+  });
+
+  it('FT-T2: chatIdNoPrefix correctly strips leading -100', () => {
+    const out = formatThreadSummaryPost(
+      baseInput({
+        summaries: [ok({ threadId: 100, firstMessageId: 5 })],
+        totalMessageCount: 1,
+        chatId: '-1003096173975',
+      }),
+    ).join('\n');
+    expect(out).toContain(`https://t.me/c/${CHAT_ID_NOPREFIX}/100/5`);
+    expect(out).not.toContain('https://t.me/c/-1003096173975');
+  });
+
+  it('FT-T3: topic lines sorted by messageCount DESC', () => {
+    const out = formatThreadSummaryPost(
+      baseInput({
+        summaries: [
+          ok({ threadId: 1, messageCount: 5, title: 'low-thread' }),
+          ok({ threadId: 2, messageCount: 50, title: 'high-thread' }),
+          ok({ threadId: 3, messageCount: 25, title: 'mid-thread' }),
+        ],
+        totalMessageCount: 80,
+      }),
+    ).join('\n');
+    const hi = out.indexOf('high-thread');
+    const mid = out.indexOf('mid-thread');
+    const lo = out.indexOf('low-thread');
+    expect(hi).toBeGreaterThan(-1);
+    expect(mid).toBeGreaterThan(hi);
+    expect(lo).toBeGreaterThan(mid);
+  });
+
+  it('FT-T4: title with HTML special chars is escaped', () => {
+    const out = formatThreadSummaryPost(
+      baseInput({
+        summaries: [ok({ title: '<script>alert(1)</script>' })],
+        totalMessageCount: 1,
+      }),
+    ).join('\n');
     expect(out).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
     expect(out).not.toContain('<script>alert(1)</script>');
   });
 
-  it('F5: bullet with & and < is escaped', () => {
-    const summaries = [ok({ bullets: ['Маша & Петя <kek>'] })];
-    const out = formatThreadSummaryPost({
-      summaries,
-      titles: new Map([[100, 'T']]),
-      date: new Date(),
-    }).join('\n');
-    expect(out).toContain('Маша &amp; Петя &lt;kek&gt;');
-  });
-
-  it('F6: participants render with middle-dot separator', () => {
-    const summaries = [
-      ok({
-        participants: [
-          { displayName: 'Маша', messageCount: 10 },
-          { displayName: 'Петя', messageCount: 5 },
-          { displayName: 'Аня', messageCount: 3 },
+  it('FT-L1: aggregatedLinks non-empty → renders Интересные ссылки + each link line', () => {
+    const out = formatThreadSummaryPost(
+      baseInput({
+        summaries: [ok({})],
+        totalMessageCount: 12,
+        aggregatedLinks: [
+          { url: 'https://example.com/a', description: 'статья A' },
+          { url: 'https://example.com/b', description: 'статья B' },
         ],
-        messageCount: 18,
       }),
-    ];
-    const out = formatThreadSummaryPost({
-      summaries,
-      titles: new Map([[100, 'T']]),
-      date: new Date(),
-    }).join('\n');
-    expect(out).toContain('👥 Маша·Петя·Аня · 💬 18');
+    ).join('\n');
+    expect(out).toContain('Интересные ссылки:');
+    expect(out).toContain('<a href="https://example.com/a">статья A</a>');
+    expect(out).toContain('<a href="https://example.com/b">статья B</a>');
   });
 
-  it('F7: participant displayName Unicode-normalised before render', () => {
-    const summaries = [
-      ok({ participants: [{ displayName: 'Ма​ша', messageCount: 1 }], messageCount: 1 }),
-    ];
-    const out = formatThreadSummaryPost({
-      summaries,
-      titles: new Map([[100, 'T']]),
-      date: new Date(),
-    }).join('\n');
-    expect(out).toContain('Маша');
-    expect(out).not.toContain('Ма​ша');
+  it('FT-L2: aggregatedLinks empty → no Интересные ссылки section', () => {
+    const out = formatThreadSummaryPost(
+      baseInput({
+        summaries: [ok({})],
+        totalMessageCount: 12,
+        aggregatedLinks: [],
+      }),
+    ).join('\n');
+    expect(out).not.toContain('Интересные ссылки:');
   });
 
-  it('F8: footer with mixed skipped — `тихо: N тредов`', () => {
-    const summaries: ThreadSummary[] = [
-      ok({ threadId: 1, messageCount: 10 }),
-      ok({ threadId: 2, messageCount: 8 }),
-      skip('low-volume', 3),
-      skip('low-volume', 4),
-      skip('llm-error', 5),
-    ];
-    const titles = new Map([
-      [1, 'T1'],
-      [2, 'T2'],
-    ]);
-    const out = formatThreadSummaryPost({ summaries, titles, date: new Date() }).join('\n');
-    expect(out).toContain('тихо: 3 тредов');
+  it('FT-L3: link with url containing `"` is silently dropped (HTML attribute injection guard)', () => {
+    const out = formatThreadSummaryPost(
+      baseInput({
+        summaries: [ok({})],
+        totalMessageCount: 12,
+        aggregatedLinks: [
+          { url: 'https://safe.example.com', description: 'safe' },
+          { url: 'https://evil.example.com" onclick="alert(1)', description: 'evil' },
+        ],
+      }),
+    ).join('\n');
+    expect(out).toContain('https://safe.example.com');
+    expect(out).not.toContain('evil.example.com');
+    expect(out).not.toContain('onclick=');
   });
 
-  it('F9: empty-digest — all skipped → `тихо: N из N` (D-35)', () => {
-    const summaries = [
-      skip('low-volume', 1),
-      skip('low-volume', 2),
-      skip('low-volume', 3),
-      skip('low-volume', 4),
-    ];
-    const out = formatThreadSummaryPost({ summaries, titles: new Map(), date: new Date() });
+  it('FT-L4: link description with `<` and `&` is escaped', () => {
+    const out = formatThreadSummaryPost(
+      baseInput({
+        summaries: [ok({})],
+        totalMessageCount: 12,
+        aggregatedLinks: [{ url: 'https://example.com', description: 'A & <b>B</b>' }],
+      }),
+    ).join('\n');
+    expect(out).toContain('A &amp; &lt;b&gt;B&lt;/b&gt;');
+  });
+
+  it('FT-FOOT: last non-empty line of last chunk is `#dailysummary`', () => {
+    const chunks = formatThreadSummaryPost(
+      baseInput({
+        summaries: [ok({})],
+        totalMessageCount: 12,
+        aggregatedLinks: [{ url: 'https://example.com', description: 'd' }],
+      }),
+    );
+    const last = chunks[chunks.length - 1]!;
+    const lines = last.split('\n').filter((l) => l.trim().length > 0);
+    expect(lines[lines.length - 1]).toBe('#dailysummary');
+  });
+
+  it('FT-EDGE-1: zero summaries → single chunk with header + #dailysummary only', () => {
+    const out = formatThreadSummaryPost(
+      baseInput({
+        summaries: [],
+        totalMessageCount: 0,
+      }),
+    );
     expect(out.length).toBe(1);
-    expect(out[0]).toContain('тихо: 4 из 4');
+    const chunk = out[0]!;
+    expect(chunk).toMatch(/^📆 Что обсуждалось вчера/);
+    expect(chunk).toContain('#dailysummary');
+    expect(chunk).not.toContain('Всего было написано');
+    expect(chunk).not.toContain('Интересные ссылки:');
   });
 
-  it('F10: zero tracked threads → header only', () => {
-    const out = formatThreadSummaryPost({ summaries: [], titles: new Map(), date: new Date() });
+  it('FT-EDGE-2: all skipped → header + total + footer (no topic lines, no Интересные section)', () => {
+    const out = formatThreadSummaryPost(
+      baseInput({
+        summaries: [skip('low-volume', 1), skip('low-volume', 2), skip('low-volume', 3)],
+        totalMessageCount: 0,
+      }),
+    );
     expect(out.length).toBe(1);
-    expect(out[0]).toMatch(/^<b>🧵 Сводки тредов/);
-    expect(out[0]).not.toContain('тихо:');
+    const chunk = out[0]!;
+    expect(chunk).toMatch(/^📆 Что обсуждалось вчера/);
+    expect(chunk).toContain('Всего было написано 0 сообщений');
+    expect(chunk).toContain('#dailysummary');
+    expect(chunk).not.toContain('https://t.me/c/');
+    expect(chunk).not.toContain('Интересные ссылки:');
   });
 
-  it('F11: splitter — multi-chunk, each ≤ MAX_CHUNK_LENGTH, no mid-section split', () => {
-    const longBullet = 'а'.repeat(120);
-    const summaries: ThreadSummary[] = Array.from({ length: 6 }, (_, i) =>
+  it('FT-SPLIT: many threads with very long titles → multiple chunks each ≤ MAX_CHUNK_LENGTH; footer only on last', () => {
+    // 30 threads, each title at the schema max (100 chars) → each topic line ≈
+    // 160 chars; 30 lines + separators ≈ 5000 chars > 4096 → forces a split.
+    const longTitle = 'я'.repeat(100); // schema max
+    const summaries: ThreadSummary[] = Array.from({ length: 30 }, (_, i) =>
       ok({
         threadId: i + 1,
+        firstMessageId: 1000 + i,
         messageCount: 100 - i,
-        headline: 'Обсуждали тему '.repeat(3).trim(),
-        bullets: [longBullet, longBullet, longBullet, longBullet, longBullet, longBullet],
-        participants: [{ displayName: `User${i}`, messageCount: 5 }],
+        title: longTitle,
       }),
     );
-    const titles = new Map(
-      Array.from({ length: 6 }, (_, i) => [i + 1, `Thread${i + 1}`] as const),
+    const chunks = formatThreadSummaryPost(
+      baseInput({
+        summaries,
+        totalMessageCount: summaries.reduce(
+          (acc, s) => acc + (s.skipped ? 0 : s.messageCount),
+          0,
+        ),
+      }),
     );
-    const chunks = formatThreadSummaryPost({ summaries, titles, date: new Date() });
     expect(chunks.length).toBeGreaterThan(1);
     for (const c of chunks) {
       expect(c.length).toBeLessThanOrEqual(MAX_CHUNK_LENGTH);
     }
-    const all = chunks.join('\n');
-    for (let i = 1; i <= 6; i++) {
-      expect(all).toContain(`Thread${i}`);
+    // Footer on last chunk only.
+    const tail = chunks[chunks.length - 1]!.split('\n').filter((l) => l.trim().length > 0);
+    expect(tail[tail.length - 1]).toBe('#dailysummary');
+    for (let i = 0; i < chunks.length - 1; i++) {
+      expect(chunks[i]).not.toContain('#dailysummary');
     }
-  });
-
-  it('F13: open questions block conditional', () => {
-    const withOQ = [ok({ openQuestions: ['кто решает?'] })];
-    const withoutOQ = [ok({ openQuestions: [] })];
-    const titles = new Map([[100, 'T']]);
-    const date = new Date();
-    const oOut = formatThreadSummaryPost({ summaries: withOQ, titles, date }).join('\n');
-    const noOut = formatThreadSummaryPost({ summaries: withoutOQ, titles, date }).join('\n');
-    expect(oOut).toContain('Открытые вопросы:');
-    expect(oOut).toContain('— кто решает?');
-    expect(noOut).not.toContain('Открытые вопросы:');
-  });
-
-  it('F14: missing title in titles Map → fallback "Тред #N"', () => {
-    const summaries = [ok({ threadId: 999 })];
-    const titles = new Map<number, string>();
-    const out = formatThreadSummaryPost({ summaries, titles, date: new Date() }).join('\n');
-    expect(out).toContain('Тред #999');
+    // All threads represented across chunks (no mid-line split).
+    const all = chunks.join('\n');
+    for (let i = 0; i < 30; i++) {
+      expect(all).toContain(`/${1000 + i}">${100 - i} сообщений</a>`);
+    }
   });
 });
