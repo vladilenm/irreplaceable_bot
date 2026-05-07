@@ -6,3 +6,4 @@ data/
 .env.development
 .env.production
 docker-compose.override.yml
+.claude/worktrees
