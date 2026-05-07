@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-04-27)
 Phase: 07
 Plan: Not started
 Status: Executing Phase 07
-Last activity: 2026-05-03 - Completed quick task 260503-cq1: surface Telegram sendMessage error details in pino msg for Timeweb dashboard visibility
+Last activity: 2026-05-07 - Completed quick task 260507-cni: Переход thread-summary на topic-style формат
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -133,6 +133,7 @@ None.
 | 260501-g11 | Add environment block to docker-compose.yml so Timeweb sanitizer forwards dashboard env vars to container (fixes BOT_TOKEN crash loop) | 2026-05-01 | ca07eb6 | [260501-g11-add-environment-section-to-docker-compos](./quick/260501-g11-add-environment-section-to-docker-compos/) |
 | 260501-h3t | Copy config/ and prompts/ into prod Docker stage and unblock prompts/*.md in .dockerignore so runtime asset reads (feeds.json, curator.md, thread-summarizer.md) resolve in container | 2026-05-01 | 7906c66 | [260501-h3t-copy-config-and-prompts-into-dockerfile-](./quick/260501-h3t-copy-config-and-prompts-into-dockerfile-/) |
 | 260503-cq1 | Diagnostic patch: surface Telegram sendMessage error details (error_code, description, chatId, threadId) in pino msg so Timeweb dashboard exposes root cause of `Telegram sendMessage failed after retry` | 2026-05-03 | 53d3329 | [260503-cq1-diagnostic-patch-surface-telegram-sendme](./quick/260503-cq1-diagnostic-patch-surface-telegram-sendme/) |
+| 260507-cni | Переход thread-summary на topic-style формат: schema {emoji,title,links}, новый formatter с t.me/c deep-links и секцией «Интересные ссылки», futer #dailysummary | 2026-05-07 | 96fe1b8 | [260507-cni-thread-summary-topic-style](./quick/260507-cni-thread-summary-topic-style/) |
 
 ### Roadmap Evolution
 
