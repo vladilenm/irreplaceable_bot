@@ -50,7 +50,6 @@ describe('summarizeThread gating (SUM-02 + SUM-04)', () => {
       threadId: 1,
       windowHours: 24,
       messages: [fakeMsg(1), fakeMsg(2), fakeMsg(3), fakeMsg(4)],
-      firstMessageId: 1,
     });
     expect(result).toMatchObject({ skipped: true, reason: 'low-volume' });
     expect(anthropicCreate).not.toHaveBeenCalled();
@@ -62,7 +61,6 @@ describe('summarizeThread gating (SUM-02 + SUM-04)', () => {
       threadId: 1,
       windowHours: 24,
       messages: [],
-      firstMessageId: 1,
     });
     expect(result).toMatchObject({ skipped: true, reason: 'low-volume' });
     expect(anthropicCreate).not.toHaveBeenCalled();
@@ -77,7 +75,6 @@ describe('summarizeThread gating (SUM-02 + SUM-04)', () => {
       threadId: 1,
       windowHours: 24,
       messages,
-      firstMessageId: 1,
     });
     expect(result).toMatchObject({ skipped: true, reason: 'transcript-too-large' });
     expect(anthropicCreate).not.toHaveBeenCalled();
@@ -85,32 +82,26 @@ describe('summarizeThread gating (SUM-02 + SUM-04)', () => {
   });
 
   it('threshold boundary: exactly LOW_VOLUME_THRESHOLD messages does NOT skip on low-volume (would attempt LLM)', async () => {
-    // We expect this NOT to be low-volume skip; will fall through to LLM. We don't care
-    // about the LLM result — assert it's not the low-volume skip path.
+    // quick-260511-fkn: mock LLM returns the new topics-array shape AND picks
+    // firstMessageId from the input id-set so post-validation passes.
+    const validShape = {
+      topics: [
+        { emoji: '💻', title: 't', messageCount: 5, firstMessageId: 1, links: [] },
+      ],
+    };
     anthropicCreate.mockResolvedValueOnce({
       content: [
-        {
-          type: 'tool_use',
-          name: 'submit_summary',
-          input: { emoji: '💻', title: 't', links: [] },
-        },
+        { type: 'tool_use', name: 'submit_summary', input: validShape },
       ],
     });
     openaiCreate.mockResolvedValueOnce({
-      choices: [
-        {
-          message: {
-            content: JSON.stringify({ emoji: '💻', title: 't', links: [] }),
-          },
-        },
-      ],
+      choices: [{ message: { content: JSON.stringify(validShape) } }],
     });
     const messages = Array.from({ length: LOW_VOLUME_THRESHOLD }, (_, i) => fakeMsg(i + 1));
     const result = await summarizeThread({
       threadId: 1,
       windowHours: 24,
       messages,
-      firstMessageId: 1,
     });
     if (result.skipped) {
       expect(result.reason).not.toBe('low-volume');

@@ -60,7 +60,7 @@ describe('Adversarial fixture — prompt-injection resistance (D-20..D-23, SUM-0
   });
 
   it('ADV-1: jailbreak that bypasses prompt-side defences is hard-rejected by Zod (schema-invalid skip)', async () => {
-    // LLM "succumbs" and returns garbage tool-use payload (no headline, no bullets)
+    // LLM "succumbs" and returns garbage tool-use payload (no topics field at all).
     anthropicCreate.mockResolvedValueOnce({
       content: [
         { type: 'tool_use', name: 'submit_summary', input: { leak: 'pwned' } },
@@ -75,7 +75,43 @@ describe('Adversarial fixture — prompt-injection resistance (D-20..D-23, SUM-0
       threadId: 100,
       windowHours: 24,
       messages,
-      firstMessageId: 1,
+    });
+
+    expect(result).toMatchObject({ skipped: true, reason: 'schema-invalid' });
+  });
+
+  it('ADV-1b (quick-260511-fkn): jailbreak returning valid shape but hallucinated firstMessageId is hard-rejected', async () => {
+    // Parsed fixture tgMessageIds start at 1000 and run 1000..1005 (6 messages).
+    // LLM "succumbs" and returns a shape-valid topics array citing
+    // firstMessageId=42 which is NOT in the input id-set → schema-invalid skip
+    // (NOT llm-error — the model is hallucinating, this is a regression signal).
+    const validShapeHallucinatedId = {
+      topics: [
+        { emoji: '💻', title: 'pwn', messageCount: 5, firstMessageId: 42, links: [] },
+      ],
+    };
+    anthropicCreate.mockResolvedValueOnce({
+      content: [
+        {
+          type: 'tool_use',
+          name: 'submit_summary',
+          input: validShapeHallucinatedId,
+        },
+      ],
+    });
+    openaiCreate.mockResolvedValueOnce({
+      choices: [
+        {
+          message: { content: JSON.stringify(validShapeHallucinatedId) },
+        },
+      ],
+    });
+
+    const messages = parseFixture();
+    const result = await summarizeThread({
+      threadId: 100,
+      windowHours: 24,
+      messages,
     });
 
     expect(result).toMatchObject({ skipped: true, reason: 'schema-invalid' });
@@ -93,14 +129,17 @@ describe('Adversarial fixture — prompt-injection resistance (D-20..D-23, SUM-0
     expect(startMatches.length).toBe(1);
     expect(endMatches.length).toBe(1);
 
-    // (2) All fixture lines appear between delimiters in order (using pre-escape probe).
+    // (2) All fixture message bodies appear between delimiters in order. The
+    // line prefix is now `[id=N HH:MM] Name: ` (quick-260511-fkn) — probe the
+    // message TEXT after the `: ` separator, not the line start.
     const startIdx = out.indexOf('<<<TRANSCRIPT_START>>>');
     const endIdx = out.indexOf('<<<TRANSCRIPT_END>>>');
     expect(endIdx).toBeGreaterThan(startIdx);
     const between = out.slice(startIdx, endIdx);
     let cursor = 0;
     for (const m of messages) {
-      const fragment = m.text.slice(0, 10).replace(/[<>&]/g, ''); // pre-escape probe
+      // Pre-escape probe — strip HTML-meta chars (the formatter escapes them).
+      const fragment = m.text.slice(0, 10).replace(/[<>&]/g, '');
       const pos = between.indexOf(fragment, cursor);
       expect(pos).toBeGreaterThanOrEqual(0);
       cursor = pos;
@@ -119,5 +158,9 @@ describe('Adversarial fixture — prompt-injection resistance (D-20..D-23, SUM-0
       const id = String(123456789 + i);
       expect(out).not.toContain(id);
     }
+
+    // (6) quick-260511-fkn: the [id=N ...] prefix DOES appear (numeric tgMessageId
+    // is exposed, by design, so the LLM can cite it in topic.firstMessageId).
+    expect(out).toContain('[id=1000 ');
   });
 });

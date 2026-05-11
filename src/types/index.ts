@@ -86,17 +86,31 @@ export interface ForgottenUser {
 }
 
 // ─── v2.0 Phase 6 — Thread summary pipeline (D-12, D-32, D-28) ───
-// quick-260507-cni — topic-style format: {emoji, title, links} replaces the
-// previous per-thread section shape; firstMessageId added for clickable
-// Telegram t.me/c/ links into the originating thread.
+// quick-260507-cni — topic-style format: {emoji, title, links} introduced.
+// quick-260511-fkn — topics-array contract: one thread → 1..5 sub-topics, each
+// with its own emoji/title/messageCount/firstMessageId/links. LLM picks
+// firstMessageId per-topic from the [id=N ...] prefixes embedded in the
+// transcript (post-validated against the input tgMessageId set).
+
+/**
+ * A single sub-theme inside a thread. The LLM splits a thread into 1..5 of
+ * these; the formatter renders one line per topic and sorts the flat list of
+ * all topics across all threads by messageCount DESC.
+ */
+export interface Topic {
+  emoji: string;                                                   // 1 unicode emoji
+  title: string;                                                   // ≤100 chars
+  messageCount: number;                                            // LLM self-reported integer ≥1
+  firstMessageId: number;                                          // MUST be in the input tgMessageId set (post-validated)
+  links: Array<{ url: string; description: string }>;              // 0..5 items
+}
 
 /**
  * What the LLM returns. Schema-validated by Zod in summarizer.service.ts.
+ * Wrapper around a topics array (1..5).
  */
 export interface LLMSummaryOutput {
-  emoji: string;                                                   // 1 unicode emoji
-  title: string;                                                   // ≤100 chars
-  links: Array<{ url: string; description: string }>;              // 0..5 items
+  topics: Topic[];                                                 // 1..5 items
 }
 
 export type ThreadSummary =
@@ -104,11 +118,9 @@ export type ThreadSummary =
       skipped: false;
       threadId: number;
       windowHours: number;
+      /** Input-window message count (NOT sum of topic counts). Source-of-truth. */
       messageCount: number;
-      emoji: string;
-      title: string;
-      links: Array<{ url: string; description: string }>;
-      firstMessageId: number;
+      topics: Topic[];                                             // 1..5
     }
   | {
       skipped: true;

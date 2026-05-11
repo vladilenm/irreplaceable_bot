@@ -18,44 +18,75 @@ const SUMMARIZER_PROMPT = readFileSync(
   'utf-8',
 );
 
-/** Zod schema for LLM-side output (LLMSummaryOutput). quick-260507-cni topic-style contract. */
+/**
+ * Zod schema for LLM-side output (LLMSummaryOutput).
+ * quick-260511-fkn topics-array contract: 1..5 sub-topics per thread.
+ */
 export const ThreadSummarySchema = z.object({
-  emoji: z.string().min(1),
-  title: z.string().min(1).max(100),
-  links: z
+  topics: z
     .array(
       z.object({
-        url: z.string().url(),
-        description: z.string().min(1).max(80),
+        emoji: z.string().min(1),
+        title: z.string().min(1).max(100),
+        messageCount: z.number().int().min(1),
+        firstMessageId: z.number().int(),
+        links: z
+          .array(
+            z.object({
+              url: z.string().url(),
+              description: z.string().min(1).max(80),
+            }),
+          )
+          .max(5),
       }),
     )
+    .min(1)
     .max(5),
 });
 
 /**
  * JSON Schema mirror of ThreadSummarySchema for provider-native enforcement.
  * Anthropic uses this as tools[0].input_schema; OpenAI as response_format.json_schema.schema.
+ * quick-260511-fkn: mirrors topics-array constraints (1..5 with per-item shape).
  */
 export const THREAD_SUMMARIZER_JSON_SCHEMA = {
   type: 'object' as const,
   properties: {
-    emoji: { type: 'string' as const, minLength: 1 },
-    title: { type: 'string' as const, minLength: 1, maxLength: 100 },
-    links: {
+    topics: {
       type: 'array' as const,
+      minItems: 1,
       maxItems: 5,
       items: {
         type: 'object' as const,
         properties: {
-          url: { type: 'string' as const, format: 'uri' },
-          description: { type: 'string' as const, minLength: 1, maxLength: 80 },
+          emoji: { type: 'string' as const, minLength: 1 },
+          title: { type: 'string' as const, minLength: 1, maxLength: 100 },
+          messageCount: { type: 'integer' as const, minimum: 1 },
+          firstMessageId: { type: 'integer' as const },
+          links: {
+            type: 'array' as const,
+            maxItems: 5,
+            items: {
+              type: 'object' as const,
+              properties: {
+                url: { type: 'string' as const, format: 'uri' },
+                description: {
+                  type: 'string' as const,
+                  minLength: 1,
+                  maxLength: 80,
+                },
+              },
+              required: ['url', 'description'],
+              additionalProperties: false as const,
+            },
+          },
         },
-        required: ['url', 'description'],
+        required: ['emoji', 'title', 'messageCount', 'firstMessageId', 'links'],
         additionalProperties: false as const,
       },
     },
   },
-  required: ['emoji', 'title', 'links'],
+  required: ['topics'],
   additionalProperties: false as const,
 };
 
@@ -94,10 +125,13 @@ export function buildTranscript(messages: CapturedMessage[]): string {
   for (const m of messages) {
     const displayName = normalizeDisplayName(m.authorName);
     const safeText = escapeForTranscript(m.text);
-    // Format: [HH:MM] DisplayName: text
-    // No author_id, no chat_id, no message_id in body (PII minimisation).
+    // Format: [id=<tgMessageId> HH:MM] DisplayName: text
+    // quick-260511-fkn: tgMessageId is exposed as out-of-band [id=N ...] prefix
+    // so the LLM can cite it in topic.firstMessageId. tgMessageId is NOT PII —
+    // it is already public in t.me/c/ deep-links to every group member (T-260511-02).
+    // The numeric author_id is still NEVER included (SUM-03).
     const time = m.createdAt.slice(11, 16); // 'HH:MM' from ISO 8601
-    lines.push(`[${time}] ${displayName}: ${safeText}`);
+    lines.push(`[id=${m.tgMessageId} ${time}] ${displayName}: ${safeText}`);
   }
   const transcriptBody = lines.join('\n');
   return `${TRANSCRIPT_START}\n${transcriptBody}\n${TRANSCRIPT_END}\n\n${REAFFIRM}`;
@@ -212,7 +246,6 @@ export interface SummarizeThreadInput {
   threadId: number;
   windowHours: number;
   messages: CapturedMessage[];
-  firstMessageId: number;
 }
 
 /**
@@ -225,7 +258,7 @@ export interface SummarizeThreadInput {
  * - Display names NFC-normalised + RTL/zero-width/control stripped (SUM-07)
  */
 export async function summarizeThread(input: SummarizeThreadInput): Promise<ThreadSummary> {
-  const { threadId, windowHours, messages, firstMessageId } = input;
+  const { threadId, windowHours, messages } = input;
   const messageCount = messages.length;
 
   // Gate 1: low-volume skip (SUM-02). LLM client NEVER constructed.
@@ -297,19 +330,49 @@ export async function summarizeThread(input: SummarizeThreadInput): Promise<Thre
     return { skipped: true, threadId, windowHours, messageCount, reason: 'schema-invalid' };
   }
 
-  // Server-side truncation safeguard (defensive even though schema enforces ≤100).
   const validated = parsed.data;
-  const title =
-    validated.title.length > 100
-      ? `${validated.title.slice(0, 99)}…`
-      : validated.title;
 
+  // quick-260511-fkn: post-validate each topic.firstMessageId against the
+  // input tgMessageId set (T-260511-01). A model that returns an id outside
+  // the input set is hallucinating — route it to schema-invalid (NOT
+  // llm-error) so operator logs distinguish model regressions from transport
+  // failures.
+  const inputIds = new Set<number>(messages.map((m) => m.tgMessageId));
+  for (const topic of validated.topics) {
+    if (!inputIds.has(topic.firstMessageId)) {
+      logger.warn(
+        {
+          event: 'schema-invalid-hallucinated-id',
+          threadId,
+          offendingId: topic.firstMessageId,
+          inputIdsSize: inputIds.size,
+          model: config.aiModel,
+        },
+        'summarizeThread: schema-invalid (LLM hallucinated firstMessageId not in input set)',
+      );
+      return {
+        skipped: true,
+        threadId,
+        windowHours,
+        messageCount,
+        reason: 'schema-invalid',
+      };
+    }
+  }
+
+  // Server-side truncation safeguard (defensive even though schema enforces ≤100), per-topic.
+  const topics = validated.topics.map((t) => ({
+    ...t,
+    title: t.title.length > 100 ? `${t.title.slice(0, 99)}…` : t.title,
+  }));
+
+  const aggregateLinkCount = topics.reduce((acc, t) => acc + t.links.length, 0);
   logger.info(
     {
       threadId,
       messageCount,
-      titleLength: title.length,
-      linkCount: validated.links.length,
+      topicCount: topics.length,
+      aggregateLinkCount,
       model: config.aiModel,
       provider: isClaude(config.aiModel) ? 'anthropic' : 'openai-compatible',
       latencyMs,
@@ -323,10 +386,7 @@ export async function summarizeThread(input: SummarizeThreadInput): Promise<Thre
     threadId,
     windowHours,
     messageCount,
-    emoji: validated.emoji,
-    title,
-    links: validated.links,
-    firstMessageId,
+    topics,
   };
 }
 
