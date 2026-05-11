@@ -73,6 +73,10 @@ import {
   markThreadSummaryPublished,
 } from './thread-summary.service.js';
 
+// quick-260511-fkn: ThreadSummary now carries a topics array. okSummary keeps
+// its old positional signature for back-compat with all existing tests — it
+// produces a single-topic summary where the positional `links` lands inside
+// topics[0].links. okSummaryMulti covers the multi-topic case.
 const okSummary = (
   threadId: number,
   mc = 10,
@@ -82,10 +86,39 @@ const okSummary = (
   threadId,
   windowHours: 24,
   messageCount: mc,
-  emoji: '💻',
-  title: 'topic',
-  links,
-  firstMessageId: 1000 + threadId,
+  topics: [
+    {
+      emoji: '💻',
+      title: 'topic',
+      messageCount: mc,
+      firstMessageId: 1000 + threadId,
+      links,
+    },
+  ],
+});
+
+const okSummaryMulti = (
+  threadId: number,
+  topics: Array<{
+    messageCount: number;
+    firstMessageId: number;
+    title?: string;
+    emoji?: string;
+    links?: Array<{ url: string; description: string }>;
+  }>,
+): ThreadSummary => ({
+  skipped: false,
+  threadId,
+  windowHours: 24,
+  // messageCount is input-window count, NOT sum of topic counts (per target_shape).
+  messageCount: topics.reduce((acc, t) => acc + t.messageCount, 0),
+  topics: topics.map((t) => ({
+    emoji: t.emoji ?? '💻',
+    title: t.title ?? 'topic',
+    messageCount: t.messageCount,
+    firstMessageId: t.firstMessageId,
+    links: t.links ?? [],
+  })),
 });
 
 // Helper: synthesise a captured-message stub with a specific tgMessageId.
@@ -216,7 +249,7 @@ describe('runThreadSummaryPipeline (DLV-06, DLV-10, D-32..D-35)', () => {
     expect(call?.windowHours).toBe(48);
   });
 
-  it('O7-NEW: firstMessageId is MIN(tgMessageId) of selectMessagesInWindow result', async () => {
+  it('O7-CONTRACT (quick-260511-fkn): orchestrator calls summarizeThread WITHOUT firstMessageId (LLM picks per topic)', async () => {
     mockListTrackedThreadIds.mockReturnValue([100]);
     mockSelectMessagesInWindow.mockReturnValue([
       msg(7475),
@@ -225,14 +258,40 @@ describe('runThreadSummaryPipeline (DLV-06, DLV-10, D-32..D-35)', () => {
       msg(7480),
       msg(7458),
     ]);
-    mockSummarizeThread.mockImplementation(
-      async (input: { firstMessageId: number; threadId: number }) => {
-        expect(input.firstMessageId).toBe(7458);
-        return okSummary(input.threadId, 5);
-      },
+    mockSummarizeThread.mockImplementation(async (input: { threadId: number }) =>
+      okSummary(input.threadId, 5),
     );
     await runThreadSummaryPipeline();
     expect(mockSummarizeThread).toHaveBeenCalled();
+    const call = mockSummarizeThread.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(call).toBeDefined();
+    expect(call.firstMessageId).toBeUndefined();
+    expect(call.threadId).toBe(100);
+    expect(call.windowHours).toBe(24);
+    expect(Array.isArray(call.messages)).toBe(true);
+  });
+
+  it('O7-MULTI (quick-260511-fkn): a single thread with two topics renders TWO topic lines, each with its own deep-link', async () => {
+    mockListTrackedThreadIds.mockReturnValue([100]);
+    mockSelectMessagesInWindow.mockReturnValue(
+      Array.from({ length: 8 }, (_, i) => msg(7000 + i)),
+    );
+    mockSummarizeThread.mockResolvedValue(
+      okSummaryMulti(100, [
+        { messageCount: 6, firstMessageId: 7001, title: 'multi-topic-A' },
+        { messageCount: 2, firstMessageId: 7005, title: 'multi-topic-B' },
+      ]),
+    );
+    const r = await runThreadSummaryPipeline();
+    const text = r.chunks.join('\n');
+    // Both topic lines present.
+    expect(text).toContain('multi-topic-A');
+    expect(text).toContain('multi-topic-B');
+    // Each line carries its OWN firstMessageId in the deep-link.
+    expect(text).toMatch(/\/100\/7001">6 сообщений<\/a>/);
+    expect(text).toMatch(/\/100\/7005">2 сообщений<\/a>/);
+    // multi-topic-A (mc=6) precedes multi-topic-B (mc=2) by flat sort DESC.
+    expect(text.indexOf('multi-topic-A')).toBeLessThan(text.indexOf('multi-topic-B'));
   });
 
   it('O8-AGG: aggregated links deduped case-insensitively across non-skipped summaries', async () => {

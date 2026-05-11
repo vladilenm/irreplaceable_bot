@@ -23,7 +23,9 @@
 // - T-260507-02: escapeHtml() over title and description (HTML body escapes).
 
 import { logger } from '../../utils/logger.js';
-import type { ThreadSummary } from '../../types/index.js';
+import type { ThreadSummary, Topic } from '../../types/index.js';
+
+type TopicWithThread = Topic & { threadId: number };
 
 export const MAX_CHUNK_LENGTH = 4096;
 const FOOTER_TAG = '#dailysummary';
@@ -45,11 +47,11 @@ function stripChatIdPrefix(chatId: string): string {
 }
 
 function buildTopicLine(
-  s: Extract<ThreadSummary, { skipped: false }>,
+  t: TopicWithThread,
   chatIdNoPrefix: string,
 ): string {
-  const url = `https://t.me/c/${chatIdNoPrefix}/${s.threadId}/${s.firstMessageId}`;
-  return `${s.emoji} ${escapeHtml(s.title)} (<a href="${url}">${s.messageCount} сообщений</a>)`;
+  const url = `https://t.me/c/${chatIdNoPrefix}/${t.threadId}/${t.firstMessageId}`;
+  return `${t.emoji} ${escapeHtml(t.title)} (<a href="${url}">${t.messageCount} сообщений</a>)`;
 }
 
 function buildLinkLine(link: { url: string; description: string }): string | null {
@@ -89,16 +91,21 @@ export function formatThreadSummaryPost(input: FormatThreadSummaryInput): string
 
   const totalLine = `Всего было написано ${totalMessageCount} сообщений`;
 
-  const nonSkipped = summaries
-    .filter((s): s is Extract<ThreadSummary, { skipped: false }> => s.skipped === false)
-    .sort((a, b) => b.messageCount - a.messageCount);
+  // quick-260511-fkn: flatten summaries → topics, then sort the FLAT list by
+  // messageCount DESC across ALL topics from ALL threads. The most-active
+  // sub-themes surface regardless of which forum-topic they originated in.
+  const allTopics: TopicWithThread[] = summaries.flatMap(
+    (s): TopicWithThread[] =>
+      s.skipped ? [] : s.topics.map((t) => ({ ...t, threadId: s.threadId })),
+  );
+  allTopics.sort((a, b) => b.messageCount - a.messageCount);
 
-  // Edge case: all skipped → header + total + footer only.
-  if (nonSkipped.length === 0) {
+  // Edge case: all skipped (or zero topics, defensive) → header + total + footer only.
+  if (allTopics.length === 0) {
     return [`${headerLine}\n${totalLine}${SECTION_SEPARATOR}${FOOTER_TAG}`];
   }
 
-  const topicLines = nonSkipped.map((s) => buildTopicLine(s, chatIdNoPrefix));
+  const topicLines = allTopics.map((t) => buildTopicLine(t, chatIdNoPrefix));
   const linkLines = aggregatedLinks
     .map(buildLinkLine)
     .filter((l): l is string => l !== null);

@@ -1,9 +1,9 @@
 // Phase 6 orchestrator (D-32..D-35, DLV-06, DLV-07, DLV-10).
-// quick-260507-cni: topic-style format. Per-thread title resolution dropped
-// (no longer rendered). Computes firstMessageId as MIN(tgMessageId) across
-// the window so the formatter can build clickable t.me/c/{chat}/{thread}/
-// {firstMessageId} deep-links. Aggregates+dedups links across non-skipped
-// summaries before passing to the formatter.
+// quick-260507-cni: topic-style format.
+// quick-260511-fkn: LLM-side segmentation. The orchestrator no longer computes
+// firstMessageId — the LLM picks one per topic (post-validated against the
+// input tgMessageId set). Link aggregation now walks one extra nesting level:
+// summaries[i].topics[j].links.
 
 import { logger, errMsg } from '../../utils/logger.js';
 import { config } from '../../config.js';
@@ -120,19 +120,10 @@ export async function runThreadSummaryPipeline(
     // Per-thread try/catch (D-34) — one fail doesn't abort cycle.
     try {
       const messages = selectMessagesInWindow(threadId, sinceIso);
-      // firstMessageId is MIN(tgMessageId) across the window — used by the
-      // formatter to build a clickable t.me/c/ deep-link. Telegram may deliver
-      // messages out-of-order vs created_at, so we cannot rely on messages[0].
-      // Empty array → 0 sentinel (low-volume skip will fire before this is used).
-      const firstMessageId =
-        messages.length === 0
-          ? 0
-          : messages.reduce(
-              (min, m) => (m.tgMessageId < min ? m.tgMessageId : min),
-              messages[0]!.tgMessageId,
-            );
-
-      const summary = await summarizeThread({ threadId, windowHours, messages, firstMessageId });
+      // quick-260511-fkn: the LLM picks firstMessageId per topic from the
+      // [id=N ...] prefixes in the transcript. Orchestrator no longer computes
+      // MIN(tgMessageId).
+      const summary = await summarizeThread({ threadId, windowHours, messages });
       summaries.push(summary);
 
       if (summary.skipped) {
@@ -158,20 +149,21 @@ export async function runThreadSummaryPipeline(
     }
   }
 
-  // quick-260507-cni: aggregate links across non-skipped summaries; dedup by
-  // trimmed lowercased url, preserving first occurrence (and its description).
-  // The HTML attribute injection guard (drop urls containing `"`) lives in the
-  // formatter; here we only collapse duplicates so multiple threads citing the
-  // same article render one Интересные ссылки entry.
+  // quick-260511-fkn: aggregate links across non-skipped summaries. The walk
+  // is now three-level (summaries → topics → links) because the LLM contract
+  // moved from one-{emoji,title,links}-per-thread to N-topics-per-thread.
+  // Dedup key + first-occurrence-wins semantics unchanged.
   const seenUrls = new Set<string>();
   const aggregatedLinks: Array<{ url: string; description: string }> = [];
   for (const s of summaries) {
     if (s.skipped) continue;
-    for (const link of s.links) {
-      const key = link.url.trim().toLowerCase();
-      if (key === '' || seenUrls.has(key)) continue;
-      seenUrls.add(key);
-      aggregatedLinks.push(link);
+    for (const t of s.topics) {
+      for (const link of t.links) {
+        const key = link.url.trim().toLowerCase();
+        if (key === '' || seenUrls.has(key)) continue;
+        seenUrls.add(key);
+        aggregatedLinks.push(link);
+      }
     }
   }
 
