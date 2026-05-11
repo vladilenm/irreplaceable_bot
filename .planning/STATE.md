@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-04-27)
 Phase: 07
 Plan: Not started
 Status: Executing Phase 07
-Last activity: 2026-05-07 - Completed quick task 260507-cni: Переход thread-summary на topic-style формат
+Last activity: 2026-05-11 - Completed quick task 260511-fkn: Сегментация под-тем внутри треда в thread-summary (LLM-side segmentation)
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -134,6 +134,7 @@ None.
 | 260501-h3t | Copy config/ and prompts/ into prod Docker stage and unblock prompts/*.md in .dockerignore so runtime asset reads (feeds.json, curator.md, thread-summarizer.md) resolve in container | 2026-05-01 | 7906c66 | [260501-h3t-copy-config-and-prompts-into-dockerfile-](./quick/260501-h3t-copy-config-and-prompts-into-dockerfile-/) |
 | 260503-cq1 | Diagnostic patch: surface Telegram sendMessage error details (error_code, description, chatId, threadId) in pino msg so Timeweb dashboard exposes root cause of `Telegram sendMessage failed after retry` | 2026-05-03 | 53d3329 | [260503-cq1-diagnostic-patch-surface-telegram-sendme](./quick/260503-cq1-diagnostic-patch-surface-telegram-sendme/) |
 | 260507-cni | Переход thread-summary на topic-style формат: schema {emoji,title,links}, новый formatter с t.me/c deep-links и секцией «Интересные ссылки», futer #dailysummary | 2026-05-07 | 96fe1b8 | [260507-cni-thread-summary-topic-style](./quick/260507-cni-thread-summary-topic-style/) |
+| 260511-fkn | Сегментация под-тем внутри треда в thread-summary (LLM-side segmentation): контракт LLM → topics: Array<{emoji,title,messageCount,firstMessageId,links}> (1..5), tgMessageId в транскрипте, post-validation против set(input ids), flat-sort топиков по messageCount DESC | 2026-05-11 | 36dcb9e | [260511-fkn-thread-summary-llm-side-segmentation](./quick/260511-fkn-thread-summary-llm-side-segmentation/) |
 
 ### Roadmap Evolution
 
