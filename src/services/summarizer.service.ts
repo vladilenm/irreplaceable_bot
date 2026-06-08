@@ -18,9 +18,17 @@ const SUMMARIZER_PROMPT = readFileSync(
   'utf-8',
 );
 
+// summary-doc-260607: bullet-substance contract. A topic carries 1..5 bullets;
+// each bullet = {summary, msgId}. The LLM writes the SUBSTANCE (что решили /
+// получили / открытый вопрос) and cites the single most-representative message;
+// the formatter renders the summary AS the clickable deep-link. No more
+// per-topic messageCount / firstMessageId — links and markup are code's job.
+export const SUMMARY_MAX_LEN = 160;
+
 /**
  * Zod schema for LLM-side output (LLMSummaryOutput).
- * quick-260511-fkn topics-array contract: 1..5 sub-topics per thread.
+ * summary-doc-260607 bullet-substance contract: 1..5 topics, each with 1..5
+ * substance bullets ({summary, msgId}).
  */
 export const ThreadSummarySchema = z.object({
   topics: z
@@ -28,8 +36,15 @@ export const ThreadSummarySchema = z.object({
       z.object({
         emoji: z.string().min(1),
         title: z.string().min(1).max(100),
-        messageCount: z.number().int().min(1),
-        firstMessageId: z.number().int(),
+        bullets: z
+          .array(
+            z.object({
+              summary: z.string().min(1).max(SUMMARY_MAX_LEN),
+              msgId: z.number().int(),
+            }),
+          )
+          .min(1)
+          .max(5),
         links: z
           .array(
             z.object({
@@ -47,7 +62,7 @@ export const ThreadSummarySchema = z.object({
 /**
  * JSON Schema mirror of ThreadSummarySchema for provider-native enforcement.
  * Anthropic uses this as tools[0].input_schema; OpenAI as response_format.json_schema.schema.
- * quick-260511-fkn: mirrors topics-array constraints (1..5 with per-item shape).
+ * summary-doc-260607: mirrors topics→bullets constraints.
  */
 export const THREAD_SUMMARIZER_JSON_SCHEMA = {
   type: 'object' as const,
@@ -61,8 +76,24 @@ export const THREAD_SUMMARIZER_JSON_SCHEMA = {
         properties: {
           emoji: { type: 'string' as const, minLength: 1 },
           title: { type: 'string' as const, minLength: 1, maxLength: 100 },
-          messageCount: { type: 'integer' as const, minimum: 1 },
-          firstMessageId: { type: 'integer' as const },
+          bullets: {
+            type: 'array' as const,
+            minItems: 1,
+            maxItems: 5,
+            items: {
+              type: 'object' as const,
+              properties: {
+                summary: {
+                  type: 'string' as const,
+                  minLength: 1,
+                  maxLength: SUMMARY_MAX_LEN,
+                },
+                msgId: { type: 'integer' as const },
+              },
+              required: ['summary', 'msgId'],
+              additionalProperties: false as const,
+            },
+          },
           links: {
             type: 'array' as const,
             maxItems: 5,
@@ -81,7 +112,7 @@ export const THREAD_SUMMARIZER_JSON_SCHEMA = {
             },
           },
         },
-        required: ['emoji', 'title', 'messageCount', 'firstMessageId', 'links'],
+        required: ['emoji', 'title', 'bullets', 'links'],
         additionalProperties: false as const,
       },
     },
@@ -126,8 +157,8 @@ export function buildTranscript(messages: CapturedMessage[]): string {
     const displayName = normalizeDisplayName(m.authorName);
     const safeText = escapeForTranscript(m.text);
     // Format: [id=<tgMessageId> HH:MM] DisplayName: text
-    // quick-260511-fkn: tgMessageId is exposed as out-of-band [id=N ...] prefix
-    // so the LLM can cite it in topic.firstMessageId. tgMessageId is NOT PII —
+    // summary-doc-260607: tgMessageId is exposed as out-of-band [id=N ...] prefix
+    // so the LLM can cite it in bullet.msgId. tgMessageId is NOT PII —
     // it is already public in t.me/c/ deep-links to every group member (T-260511-02).
     // The numeric author_id is still NEVER included (SUM-03).
     const time = m.createdAt.slice(11, 16); // 'HH:MM' from ISO 8601
@@ -332,39 +363,58 @@ export async function summarizeThread(input: SummarizeThreadInput): Promise<Thre
 
   const validated = parsed.data;
 
-  // quick-260511-fkn: post-validate each topic.firstMessageId against the
-  // input tgMessageId set (T-260511-01). A model that returns an id outside
-  // the input set is hallucinating — route it to schema-invalid (NOT
-  // llm-error) so operator logs distinguish model regressions from transport
-  // failures.
+  // summary-doc-260607: post-validate each bullet.msgId against the input
+  // tgMessageId set. Per the doc ("несуществующие пункты выкинуть"), a single
+  // hallucinated bullet does NOT nuke the whole thread — drop the offending
+  // bullet, keep the rest. A topic left with zero valid bullets is dropped; if
+  // EVERY topic empties out the model is fully hallucinating → schema-invalid
+  // skip (routed to the schema bucket, NOT llm-error, so operator logs
+  // distinguish model regressions from transport failures).
   const inputIds = new Set<number>(messages.map((m) => m.tgMessageId));
-  for (const topic of validated.topics) {
-    if (!inputIds.has(topic.firstMessageId)) {
-      logger.warn(
-        {
-          event: 'schema-invalid-hallucinated-id',
-          threadId,
-          offendingId: topic.firstMessageId,
-          inputIdsSize: inputIds.size,
-          model: config.aiModel,
-        },
-        'summarizeThread: schema-invalid (LLM hallucinated firstMessageId not in input set)',
-      );
+  let droppedBullets = 0;
+  const topics = validated.topics
+    .map((t) => {
+      const bullets = t.bullets.filter((b) => {
+        if (inputIds.has(b.msgId)) return true;
+        droppedBullets++;
+        return false;
+      });
       return {
-        skipped: true,
-        threadId,
-        windowHours,
-        messageCount,
-        reason: 'schema-invalid',
+        emoji: t.emoji,
+        // Server-side truncation safeguard (defensive even though schema enforces ≤100).
+        title: t.title.length > 100 ? `${t.title.slice(0, 99)}…` : t.title,
+        bullets: bullets.map((b) => ({
+          summary:
+            b.summary.length > SUMMARY_MAX_LEN
+              ? `${b.summary.slice(0, SUMMARY_MAX_LEN - 1)}…`
+              : b.summary,
+          msgId: b.msgId,
+        })),
+        links: t.links,
       };
-    }
+    })
+    .filter((t) => t.bullets.length > 0);
+
+  if (droppedBullets > 0) {
+    logger.warn(
+      {
+        event: 'schema-invalid-hallucinated-id',
+        threadId,
+        droppedBullets,
+        inputIdsSize: inputIds.size,
+        model: config.aiModel,
+      },
+      'summarizeThread: dropped bullet(s) citing msgId not in input set (LLM hallucination)',
+    );
   }
 
-  // Server-side truncation safeguard (defensive even though schema enforces ≤100), per-topic.
-  const topics = validated.topics.map((t) => ({
-    ...t,
-    title: t.title.length > 100 ? `${t.title.slice(0, 99)}…` : t.title,
-  }));
+  if (topics.length === 0) {
+    logger.warn(
+      { event: 'schema-invalid-all-bullets-dropped', threadId, model: config.aiModel },
+      'summarizeThread: schema-invalid (every bullet cited a hallucinated msgId)',
+    );
+    return { skipped: true, threadId, windowHours, messageCount, reason: 'schema-invalid' };
+  }
 
   const aggregateLinkCount = topics.reduce((acc, t) => acc + t.links.length, 0);
   logger.info(

@@ -1,11 +1,15 @@
-// Phase 6 → quick-260507-cni topic-style formatter.
+// Phase 6 → quick-260507-cni → summary-doc-260607 bullet-substance formatter.
 // Pure function: FormatThreadSummaryInput → string[] (HTML chunks ≤ MAX_CHUNK_LENGTH).
 // Layout:
 //   📆 Что обсуждалось вчера DD.MM.YYYY
 //   Всего было написано N сообщений
 //   <blank>
-//   {emoji} {title} (<a href="https://t.me/c/{chatIdNoPrefix}/{threadId}/{firstMessageId}">{count} сообщений</a>)
-//   ... more topic lines, sorted by messageCount DESC ...
+//   {emoji} <b>{title}</b>
+//   • <a href="https://t.me/c/{chatIdNoPrefix}/{threadId}/{msgId}">{summary}</a>
+//   • <a href="...">{summary}</a>
+//   <blank>
+//   {emoji} <b>{title}</b>                                 # next topic (grouped by thread)
+//   • <a href="...">{summary}</a>
 //   <blank>
 //   Интересные ссылки:                                    # only if aggregatedLinks non-empty
 //   <a href="{url}">{description}</a>
@@ -13,14 +17,20 @@
 //   <blank>
 //   #dailysummary
 //
+// summary-doc-260607 contract change:
+// - The clickable text is now the BULLET SUMMARY (the substance), not a
+//   "N сообщений" statistic. Each bullet deep-links to its own key message.
+// - Topics are kept GROUPED BY THREAD (input order), no cross-thread sort.
+//
 // Edge cases:
 // - Zero summaries (no tracked threads): single chunk with header + footer only.
-// - All skipped: single chunk with header + total + footer (no topic lines, no Интересные section).
-// - Splitter: section-boundary, never splits mid-line; footer goes only on last chunk.
+// - All skipped: single chunk with header + total + footer (no topic blocks).
+// - Splitter: block-boundary (a topic block = header + its bullets is atomic);
+//   never splits mid-line; footer goes only on last chunk.
 //
-// Threat-model mitigations (260507-cni):
+// Threat-model mitigations (260507-cni, carried forward):
 // - T-260507-01: drop links whose url contains `"` (HTML attribute injection guard).
-// - T-260507-02: escapeHtml() over title and description (HTML body escapes).
+// - T-260507-02: escapeHtml() over title, summary and description (HTML body escapes).
 
 import { logger } from '../../utils/logger.js';
 import type { ThreadSummary, Topic } from '../../types/index.js';
@@ -46,12 +56,23 @@ function stripChatIdPrefix(chatId: string): string {
   return chatId.startsWith('-100') ? chatId.slice(4) : chatId.replace(/^-/, '');
 }
 
-function buildTopicLine(
-  t: TopicWithThread,
-  chatIdNoPrefix: string,
-): string {
-  const url = `https://t.me/c/${chatIdNoPrefix}/${t.threadId}/${t.firstMessageId}`;
-  return `${t.emoji} ${escapeHtml(t.title)} (<a href="${url}">${t.messageCount} сообщений</a>)`;
+function msgLink(chatIdNoPrefix: string, threadId: number, msgId: number): string {
+  return `https://t.me/c/${chatIdNoPrefix}/${threadId}/${msgId}`;
+}
+
+/**
+ * Render one topic as a multi-line block: a bold {emoji} {title} header
+ * followed by one bullet line per substance point. Each bullet's summary is
+ * the clickable deep-link to its key message (code builds the URL — the LLM
+ * never emits message links).
+ */
+function buildTopicBlock(t: TopicWithThread, chatIdNoPrefix: string): string {
+  const header = `${t.emoji} <b>${escapeHtml(t.title)}</b>`;
+  const bulletLines = t.bullets.map((b) => {
+    const url = msgLink(chatIdNoPrefix, t.threadId, b.msgId);
+    return `• <a href="${url}">${escapeHtml(b.summary)}</a>`;
+  });
+  return [header, ...bulletLines].join('\n');
 }
 
 function buildLinkLine(link: { url: string; description: string }): string | null {
@@ -63,7 +84,7 @@ function buildLinkLine(link: { url: string; description: string }): string | nul
 }
 
 export interface FormatThreadSummaryInput {
-  /** All ThreadSummary results from orchestrator (skipped + non-skipped, in any order). */
+  /** All ThreadSummary results from orchestrator (skipped + non-skipped, in thread order). */
   summaries: ThreadSummary[];
   /** Cron-fire date (MSK day used in header). */
   date: Date;
@@ -77,7 +98,7 @@ export interface FormatThreadSummaryInput {
 
 /**
  * Build HTML chunks for the daily thread-summary post.
- * Returns 1+ strings, each ≤ MAX_CHUNK_LENGTH. Splitter never splits mid-section.
+ * Returns 1+ strings, each ≤ MAX_CHUNK_LENGTH. Splitter never splits mid-block.
  */
 export function formatThreadSummaryPost(input: FormatThreadSummaryInput): string[] {
   const { summaries, date, totalMessageCount, aggregatedLinks, chatId } = input;
@@ -91,31 +112,31 @@ export function formatThreadSummaryPost(input: FormatThreadSummaryInput): string
 
   const totalLine = `Всего было написано ${totalMessageCount} сообщений`;
 
-  // quick-260511-fkn: flatten summaries → topics, then sort the FLAT list by
-  // messageCount DESC across ALL topics from ALL threads. The most-active
-  // sub-themes surface regardless of which forum-topic they originated in.
+  // summary-doc-260607: flatten summaries → topics PRESERVING thread order.
+  // Topics stay grouped by their thread (no cross-thread sort): all of a
+  // thread's sub-topics appear consecutively, in the order the LLM returned
+  // them.
   const allTopics: TopicWithThread[] = summaries.flatMap(
     (s): TopicWithThread[] =>
       s.skipped ? [] : s.topics.map((t) => ({ ...t, threadId: s.threadId })),
   );
-  allTopics.sort((a, b) => b.messageCount - a.messageCount);
 
   // Edge case: all skipped (or zero topics, defensive) → header + total + footer only.
   if (allTopics.length === 0) {
     return [`${headerLine}\n${totalLine}${SECTION_SEPARATOR}${FOOTER_TAG}`];
   }
 
-  const topicLines = allTopics.map((t) => buildTopicLine(t, chatIdNoPrefix));
+  const topicBlocks = allTopics.map((t) => buildTopicBlock(t, chatIdNoPrefix));
   const linkLines = aggregatedLinks
     .map(buildLinkLine)
     .filter((l): l is string => l !== null);
 
   // Build the linear list of "sections" the splitter walks. Header + total
   // form a single bound prefix that is replayed at the start of each chunk.
-  // Every other line is a candidate atomic unit that we never split.
+  // Every topic block (header + its bullets) is an atomic unit we never split.
   type Section = { kind: 'topic' | 'links-header' | 'link' | 'footer'; text: string };
   const sections: Section[] = [];
-  for (const line of topicLines) sections.push({ kind: 'topic', text: line });
+  for (const block of topicBlocks) sections.push({ kind: 'topic', text: block });
   if (linkLines.length > 0) {
     sections.push({ kind: 'links-header', text: 'Интересные ссылки:' });
     for (const line of linkLines) sections.push({ kind: 'link', text: line });
@@ -134,9 +155,9 @@ export function formatThreadSummaryPost(input: FormatThreadSummaryInput): string
       chunks.push(current);
       const fresh = `${prefix}${SECTION_SEPARATOR}${section.text}`;
       if (fresh.length > MAX_CHUNK_LENGTH) {
-        // Edge case: a single section alone exceeds the limit. Schema caps
-        // title ≤100 and description ≤80, so a single line cannot realistically
-        // exceed ~250 chars — but log WARN if it ever happens.
+        // Edge case: a single block alone exceeds the limit. A topic block is
+        // ≤100-char title + up to 5 ≤160-char bullets ≈ ≤1.2k chars, so this
+        // is not realistically reachable — but log WARN if it ever happens.
         logger.warn(
           { sectionLength: section.text.length, limit: MAX_CHUNK_LENGTH },
           'Single thread-summary section exceeds MAX_CHUNK_LENGTH — Telegram may reject',

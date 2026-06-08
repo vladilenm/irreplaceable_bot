@@ -1,11 +1,10 @@
-// quick-260507-cni — formatter tests for the topic-style daily summary.
-// quick-260511-fkn — adapted to the topics-array ThreadSummary contract.
-// `ok()` helper now produces a non-skipped summary with a single Topic; new
-// FT-T3b / FT-T5 cover the flat-sort-across-threads behaviour and the
-// up-to-5-topics-per-thread rendering.
+// quick-260507-cni → summary-doc-260607 — formatter tests for the
+// bullet-substance daily summary. Each topic renders a bold {emoji} {title}
+// header plus one `• <a>summary</a>` line per bullet; topics stay grouped by
+// thread (input order, no cross-thread sort).
 import { describe, it, expect } from 'vitest';
 import { formatThreadSummaryPost, MAX_CHUNK_LENGTH } from './thread-summary.formatter.js';
-import type { ThreadSummary, Topic } from '../../types/index.js';
+import type { ThreadSummary, Topic, TopicBullet } from '../../types/index.js';
 
 const CHAT_ID = '-1003096173975';
 const CHAT_ID_NOPREFIX = '3096173975';
@@ -16,18 +15,16 @@ interface OkOverrides {
   messageCount?: number;
   /** Override the entire topics array (multi-topic test cases). */
   topics?: Topic[];
-  /** Single-topic shortcuts (back-compat with pre-260511 tests). */
+  /** Single-topic shortcuts. */
   emoji?: string;
   title?: string;
-  firstMessageId?: number;
+  bullets?: TopicBullet[];
   links?: Array<{ url: string; description: string }>;
-  /** Per-topic messageCount; defaults to top-level messageCount when topics is single. */
-  topicMessageCount?: number;
 }
 
 /**
- * Build a non-skipped ThreadSummary. By default produces a single-topic
- * thread (so existing FT-* tests need only their old fields renamed).
+ * Build a non-skipped ThreadSummary. By default produces a single-topic,
+ * single-bullet thread.
  */
 const ok = (over: OkOverrides = {}): ThreadSummary => {
   const threadId = over.threadId ?? 7457;
@@ -36,8 +33,7 @@ const ok = (over: OkOverrides = {}): ThreadSummary => {
     {
       emoji: over.emoji ?? '💻',
       title: over.title ?? 'Запуск ИИ моделей на локальных устройствах',
-      messageCount: over.topicMessageCount ?? messageCount,
-      firstMessageId: over.firstMessageId ?? 7471,
+      bullets: over.bullets ?? [{ summary: 'Ollama работает на M2', msgId: 7471 }],
       links: over.links ?? [],
     },
   ];
@@ -72,50 +68,48 @@ const baseInput = (
   ...over,
 });
 
-describe('formatThreadSummaryPost — topic-style layout (quick-260507-cni + quick-260511-fkn)', () => {
+describe('formatThreadSummaryPost — bullet-substance layout (summary-doc-260607)', () => {
   it('FT-H1: first line is `📆 Что обсуждалось вчера DD.MM.YYYY` (MSK)', () => {
     const out = formatThreadSummaryPost(
-      baseInput({
-        summaries: [ok({})],
-        totalMessageCount: 12,
-      }),
+      baseInput({ summaries: [ok({})], totalMessageCount: 12 }),
     );
     expect(out[0]).toMatch(/^📆 Что обсуждалось вчера 07\.05\.2026/);
   });
 
   it('FT-H2: second line is `Всего было написано N сообщений`', () => {
     const out = formatThreadSummaryPost(
-      baseInput({
-        summaries: [ok({})],
-        totalMessageCount: 42,
-      }),
+      baseInput({ summaries: [ok({})], totalMessageCount: 42 }),
     );
     const lines = out[0]!.split('\n');
     expect(lines[1]).toBe('Всего было написано 42 сообщений');
   });
 
-  it('FT-T1: each non-skipped thread renders one topic line with t.me/c link', () => {
+  it('FT-T1: a topic renders a bold header + a bullet line whose summary is the deep-link', () => {
     const out = formatThreadSummaryPost(
       baseInput({
         summaries: [
-          ok({ threadId: 7457, firstMessageId: 7471, messageCount: 12, topicMessageCount: 12 }),
+          ok({
+            threadId: 7457,
+            emoji: '💻',
+            title: 'Локальные модели',
+            bullets: [{ summary: 'Ollama работает на M2', msgId: 7471 }],
+          }),
         ],
         totalMessageCount: 12,
       }),
     ).join('\n');
-    expect(out).toMatch(
-      new RegExp(
-        `💻 .+ \\(<a href="https://t\\.me/c/${CHAT_ID_NOPREFIX}/7457/7471">12 сообщений</a>\\)`,
-      ),
+    expect(out).toContain('💻 <b>Локальные модели</b>');
+    expect(out).toContain(
+      `• <a href="https://t.me/c/${CHAT_ID_NOPREFIX}/7457/7471">Ollama работает на M2</a>`,
     );
+    // The forbidden "N сообщений" statistic link is gone.
+    expect(out).not.toContain('сообщений</a>');
   });
 
   it('FT-T2: chatIdNoPrefix correctly strips leading -100', () => {
     const out = formatThreadSummaryPost(
       baseInput({
-        summaries: [
-          ok({ threadId: 100, firstMessageId: 5, messageCount: 1, topicMessageCount: 1 }),
-        ],
+        summaries: [ok({ threadId: 100, bullets: [{ summary: 's', msgId: 5 }] })],
         totalMessageCount: 1,
         chatId: '-1003096173975',
       }),
@@ -124,35 +118,35 @@ describe('formatThreadSummaryPost — topic-style layout (quick-260507-cni + qui
     expect(out).not.toContain('https://t.me/c/-1003096173975');
   });
 
-  it('FT-T3: topic lines sorted by messageCount DESC (one topic per thread)', () => {
+  it('FT-T3 (summary-doc-260607): topics stay grouped by thread in INPUT order (no messageCount sort)', () => {
+    // Three threads in input order a → b → c, regardless of message volume.
     const out = formatThreadSummaryPost(
       baseInput({
         summaries: [
-          ok({ threadId: 1, messageCount: 5, topicMessageCount: 5, title: 'low-thread' }),
-          ok({ threadId: 2, messageCount: 50, topicMessageCount: 50, title: 'high-thread' }),
-          ok({ threadId: 3, messageCount: 25, topicMessageCount: 25, title: 'mid-thread' }),
+          ok({ threadId: 1, messageCount: 5, title: 'thread-a' }),
+          ok({ threadId: 2, messageCount: 50, title: 'thread-b' }),
+          ok({ threadId: 3, messageCount: 25, title: 'thread-c' }),
         ],
         totalMessageCount: 80,
       }),
     ).join('\n');
-    const hi = out.indexOf('high-thread');
-    const mid = out.indexOf('mid-thread');
-    const lo = out.indexOf('low-thread');
-    expect(hi).toBeGreaterThan(-1);
-    expect(mid).toBeGreaterThan(hi);
-    expect(lo).toBeGreaterThan(mid);
+    const a = out.indexOf('thread-a');
+    const b = out.indexOf('thread-b');
+    const c = out.indexOf('thread-c');
+    expect(a).toBeGreaterThan(-1);
+    expect(b).toBeGreaterThan(a);
+    expect(c).toBeGreaterThan(b);
   });
 
-  it('FT-T3b (quick-260511-fkn): flat sort across multi-topic threads — order is messageCount DESC across ALL topics', () => {
-    // S1: [50, 5]; S2: [30, 10] → expected flat order 50, 30, 10, 5.
+  it('FT-T3b: a thread\'s sub-topics render consecutively, each with its own bullets', () => {
     const s1: ThreadSummary = {
       skipped: false,
       threadId: 1,
       windowHours: 24,
       messageCount: 55,
       topics: [
-        { emoji: '🅰', title: 't-1a', messageCount: 50, firstMessageId: 101, links: [] },
-        { emoji: '🅱', title: 't-1b', messageCount: 5, firstMessageId: 102, links: [] },
+        { emoji: '🅰', title: 't-1a', bullets: [{ summary: 'b-1a', msgId: 101 }], links: [] },
+        { emoji: '🅱', title: 't-1b', bullets: [{ summary: 'b-1b', msgId: 102 }], links: [] },
       ],
     };
     const s2: ThreadSummary = {
@@ -161,28 +155,22 @@ describe('formatThreadSummaryPost — topic-style layout (quick-260507-cni + qui
       windowHours: 24,
       messageCount: 40,
       topics: [
-        { emoji: '🅲', title: 't-2a', messageCount: 30, firstMessageId: 201, links: [] },
-        { emoji: '🅳', title: 't-2b', messageCount: 10, firstMessageId: 202, links: [] },
+        { emoji: '🅲', title: 't-2a', bullets: [{ summary: 'b-2a', msgId: 201 }], links: [] },
       ],
     };
     const out = formatThreadSummaryPost(
       baseInput({ summaries: [s1, s2], totalMessageCount: 95 }),
     ).join('\n');
 
-    const idxA = out.indexOf('t-1a'); // mc=50
-    const idxC = out.indexOf('t-2a'); // mc=30
-    const idxD = out.indexOf('t-2b'); // mc=10
-    const idxB = out.indexOf('t-1b'); // mc=5
-    expect(idxA).toBeGreaterThan(-1);
-    expect(idxC).toBeGreaterThan(idxA);
-    expect(idxD).toBeGreaterThan(idxC);
-    expect(idxB).toBeGreaterThan(idxD);
+    // Thread-1 topics appear before thread-2's, in input order.
+    expect(out.indexOf('t-1a')).toBeGreaterThan(-1);
+    expect(out.indexOf('t-1b')).toBeGreaterThan(out.indexOf('t-1a'));
+    expect(out.indexOf('t-2a')).toBeGreaterThan(out.indexOf('t-1b'));
 
-    // Each topic line carries its OWN (threadId, firstMessageId) deep-link.
+    // Each bullet carries its OWN (threadId, msgId) deep-link.
     expect(out).toContain(`/${CHAT_ID_NOPREFIX}/1/101`);
     expect(out).toContain(`/${CHAT_ID_NOPREFIX}/1/102`);
     expect(out).toContain(`/${CHAT_ID_NOPREFIX}/2/201`);
-    expect(out).toContain(`/${CHAT_ID_NOPREFIX}/2/202`);
   });
 
   it('FT-T4: title with HTML special chars is escaped', () => {
@@ -196,29 +184,42 @@ describe('formatThreadSummaryPost — topic-style layout (quick-260507-cni + qui
     expect(out).not.toContain('<script>alert(1)</script>');
   });
 
-  it('FT-T5 (quick-260511-fkn): one summary with 5 topics renders 5 separate topic lines with their own deep-links', () => {
+  it('FT-T4b: bullet summary with HTML special chars is escaped', () => {
+    const out = formatThreadSummaryPost(
+      baseInput({
+        summaries: [ok({ bullets: [{ summary: 'A & <b>B</b>', msgId: 7471 }] })],
+        totalMessageCount: 1,
+      }),
+    ).join('\n');
+    expect(out).toContain('A &amp; &lt;b&gt;B&lt;/b&gt;');
+  });
+
+  it('FT-T5: one topic with 5 bullets renders 5 bullet lines, each with its own deep-link', () => {
     const summary: ThreadSummary = {
       skipped: false,
       threadId: 99,
       windowHours: 24,
       messageCount: 50,
-      topics: Array.from({ length: 5 }, (_, i) => ({
-        emoji: '💻',
-        title: `sub-topic-${i}`,
-        messageCount: 10 - i, // 10, 9, 8, 7, 6 — already DESC
-        firstMessageId: 1000 + i,
-        links: [],
-      })),
+      topics: [
+        {
+          emoji: '💻',
+          title: 'big-topic',
+          bullets: Array.from({ length: 5 }, (_, i) => ({
+            summary: `point-${i}`,
+            msgId: 1000 + i,
+          })),
+          links: [],
+        },
+      ],
     };
     const out = formatThreadSummaryPost(
       baseInput({ summaries: [summary], totalMessageCount: 50 }),
     ).join('\n');
     for (let i = 0; i < 5; i++) {
-      expect(out).toContain(`sub-topic-${i}`);
-      expect(out).toContain(`/${CHAT_ID_NOPREFIX}/99/${1000 + i}`);
+      expect(out).toContain(`• <a href="https://t.me/c/${CHAT_ID_NOPREFIX}/99/${1000 + i}">point-${i}</a>`);
     }
-    // Order DESC by messageCount: sub-topic-0 (mc=10) before sub-topic-4 (mc=6).
-    expect(out.indexOf('sub-topic-0')).toBeLessThan(out.indexOf('sub-topic-4'));
+    // Bullets keep LLM order.
+    expect(out.indexOf('point-0')).toBeLessThan(out.indexOf('point-4'));
   });
 
   it('FT-L1: aggregatedLinks non-empty → renders Интересные ссылки + each link line', () => {
@@ -239,11 +240,7 @@ describe('formatThreadSummaryPost — topic-style layout (quick-260507-cni + qui
 
   it('FT-L2: aggregatedLinks empty → no Интересные ссылки section', () => {
     const out = formatThreadSummaryPost(
-      baseInput({
-        summaries: [ok({})],
-        totalMessageCount: 12,
-        aggregatedLinks: [],
-      }),
+      baseInput({ summaries: [ok({})], totalMessageCount: 12, aggregatedLinks: [] }),
     ).join('\n');
     expect(out).not.toContain('Интересные ссылки:');
   });
@@ -290,10 +287,7 @@ describe('formatThreadSummaryPost — topic-style layout (quick-260507-cni + qui
 
   it('FT-EDGE-1: zero summaries → single chunk with header + #dailysummary only', () => {
     const out = formatThreadSummaryPost(
-      baseInput({
-        summaries: [],
-        totalMessageCount: 0,
-      }),
+      baseInput({ summaries: [], totalMessageCount: 0 }),
     );
     expect(out.length).toBe(1);
     const chunk = out[0]!;
@@ -303,7 +297,7 @@ describe('formatThreadSummaryPost — topic-style layout (quick-260507-cni + qui
     expect(chunk).not.toContain('Интересные ссылки:');
   });
 
-  it('FT-EDGE-2: all skipped → header + total + footer (no topic lines, no Интересные section)', () => {
+  it('FT-EDGE-2: all skipped → header + total + footer (no topic blocks, no Интересные section)', () => {
     const out = formatThreadSummaryPost(
       baseInput({
         summaries: [skip('low-volume', 1), skip('low-volume', 2), skip('low-volume', 3)],
@@ -319,17 +313,14 @@ describe('formatThreadSummaryPost — topic-style layout (quick-260507-cni + qui
     expect(chunk).not.toContain('Интересные ссылки:');
   });
 
-  it('FT-SPLIT: many threads with very long titles → multiple chunks each ≤ MAX_CHUNK_LENGTH; footer only on last', () => {
-    // 30 threads, each title at the schema max (100 chars) → each topic line ≈
-    // 160 chars; 30 lines + separators ≈ 5000 chars > 4096 → forces a split.
+  it('FT-SPLIT: many threads with long titles + bullets → multiple chunks each ≤ MAX_CHUNK_LENGTH; footer only on last', () => {
     const longTitle = 'я'.repeat(100); // schema max
     const summaries: ThreadSummary[] = Array.from({ length: 30 }, (_, i) =>
       ok({
         threadId: i + 1,
-        firstMessageId: 1000 + i,
-        messageCount: 100 - i,
-        topicMessageCount: 100 - i,
         title: longTitle,
+        bullets: [{ summary: 'и'.repeat(150), msgId: 1000 + i }],
+        messageCount: 100 - i,
       }),
     );
     const chunks = formatThreadSummaryPost(
@@ -351,10 +342,10 @@ describe('formatThreadSummaryPost — topic-style layout (quick-260507-cni + qui
     for (let i = 0; i < chunks.length - 1; i++) {
       expect(chunks[i]).not.toContain('#dailysummary');
     }
-    // All threads represented across chunks (no mid-line split).
+    // All threads represented across chunks (each bullet deep-link present).
     const all = chunks.join('\n');
     for (let i = 0; i < 30; i++) {
-      expect(all).toContain(`/${1000 + i}">${100 - i} сообщений</a>`);
+      expect(all).toContain(`/${i + 1}/${1000 + i}">`);
     }
   });
 });

@@ -1,6 +1,6 @@
-// quick-260511-fkn — Zod schema + JSON Schema mirror tests for the new
-// {topics: Topic[1..5]} contract (replacing the old single {emoji,title,links}).
-// quick-260507-cni history preserved as the schema-regression guard.
+// summary-doc-260607 — Zod schema + JSON Schema mirror tests for the
+// bullet-substance contract: {topics: [{emoji, title, bullets:[{summary,
+// msgId}], links}]}. Replaces the old per-topic {messageCount, firstMessageId}.
 // buildTranscript anonymisation / sandwich / Unicode tests remain in this file.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { CapturedMessage, Topic } from '../types/index.js';
@@ -33,28 +33,29 @@ import {
 const topic = (over: Partial<Topic> = {}): Topic => ({
   emoji: '💻',
   title: 't',
-  messageCount: 5,
-  firstMessageId: 1001,
+  bullets: [{ summary: 's', msgId: 1001 }],
   links: [],
   ...over,
 });
 
-describe('ThreadSummarySchema (quick-260511-fkn topics-array contract)', () => {
-  it('Test 1: minimum valid shape parses (1 topic, empty links)', () => {
+describe('ThreadSummarySchema (summary-doc-260607 bullet-substance contract)', () => {
+  it('Test 1: minimum valid shape parses (1 topic, 1 bullet, empty links)', () => {
     const result = ThreadSummarySchema.safeParse({ topics: [topic()] });
     expect(result.success).toBe(true);
   });
 
   it('Test 2a: 5 topics succeed', () => {
     const result = ThreadSummarySchema.safeParse({
-      topics: Array.from({ length: 5 }, (_, i) => topic({ firstMessageId: 1000 + i })),
+      topics: Array.from({ length: 5 }, (_, i) =>
+        topic({ bullets: [{ summary: 's', msgId: 1000 + i }] }),
+      ),
     });
     expect(result.success).toBe(true);
   });
 
   it('Test 2b: 6 topics fail (maxItems=5)', () => {
     const result = ThreadSummarySchema.safeParse({
-      topics: Array.from({ length: 6 }, (_, i) => topic({ firstMessageId: 1000 + i })),
+      topics: Array.from({ length: 6 }, () => topic()),
     });
     expect(result.success).toBe(false);
   });
@@ -103,25 +104,38 @@ describe('ThreadSummarySchema (quick-260511-fkn topics-array contract)', () => {
     expect(six.success).toBe(false);
   });
 
-  it('Test 5a: messageCount=0 fails (must be integer ≥1)', () => {
+  it('Test 5a: 0 bullets fail (minItems=1)', () => {
+    const result = ThreadSummarySchema.safeParse({ topics: [topic({ bullets: [] })] });
+    expect(result.success).toBe(false);
+  });
+
+  it('Test 5b: 6 bullets fail (maxItems=5)', () => {
     const result = ThreadSummarySchema.safeParse({
-      topics: [topic({ messageCount: 0 })],
+      topics: [
+        topic({
+          bullets: Array.from({ length: 6 }, (_, i) => ({ summary: 's', msgId: 1000 + i })),
+        }),
+      ],
     });
     expect(result.success).toBe(false);
   });
 
-  it('Test 5b: messageCount=1.5 fails (must be integer)', () => {
-    const result = ThreadSummarySchema.safeParse({
-      topics: [topic({ messageCount: 1.5 })],
+  it('Test 5c: bullet summary 160 succeeds, 161 fails', () => {
+    const ok = ThreadSummarySchema.safeParse({
+      topics: [topic({ bullets: [{ summary: 'a'.repeat(160), msgId: 1 }] })],
     });
-    expect(result.success).toBe(false);
+    expect(ok.success).toBe(true);
+    const bad = ThreadSummarySchema.safeParse({
+      topics: [topic({ bullets: [{ summary: 'a'.repeat(161), msgId: 1 }] })],
+    });
+    expect(bad.success).toBe(false);
   });
 
-  it('Test 5c: messageCount=1 succeeds (lower bound)', () => {
+  it('Test 5d: bullet msgId must be an integer', () => {
     const result = ThreadSummarySchema.safeParse({
-      topics: [topic({ messageCount: 1 })],
+      topics: [topic({ bullets: [{ summary: 's', msgId: 1.5 }] })],
     });
-    expect(result.success).toBe(true);
+    expect(result.success).toBe(false);
   });
 
   it('Test 6: empty topic emoji fails', () => {
@@ -151,11 +165,9 @@ describe('ThreadSummarySchema (quick-260511-fkn topics-array contract)', () => {
     expect(bad.success).toBe(false);
   });
 
-  it('Test 9 (regression guard): old shape {emoji,title,links} without topics fails', () => {
+  it('Test 9 (regression guard): topic without bullets fails', () => {
     const result = ThreadSummarySchema.safeParse({
-      emoji: '💻',
-      title: 'foo',
-      links: [],
+      topics: [{ emoji: '💻', title: 'foo', links: [] }],
     });
     expect(result.success).toBe(false);
   });
@@ -170,17 +182,15 @@ describe('ThreadSummarySchema (quick-260511-fkn topics-array contract)', () => {
     const item = THREAD_SUMMARIZER_JSON_SCHEMA.properties.topics.items;
     expect(item.type).toBe('object');
     expect(item.additionalProperties).toBe(false);
-    expect(item.required).toEqual([
-      'emoji',
-      'title',
-      'messageCount',
-      'firstMessageId',
-      'links',
-    ]);
+    expect(item.required).toEqual(['emoji', 'title', 'bullets', 'links']);
     expect(item.properties.title.maxLength).toBe(100);
-    expect(item.properties.messageCount.type).toBe('integer');
-    expect(item.properties.messageCount.minimum).toBe(1);
-    expect(item.properties.firstMessageId.type).toBe('integer');
+    const bullets = item.properties.bullets;
+    expect(bullets.type).toBe('array');
+    expect(bullets.minItems).toBe(1);
+    expect(bullets.maxItems).toBe(5);
+    expect(bullets.items.required).toEqual(['summary', 'msgId']);
+    expect(bullets.items.properties.summary.maxLength).toBe(160);
+    expect(bullets.items.properties.msgId.type).toBe('integer');
     expect(item.properties.links.maxItems).toBe(5);
   });
 });
@@ -270,17 +280,17 @@ function fiveMessages(ids: number[]): CapturedMessage[] {
   }));
 }
 
-describe('summarizeThread post-validation (T-260511-01)', () => {
+describe('summarizeThread post-validation (summary-doc-260607)', () => {
   beforeEach(() => {
     anthropicCreate.mockReset();
     openaiCreate.mockReset();
   });
 
-  it('Test 11: hallucinated firstMessageId (not in input set) → schema-invalid', async () => {
-    // Input ids = [1000..1004]; LLM returns firstMessageId=99999 (not in set).
+  it('Test 11: every bullet hallucinates msgId (none in input set) → schema-invalid', async () => {
+    // Input ids = [1000..1004]; LLM returns msgId=99999 (not in set).
     const validShape = {
       topics: [
-        { emoji: '💻', title: 't', messageCount: 5, firstMessageId: 99999, links: [] },
+        { emoji: '💻', title: 't', bullets: [{ summary: 's', msgId: 99999 }], links: [] },
       ],
     };
     anthropicCreate.mockResolvedValueOnce({
@@ -296,10 +306,10 @@ describe('summarizeThread post-validation (T-260511-01)', () => {
     expect(result).toMatchObject({ skipped: true, reason: 'schema-invalid' });
   });
 
-  it('Test 12: firstMessageId that IS in input set is accepted', async () => {
+  it('Test 12: bullet msgId that IS in input set is accepted', async () => {
     const validShape = {
       topics: [
-        { emoji: '💻', title: 't', messageCount: 5, firstMessageId: 1002, links: [] },
+        { emoji: '💻', title: 't', bullets: [{ summary: 's', msgId: 1002 }], links: [] },
       ],
     };
     anthropicCreate.mockResolvedValueOnce({
@@ -315,8 +325,41 @@ describe('summarizeThread post-validation (T-260511-01)', () => {
     expect(result.skipped).toBe(false);
     if (!result.skipped) {
       expect(result.topics.length).toBe(1);
-      expect(result.topics[0]?.firstMessageId).toBe(1002);
-      expect(result.messageCount).toBe(5); // input-length, NOT topic self-report
+      expect(result.topics[0]?.bullets[0]?.msgId).toBe(1002);
+      expect(result.messageCount).toBe(5); // input-window length
+    }
+  });
+
+  it('Test 13: partial hallucination — invalid bullet dropped, valid bullet kept', async () => {
+    // One bullet cites 1002 (in set), one cites 88888 (not). The bad bullet is
+    // dropped; the topic survives with the single valid bullet.
+    const shape = {
+      topics: [
+        {
+          emoji: '💻',
+          title: 't',
+          bullets: [
+            { summary: 'keep', msgId: 1002 },
+            { summary: 'drop', msgId: 88888 },
+          ],
+          links: [],
+        },
+      ],
+    };
+    anthropicCreate.mockResolvedValueOnce({
+      content: [{ type: 'tool_use', name: 'submit_summary', input: shape }],
+    });
+    openaiCreate.mockResolvedValueOnce({
+      choices: [{ message: { content: JSON.stringify(shape) } }],
+    });
+
+    const messages = fiveMessages([1000, 1001, 1002, 1003, 1004]);
+    const result = await summarizeThread({ threadId: 100, windowHours: 24, messages });
+
+    expect(result.skipped).toBe(false);
+    if (!result.skipped) {
+      expect(result.topics.length).toBe(1);
+      expect(result.topics[0]?.bullets).toEqual([{ summary: 'keep', msgId: 1002 }]);
     }
   });
 });

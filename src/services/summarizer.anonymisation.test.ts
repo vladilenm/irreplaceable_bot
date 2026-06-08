@@ -82,11 +82,11 @@ describe('summarizeThread gating (SUM-02 + SUM-04)', () => {
   });
 
   it('threshold boundary: exactly LOW_VOLUME_THRESHOLD messages does NOT skip on low-volume (would attempt LLM)', async () => {
-    // quick-260511-fkn: mock LLM returns the new topics-array shape AND picks
-    // firstMessageId from the input id-set so post-validation passes.
+    // summary-doc-260607: mock LLM returns the bullet-substance shape AND picks
+    // msgId from the input id-set so post-validation passes.
     const validShape = {
       topics: [
-        { emoji: '💻', title: 't', messageCount: 5, firstMessageId: 1, links: [] },
+        { emoji: '💻', title: 't', bullets: [{ summary: 's', msgId: 1 }], links: [] },
       ],
     };
     anthropicCreate.mockResolvedValueOnce({

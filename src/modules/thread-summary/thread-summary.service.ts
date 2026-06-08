@@ -1,8 +1,10 @@
 // Phase 6 orchestrator (D-32..D-35, DLV-06, DLV-07, DLV-10).
 // quick-260507-cni: topic-style format.
-// quick-260511-fkn: LLM-side segmentation. The orchestrator no longer computes
-// firstMessageId — the LLM picks one per topic (post-validated against the
-// input tgMessageId set). Link aggregation now walks one extra nesting level:
+// quick-260511-fkn: LLM-side segmentation — the orchestrator no longer computes
+// message ids; the LLM picks them (post-validated against the input set).
+// summary-doc-260607: bullet-substance contract. Each topic carries bullets
+// ({summary, msgId}); the formatter keeps topics grouped by thread and renders
+// each bullet's summary as the deep-link. Link aggregation still walks
 // summaries[i].topics[j].links.
 
 import { logger, errMsg } from '../../utils/logger.js';
@@ -120,9 +122,8 @@ export async function runThreadSummaryPipeline(
     // Per-thread try/catch (D-34) — one fail doesn't abort cycle.
     try {
       const messages = selectMessagesInWindow(threadId, sinceIso);
-      // quick-260511-fkn: the LLM picks firstMessageId per topic from the
-      // [id=N ...] prefixes in the transcript. Orchestrator no longer computes
-      // MIN(tgMessageId).
+      // summary-doc-260607: the LLM picks a msgId per bullet from the
+      // [id=N ...] prefixes in the transcript. Orchestrator computes no ids.
       const summary = await summarizeThread({ threadId, windowHours, messages });
       summaries.push(summary);
 

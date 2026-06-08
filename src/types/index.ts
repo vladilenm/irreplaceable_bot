@@ -87,22 +87,37 @@ export interface ForgottenUser {
 
 // ─── v2.0 Phase 6 — Thread summary pipeline (D-12, D-32, D-28) ───
 // quick-260507-cni — topic-style format: {emoji, title, links} introduced.
-// quick-260511-fkn — topics-array contract: one thread → 1..5 sub-topics, each
-// with its own emoji/title/messageCount/firstMessageId/links. LLM picks
-// firstMessageId per-topic from the [id=N ...] prefixes embedded in the
-// transcript (post-validated against the input tgMessageId set).
+// quick-260511-fkn — topics-array contract: one thread → 1..5 sub-topics.
+// summary-doc-260607 — bullet-substance contract: each topic carries 1..5
+// BULLETS, where each bullet is the SUBSTANCE of one sub-discussion (что
+// решили / что получили / открытый вопрос) plus the msgId of the single most
+// representative message. The formatter renders each bullet's summary AS the
+// clickable deep-link (no more "N сообщений" statistic lines). Links and
+// markup are built by code; the LLM never emits URLs to messages. msgId is
+// post-validated against the input tgMessageId set.
+
+/**
+ * A single substance point inside a topic. `summary` is the meaning (rendered
+ * as the clickable text); `msgId` is the one most-representative message the
+ * deep-link points at. `msgId` MUST be one of the input tgMessageIds
+ * (post-validated; hallucinated bullets are dropped).
+ */
+export interface TopicBullet {
+  summary: string;                                                 // 1..160 chars — суть пункта
+  msgId: number;                                                   // MUST be in the input tgMessageId set (post-validated)
+}
 
 /**
  * A single sub-theme inside a thread. The LLM splits a thread into 1..5 of
- * these; the formatter renders one line per topic and sorts the flat list of
- * all topics across all threads by messageCount DESC.
+ * these; the formatter renders a bold {emoji} {title} header followed by one
+ * bullet line per substance point. Topics are kept grouped by thread (no
+ * cross-thread flat sort).
  */
 export interface Topic {
   emoji: string;                                                   // 1 unicode emoji
   title: string;                                                   // ≤100 chars
-  messageCount: number;                                            // LLM self-reported integer ≥1
-  firstMessageId: number;                                          // MUST be in the input tgMessageId set (post-validated)
-  links: Array<{ url: string; description: string }>;              // 0..5 items
+  bullets: TopicBullet[];                                          // 1..5 substance points
+  links: Array<{ url: string; description: string }>;              // 0..5 external URLs
 }
 
 /**

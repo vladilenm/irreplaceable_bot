@@ -73,9 +73,9 @@ import {
   markThreadSummaryPublished,
 } from './thread-summary.service.js';
 
-// quick-260511-fkn: ThreadSummary now carries a topics array. okSummary keeps
-// its old positional signature for back-compat with all existing tests — it
-// produces a single-topic summary where the positional `links` lands inside
+// summary-doc-260607: ThreadSummary topics carry bullets ({summary, msgId}).
+// okSummary keeps its positional signature for back-compat — it produces a
+// single-topic, single-bullet summary where the positional `links` lands inside
 // topics[0].links. okSummaryMulti covers the multi-topic case.
 const okSummary = (
   threadId: number,
@@ -90,8 +90,7 @@ const okSummary = (
     {
       emoji: '💻',
       title: 'topic',
-      messageCount: mc,
-      firstMessageId: 1000 + threadId,
+      bullets: [{ summary: 'суть', msgId: 1000 + threadId }],
       links,
     },
   ],
@@ -100,8 +99,8 @@ const okSummary = (
 const okSummaryMulti = (
   threadId: number,
   topics: Array<{
-    messageCount: number;
-    firstMessageId: number;
+    msgId: number;
+    summary?: string;
     title?: string;
     emoji?: string;
     links?: Array<{ url: string; description: string }>;
@@ -110,13 +109,11 @@ const okSummaryMulti = (
   skipped: false,
   threadId,
   windowHours: 24,
-  // messageCount is input-window count, NOT sum of topic counts (per target_shape).
-  messageCount: topics.reduce((acc, t) => acc + t.messageCount, 0),
+  messageCount: topics.length * 4,
   topics: topics.map((t) => ({
     emoji: t.emoji ?? '💻',
     title: t.title ?? 'topic',
-    messageCount: t.messageCount,
-    firstMessageId: t.firstMessageId,
+    bullets: [{ summary: t.summary ?? 'суть', msgId: t.msgId }],
     links: t.links ?? [],
   })),
 });
@@ -249,7 +246,7 @@ describe('runThreadSummaryPipeline (DLV-06, DLV-10, D-32..D-35)', () => {
     expect(call?.windowHours).toBe(48);
   });
 
-  it('O7-CONTRACT (quick-260511-fkn): orchestrator calls summarizeThread WITHOUT firstMessageId (LLM picks per topic)', async () => {
+  it('O7-CONTRACT (summary-doc-260607): orchestrator calls summarizeThread WITHOUT message ids (LLM picks per bullet)', async () => {
     mockListTrackedThreadIds.mockReturnValue([100]);
     mockSelectMessagesInWindow.mockReturnValue([
       msg(7475),
@@ -271,26 +268,26 @@ describe('runThreadSummaryPipeline (DLV-06, DLV-10, D-32..D-35)', () => {
     expect(Array.isArray(call.messages)).toBe(true);
   });
 
-  it('O7-MULTI (quick-260511-fkn): a single thread with two topics renders TWO topic lines, each with its own deep-link', async () => {
+  it('O7-MULTI (summary-doc-260607): a single thread with two topics renders TWO bold headers, each bullet with its own deep-link', async () => {
     mockListTrackedThreadIds.mockReturnValue([100]);
     mockSelectMessagesInWindow.mockReturnValue(
       Array.from({ length: 8 }, (_, i) => msg(7000 + i)),
     );
     mockSummarizeThread.mockResolvedValue(
       okSummaryMulti(100, [
-        { messageCount: 6, firstMessageId: 7001, title: 'multi-topic-A' },
-        { messageCount: 2, firstMessageId: 7005, title: 'multi-topic-B' },
+        { msgId: 7001, title: 'multi-topic-A', summary: 'итог-A' },
+        { msgId: 7005, title: 'multi-topic-B', summary: 'итог-B' },
       ]),
     );
     const r = await runThreadSummaryPipeline();
     const text = r.chunks.join('\n');
-    // Both topic lines present.
-    expect(text).toContain('multi-topic-A');
-    expect(text).toContain('multi-topic-B');
-    // Each line carries its OWN firstMessageId in the deep-link.
-    expect(text).toMatch(/\/100\/7001">6 сообщений<\/a>/);
-    expect(text).toMatch(/\/100\/7005">2 сообщений<\/a>/);
-    // multi-topic-A (mc=6) precedes multi-topic-B (mc=2) by flat sort DESC.
+    // Both topic headers present.
+    expect(text).toContain('<b>multi-topic-A</b>');
+    expect(text).toContain('<b>multi-topic-B</b>');
+    // Each bullet's summary is the deep-link text, pointing at its own msgId.
+    expect(text).toContain('/100/7001">итог-A</a>');
+    expect(text).toContain('/100/7005">итог-B</a>');
+    // Topics keep INPUT order (grouped by thread, no messageCount sort).
     expect(text.indexOf('multi-topic-A')).toBeLessThan(text.indexOf('multi-topic-B'));
   });
 

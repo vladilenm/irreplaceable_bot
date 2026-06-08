@@ -80,14 +80,16 @@ describe('Adversarial fixture — prompt-injection resistance (D-20..D-23, SUM-0
     expect(result).toMatchObject({ skipped: true, reason: 'schema-invalid' });
   });
 
-  it('ADV-1b (quick-260511-fkn): jailbreak returning valid shape but hallucinated firstMessageId is hard-rejected', async () => {
+  it('ADV-1b (summary-doc-260607): jailbreak returning valid shape but hallucinated msgId is hard-rejected', async () => {
     // Parsed fixture tgMessageIds start at 1000 and run 1000..1005 (6 messages).
-    // LLM "succumbs" and returns a shape-valid topics array citing
-    // firstMessageId=42 which is NOT in the input id-set → schema-invalid skip
-    // (NOT llm-error — the model is hallucinating, this is a regression signal).
+    // LLM "succumbs" and returns a shape-valid topics array whose only bullet
+    // cites msgId=42 which is NOT in the input id-set → the bullet is dropped,
+    // the topic empties out, and with no topics left the result is a
+    // schema-invalid skip (NOT llm-error — model hallucination is a regression
+    // signal).
     const validShapeHallucinatedId = {
       topics: [
-        { emoji: '💻', title: 'pwn', messageCount: 5, firstMessageId: 42, links: [] },
+        { emoji: '💻', title: 'pwn', bullets: [{ summary: 'pwn', msgId: 42 }], links: [] },
       ],
     };
     anthropicCreate.mockResolvedValueOnce({
