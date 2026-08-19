@@ -1,13 +1,13 @@
 import { Bot, type Context } from 'grammy';
 import { config } from './config.js';
-import { logger, errMsg } from './utils/logger.js';
+import { logger, errMsg } from './logger.js';
 import {
   runDigestPipeline,
   isDigestPublishedToday,
   readState,
-} from './modules/digest/digest.service.js';
-import { sendDigest } from './modules/digest/digest.sender.js';
-import { registerCaptureHandlers } from './modules/capture/capture.handler.js';
+  sendDigest,
+} from './radar.js';
+import { registerCaptureHandlers } from './capture.js';
 
 export const bot = new Bot(config.botToken);
 

@@ -1,14 +1,13 @@
 import 'dotenv/config';
 import { bot } from './bot.js';
-import { logger, bootId, errMsg } from './utils/logger.js';
-import { startScheduler, stopScheduler } from './scheduler/cron.js';
-import { initDb, closeDb } from './services/db.service.js';
-import { importLegacyState } from './services/state.service.js';
-import { runPreflight } from './utils/preflight.js';
+import { logger, bootId, errMsg } from './logger.js';
+import { startScheduler, stopScheduler } from './scheduler.js';
+import { initDb, closeDb, importLegacyState } from './database.js';
 import {
   classifyStartupError,
   POLLING_CONFLICT_BACKOFF_MS,
-} from './utils/startup-error.js';
+  runPreflight,
+} from './startup.js';
 
 // step counter on main() entry — if main() runs twice in one process, we see
 // step=1 then step=2; if the dashboard merely double-renders one emit, both

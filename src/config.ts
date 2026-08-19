@@ -1,4 +1,4 @@
-import type { BotConfig } from './types/index.js';
+import type { BotConfig } from './types.js';
 
 function requireEnv(name: string): string {
   const value = process.env[name];
