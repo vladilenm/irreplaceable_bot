@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import type { ThreadSummary, PipelineStateV2, CapturedMessage } from './types.js';
+import type { ThreadSummary, PipelineState, CapturedMessage } from './types.js';
 
 // Mock factories — must be hoisted via vi.hoisted so the vi.mock factories
 // (which vitest hoists above imports) can reference these without
@@ -7,12 +7,11 @@ import type { ThreadSummary, PipelineStateV2, CapturedMessage } from './types.js
 const {
   mockState,
   mockReadState,
-  mockWriteState,
   mockIsThreadSummaryPublishedTodayWithState,
   mockSelectMessagesInWindow,
   mockSummarizeThread,
 } = vi.hoisted(() => {
-  const state: { current: PipelineStateV2 } = {
+  const state: { current: PipelineState } = {
     current: {
       lastDigestDate: null,
       lastSkipped: false,
@@ -23,9 +22,6 @@ const {
   return {
     mockState: state,
     mockReadState: vi.fn(() => state.current),
-    mockWriteState: vi.fn((s: PipelineStateV2) => {
-      state.current = s;
-    }),
     mockIsThreadSummaryPublishedTodayWithState: vi.fn(() => false),
     mockSelectMessagesInWindow: vi.fn(
       (_chatId: number, _threadId: number, _sinceIso: string) => [] as CapturedMessage[],
@@ -36,7 +32,6 @@ const {
 
 vi.mock('./database.js', () => ({
   readState: mockReadState,
-  writeState: mockWriteState,
   isThreadSummaryPublishedTodayWithState: mockIsThreadSummaryPublishedTodayWithState,
   selectMessagesInWindow: mockSelectMessagesInWindow,
 }));
@@ -63,15 +58,9 @@ vi.mock('./config.js', () => ({
   },
 }));
 
-import {
-  runThreadSummaryPipeline,
-  markThreadSummaryPublished,
-} from './summary.js';
+import { runThreadSummaryPipeline } from './summary.js';
 
-// summary-doc-260607: ThreadSummary topics carry bullets ({summary, msgId}).
-// okSummary keeps its positional signature for back-compat — it produces a
-// single-topic, single-bullet summary where the positional `links` lands inside
-// topics[0].links. okSummaryMulti covers the multi-topic case.
+// Single- and multi-topic fixtures used across the orchestration tests.
 const okSummary = (
   threadId: number,
   mc = 10,
@@ -136,14 +125,13 @@ beforeEach(() => {
   };
   mockReadState.mockClear();
   mockReadState.mockImplementation(() => mockState.current);
-  mockWriteState.mockClear();
   mockIsThreadSummaryPublishedTodayWithState.mockClear();
   mockIsThreadSummaryPublishedTodayWithState.mockReturnValue(false);
   mockSelectMessagesInWindow.mockReturnValue([]);
   mockSummarizeThread.mockReset();
 });
 
-describe('runThreadSummaryPipeline (DLV-06, DLV-10, D-32..D-35)', () => {
+describe('runThreadSummaryPipeline', () => {
   it('O1: idempotency — already-published-today returns alreadyPublished:true and skips work', async () => {
     mockIsThreadSummaryPublishedTodayWithState.mockReturnValue(true);
     mockState.current = { ...mockState.current, lastThreadSummaryDate: new Date().toISOString() };
@@ -153,7 +141,7 @@ describe('runThreadSummaryPipeline (DLV-06, DLV-10, D-32..D-35)', () => {
     expect(mockSummarizeThread).not.toHaveBeenCalled();
   });
 
-  it('O1b: WR-03 — idempotency check is invoked with the already-loaded prevState (no second readState)', async () => {
+  it('O1b: idempotency uses the state snapshot already loaded for this cycle', async () => {
     mockIsThreadSummaryPublishedTodayWithState.mockReturnValue(true);
     mockState.current = { ...mockState.current, lastThreadSummaryDate: new Date().toISOString() };
     await runThreadSummaryPipeline();
@@ -179,7 +167,7 @@ describe('runThreadSummaryPipeline (DLV-06, DLV-10, D-32..D-35)', () => {
     expect(r.chunks).toEqual([]);
   });
 
-  it('O4: per-thread error isolation (D-34) — one fail does not abort', async () => {
+  it('O4: one failed thread does not abort the remaining threads', async () => {
     mockSummarizeThread.mockImplementation(async (input: { threadId: number }) => {
       if (input.threadId === 100) throw new Error('LLM down');
       return okSummary(input.threadId, 5);
@@ -189,34 +177,19 @@ describe('runThreadSummaryPipeline (DLV-06, DLV-10, D-32..D-35)', () => {
     expect(r.threadsSkippedError).toBe(1);
   });
 
-  it('O5 (Phase 8 fix A): pipeline NO LONGER writes state; markThreadSummaryPublished merge-write preserves lastDigestDate', async () => {
-    mockState.current = {
-      lastDigestDate: '2026-04-29T06:00:00.000Z',
-      lastSkipped: false,
-      lastItemCount: 5,
-      lastThreadSummaryDate: null,
-    };
+  it('O5: pipeline returns persistence intent without recording delivery itself', async () => {
     mockSummarizeThread.mockResolvedValue(okSummary(100, 5));
     const r = await runThreadSummaryPipeline();
-    expect(mockWriteState).not.toHaveBeenCalled();
     expect(r.persistState).toBe(true);
-    expect(r.prevState.lastDigestDate).toBe('2026-04-29T06:00:00.000Z');
-
-    markThreadSummaryPublished(r.prevState, r.date);
-    expect(mockWriteState).toHaveBeenCalledTimes(1);
-    const written = mockWriteState.mock.calls[0]?.[0];
-    expect(written?.lastDigestDate).toBe('2026-04-29T06:00:00.000Z');
-    expect(written?.lastThreadSummaryDate).not.toBeNull();
   });
 
-  it('O5b (Phase 8 fix A): persistState:false → result flag is false and helper is never called by cron contract', async () => {
+  it('O5b: persistState:false propagates to the caller', async () => {
     mockSummarizeThread.mockResolvedValue(okSummary(100, 5));
     const r = await runThreadSummaryPipeline({ persistState: false });
     expect(r.persistState).toBe(false);
-    expect(mockWriteState).not.toHaveBeenCalled();
   });
 
-  it('O5c (Phase 8 fix A): on idempotency short-circuit result still carries persistState + prevState', async () => {
+  it('O5c: idempotency short-circuit preserves persistence intent', async () => {
     mockIsThreadSummaryPublishedTodayWithState.mockReturnValue(true);
     mockState.current = {
       ...mockState.current,
@@ -225,8 +198,6 @@ describe('runThreadSummaryPipeline (DLV-06, DLV-10, D-32..D-35)', () => {
     const r = await runThreadSummaryPipeline();
     expect(r.alreadyPublished).toBe(true);
     expect(r.persistState).toBe(true);
-    expect(r.prevState.lastThreadSummaryDate).not.toBeNull();
-    expect(mockWriteState).not.toHaveBeenCalled();
   });
 
   it('O6: windowHours override propagates to summarizeThread input', async () => {
@@ -236,7 +207,7 @@ describe('runThreadSummaryPipeline (DLV-06, DLV-10, D-32..D-35)', () => {
     expect(call?.windowHours).toBe(48);
   });
 
-  it('O7-CONTRACT (summary-doc-260607): orchestrator calls summarizeThread WITHOUT message ids (LLM picks per bullet)', async () => {
+  it('O7-CONTRACT: passes captured messages without preselecting a citation', async () => {
     mockSelectMessagesInWindow.mockReturnValue([
       msg(7475),
       msg(7460),
@@ -257,7 +228,7 @@ describe('runThreadSummaryPipeline (DLV-06, DLV-10, D-32..D-35)', () => {
     expect(Array.isArray(call.messages)).toBe(true);
   });
 
-  it('O7-MULTI (summary-doc-260607): a single thread with two topics renders TWO bold headers, each bullet with its own deep-link', async () => {
+  it('O7-MULTI: renders two topics with independent deep links', async () => {
     mockSelectMessagesInWindow.mockReturnValue(
       Array.from({ length: 8 }, (_, i) => msg(7000 + i)),
     );
@@ -320,8 +291,8 @@ describe('runThreadSummaryPipeline (DLV-06, DLV-10, D-32..D-35)', () => {
   });
 });
 
-describe('runThreadSummaryPipeline LLM-outage detection (Phase 8 fix B)', () => {
-  it('B1: ALL threads skipped with reason:llm-error → llmOutage:true, chunks=[]; pipeline writes NO state', async () => {
+describe('runThreadSummaryPipeline LLM-outage detection', () => {
+  it('B1: all threads skipped with llm-error produces no publishable chunks', async () => {
     mockSummarizeThread.mockImplementation((input: { threadId: number }) =>
       Promise.resolve({
         skipped: true,
@@ -335,7 +306,6 @@ describe('runThreadSummaryPipeline LLM-outage detection (Phase 8 fix B)', () => 
     expect(r.llmOutage).toBe(true);
     expect(r.chunks).toEqual([]);
     expect(r.threadsSkippedError).toBe(3);
-    expect(mockWriteState).not.toHaveBeenCalled();
   });
 
   it('B2: thrown errors inside per-thread try/catch ALSO count as llm-error → llmOutage:true', async () => {

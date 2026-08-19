@@ -6,12 +6,13 @@ import { initDb, getDb, _resetForTests } from './database.js';
 
 import {
   readState,
-  writeState,
+  recordDigestCompletion,
+  recordThreadSummaryCompletion,
   isDigestPublishedToday,
   isThreadSummaryPublishedTodayWithState,
   importLegacyState,
 } from './database.js';
-import type { PipelineStateV2 } from './types.js';
+import type { PipelineState } from './types.js';
 
 beforeEach(() => {
   _resetForTests();
@@ -19,13 +20,8 @@ beforeEach(() => {
 });
 
 describe('SQLite job state', () => {
-  it('writeState then readState round-trips both independent jobs', () => {
-    writeState({
-      lastDigestDate: '2026-04-29T10:00:00.000Z',
-      lastSkipped: false,
-      lastItemCount: 3,
-      lastThreadSummaryDate: null,
-    });
+  it('completion records round-trip both independent jobs', () => {
+    recordDigestCompletion(new Date('2026-04-29T10:00:00.000Z'), false, 3);
     const got = readState();
     expect(got.lastDigestDate).toBe('2026-04-29T10:00:00.000Z');
     expect(got.lastItemCount).toBe(3);
@@ -60,47 +56,49 @@ describe('SQLite job state', () => {
     expect(got.lastDigestDate).toBe('2026-04-29T06:00:00.000Z');
     expect(got.lastItemCount).toBe(5);
 
-    writeState({ ...got, lastDigestDate: 'newer' });
+    recordDigestCompletion(new Date('2026-04-30T06:00:00.000Z'), false, got.lastItemCount);
     expect(importLegacyState(legacyPath)).toBe(false);
-    expect(readState().lastDigestDate).toBe('newer');
+    expect(readState().lastDigestDate).toBe('2026-04-30T06:00:00.000Z');
   });
 
   it('stores digest and thread-summary as separate rows', () => {
-    writeState({
-      lastDigestDate: 'A',
-      lastSkipped: false,
-      lastItemCount: 1,
-      lastThreadSummaryDate: 'B',
-    });
-    writeState({
-      lastDigestDate: 'C',
-      lastSkipped: true,
-      lastItemCount: 0,
-      lastThreadSummaryDate: 'B',
-    });
+    recordThreadSummaryCompletion(new Date('2026-04-29T03:30:00.000Z'));
+    recordDigestCompletion(new Date('2026-04-29T06:00:00.000Z'), false, 1);
+    recordDigestCompletion(new Date('2026-04-30T06:00:00.000Z'), true, 0);
     const rows = getDb()
       .prepare('SELECT job_name FROM job_state ORDER BY job_name')
       .all() as Array<{ job_name: string }>;
     expect(rows.map((row) => row.job_name)).toEqual(['digest', 'thread-summary']);
-    expect(readState().lastDigestDate).toBe('C');
-    expect(readState().lastThreadSummaryDate).toBe('B');
+    expect(readState().lastDigestDate).toBe('2026-04-30T06:00:00.000Z');
+    expect(readState().lastThreadSummaryDate).toBe('2026-04-29T03:30:00.000Z');
+  });
+
+  it('targeted completion updates never overwrite the other job', () => {
+    recordThreadSummaryCompletion(new Date('2026-05-01T03:30:00.000Z'));
+    recordDigestCompletion(new Date('2026-05-01T06:00:00.000Z'), false, 4);
+    recordDigestCompletion(new Date('2026-05-02T06:00:00.000Z'), true, 0);
+
+    expect(readState()).toEqual({
+      lastDigestDate: '2026-05-02T06:00:00.000Z',
+      lastSkipped: true,
+      lastItemCount: 0,
+      lastThreadSummaryDate: '2026-05-01T03:30:00.000Z',
+    });
+
+    recordThreadSummaryCompletion(new Date('2026-05-02T03:30:00.000Z'));
+    expect(readState().lastDigestDate).toBe('2026-05-02T06:00:00.000Z');
   });
 });
 
 describe('job idempotency checks', () => {
   it('digest: null is false and the same MSK day is true', () => {
     expect(isDigestPublishedToday()).toBe(false);
-    writeState({
-      lastDigestDate: new Date().toISOString(),
-      lastSkipped: false,
-      lastItemCount: 1,
-      lastThreadSummaryDate: null,
-    });
+    recordDigestCompletion(new Date(), false, 1);
     expect(isDigestPublishedToday()).toBe(true);
   });
 
   it('thread-summary remains independent from digest', () => {
-    const state: PipelineStateV2 = {
+    const state: PipelineState = {
       lastDigestDate: null,
       lastSkipped: false,
       lastItemCount: 0,
@@ -111,12 +109,7 @@ describe('job idempotency checks', () => {
   });
 
   it('previous MSK day is false', () => {
-    writeState({
-      lastDigestDate: '2020-01-01T10:00:00.000Z',
-      lastSkipped: false,
-      lastItemCount: 1,
-      lastThreadSummaryDate: null,
-    });
+    recordDigestCompletion(new Date('2020-01-01T10:00:00.000Z'), false, 1);
     expect(isDigestPublishedToday()).toBe(false);
   });
 });

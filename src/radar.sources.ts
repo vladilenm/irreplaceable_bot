@@ -47,7 +47,6 @@ export async function fetchFeeds(hoursBack: number = 24): Promise<RawArticle[]> 
           description: item.contentSnippet ?? item.content ?? '',
           link,
           source: feed.name,
-          sourceKey: feed.sourceKey,
           pubDate,
         });
       }

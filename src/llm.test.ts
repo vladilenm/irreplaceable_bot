@@ -17,7 +17,7 @@ vi.mock('openai', () => ({
   })),
 }));
 
-import { requestJson, requestText } from './llm.js';
+import { requestJson } from './llm.js';
 
 const baseConfig = {
   apiKey: 'key',
@@ -30,23 +30,6 @@ beforeEach(() => {
 });
 
 describe('LLM transport', () => {
-  it('normalizes an Anthropic text response', async () => {
-    anthropicCreate.mockResolvedValue({
-      content: [{ type: 'text', text: 'answer' }],
-      stop_reason: 'end_turn',
-      usage: { input_tokens: 2, output_tokens: 1 },
-    });
-
-    const result = await requestText(
-      { ...baseConfig, model: 'claude-sonnet' },
-      { system: 'system', user: 'user', maxTokens: 100 },
-    );
-
-    expect(result.text).toBe('answer');
-    expect(result.provider).toBe('anthropic');
-    expect(result.finishReason).toBe('end_turn');
-  });
-
   it('falls back from unsupported json_schema to json_object', async () => {
     openaiCreate
       .mockRejectedValueOnce(Object.assign(new Error('unsupported'), { status: 400 }))

@@ -14,7 +14,6 @@ const article: RawArticle = {
   description: 'Description',
   link: 'https://example.com/original',
   source: 'Example',
-  sourceKey: 'example',
   pubDate: new Date('2026-05-02T05:00:00.000Z'),
 };
 
@@ -41,8 +40,6 @@ describe('filterArticles structured boundary', () => {
         summary: 'Почему это полезно.',
         url: article.link,
         category: 'tools',
-        source: article.source,
-        publishedAt: article.pubDate,
       },
     ]);
   });

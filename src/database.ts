@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import Database, { type Statement } from 'better-sqlite3';
 import { config } from './config.js';
 import { logger, errMsg } from './logger.js';
-import type { CapturedMessage, PipelineStateV2 } from './types.js';
+import type { CapturedMessage, PipelineState } from './types.js';
 
 interface Migration {
   version: number;
@@ -11,13 +11,11 @@ interface Migration {
   sql: string;
 }
 
-// In-code MIGRATIONS array (D-07). Forward-only. NEVER edit a shipped version;
-// add a new one. Each migration runs in its own db.transaction() — partial
-// failure is isolated to a single version (PITFALLS DB-04).
+// Migrations are forward-only. Never edit a shipped version; append a new one.
 const MIGRATIONS: ReadonlyArray<Migration> = [
   {
     version: 1,
-    description: 'Phase 4: messages capture infrastructure (4 tables + indexes)',
+    description: 'Create message capture tables and indexes',
     sql: `
       CREATE TABLE IF NOT EXISTS messages (
         id                  INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -69,14 +67,14 @@ const MIGRATIONS: ReadonlyArray<Migration> = [
   },
   {
     version: 2,
-    description: 'Phase 6 D-05: tracked_threads.title (forum-topic display name cache)',
+    description: 'Add forum-topic title cache',
     sql: `
       ALTER TABLE tracked_threads ADD COLUMN title TEXT;
     `,
   },
   {
     version: 3,
-    description: 'Phase 7: drop forgotten_users (CMD-07 de-scoped 2026-04-29)',
+    description: 'Remove unused forgotten-users table',
     sql: `
       DROP TABLE IF EXISTS forgotten_users;
     `,
@@ -101,36 +99,24 @@ const MIGRATIONS: ReadonlyArray<Migration> = [
       DROP TABLE IF EXISTS tracked_threads;
     `,
   },
-  // Future versions append here. Shipped migrations are immutable.
 ];
 
 let _db: Database.Database | null = null;
 
-/**
- * Open the SQLite database, apply pragmas in canonical order, run pending
- * migrations inside transactions.
- *
- * SYNCHRONOUS — better-sqlite3 design choice. Throws on WAL pragma failure
- * (DB-01 silent-fallback defence). Idempotent: subsequent calls are no-ops.
- */
+/** Open SQLite, configure it, and apply pending migrations. */
 export function initDb(): void {
   if (_db) return;
 
   _db = new Database(config.dbPath);
 
-  // ─── Pragma application order (RESEARCH §1.5, sqlite.org) ───
-  // 1. journal_mode = WAL — FIRST, OUTSIDE any transaction.
-  //    sqlite.org: "journal_mode cannot be changed while a transaction is active".
-  //    sqlite.org also: `:memory:` databases cannot use WAL — silently fall
-  //    back to 'memory' journal mode. Skip the WAL pragma + check for
-  //    in-memory DBs (test env). Production DB_PATH is always file-backed.
+  // WAL must be enabled before opening a transaction. In-memory test databases
+  // use SQLite's memory journal instead.
   const isMemoryDb = config.dbPath === ':memory:';
   if (!isMemoryDb) {
     _db.pragma('journal_mode = WAL');
   }
 
-  // 2. Verify WAL active for file-backed DBs (PITFALLS DB-01: silent fallback
-  //    to 'delete' if dir perms denied). For :memory: we just record the mode.
+  // SQLite may silently fall back when the data directory is not writable.
   const mode = _db.pragma('journal_mode', { simple: true });
   if (!isMemoryDb && mode !== 'wal') {
     throw new Error(
@@ -140,12 +126,10 @@ export function initDb(): void {
     );
   }
 
-  // 3. Other pragmas — no ordering constraint between them.
   _db.pragma('foreign_keys = ON');
   _db.pragma('synchronous = NORMAL');
   _db.pragma('busy_timeout = 5000');
 
-  // 4. Bootstrap schema_migrations meta-table (idempotent CREATE IF NOT EXISTS).
   _db.exec(`
     CREATE TABLE IF NOT EXISTS schema_migrations (
       version    INTEGER PRIMARY KEY,
@@ -158,7 +142,7 @@ export function initDb(): void {
     .all() as Array<{ version: number }>;
   const applied = new Set(appliedRows.map((r) => r.version));
 
-  // Each migration runs in its own transaction (D-07, PITFALLS DB-04).
+  // A failed migration rolls back without affecting earlier versions.
   const dbRef = _db;
   const applyMigration = dbRef.transaction((m: Migration) => {
     dbRef.exec(m.sql);
@@ -187,11 +171,7 @@ export function getDb(): Database.Database {
   return _db;
 }
 
-/**
- * Checkpoint WAL and close the database. Called from the SIGTERM/SIGINT handler
- * AFTER bot.stop() so in-flight capture transactions can finish (REL-05 gates
- * Phase 8; this plan ships the function — Phase 4 wiring in 04-03 calls it).
- */
+/** Checkpoint WAL and close the database. */
 export function closeDb(): void {
   if (_db) {
     try {
@@ -205,10 +185,7 @@ export function closeDb(): void {
   }
 }
 
-// Test-only: reset the cached connection so a fresh initDb() reopens :memory:.
-// The `_` prefix signals private; not called by any production code path.
-// Required because better-sqlite3 with `:memory:` creates a fresh DB on every
-// `Database(':memory:')` call, but `_db` is module-level cached.
+// Reset module-level handles between in-memory test databases.
 export function _resetForTests(): void {
   if (_db) {
     try {
@@ -224,12 +201,6 @@ export function _resetForTests(): void {
 }
 
 const LEGACY_STATE_PATH = fileURLToPath(new URL('../data/state.json', import.meta.url));
-const DEFAULT_STATE: PipelineStateV2 = {
-  lastDigestDate: null,
-  lastSkipped: false,
-  lastItemCount: 0,
-  lastThreadSummaryDate: null,
-};
 
 interface JobStateRow {
   job_name: 'digest' | 'thread-summary';
@@ -238,7 +209,7 @@ interface JobStateRow {
   item_count: number;
 }
 
-export function readState(): PipelineStateV2 {
+export function readState(): PipelineState {
   const rows = getDb()
     .prepare('SELECT job_name, last_completed_at, last_outcome, item_count FROM job_state')
     .all() as JobStateRow[];
@@ -252,7 +223,7 @@ export function readState(): PipelineStateV2 {
   };
 }
 
-export function writeState(state: PipelineStateV2): void {
+function writeFullState(state: PipelineState): void {
   const db = getDb();
   const upsert = db.prepare(`
     INSERT INTO job_state (job_name, last_completed_at, last_outcome, item_count)
@@ -273,7 +244,33 @@ export function writeState(state: PipelineStateV2): void {
   })();
 }
 
-function parseLegacyState(raw: string): PipelineStateV2 {
+export function recordDigestCompletion(
+  completedAt: Date,
+  skipped: boolean,
+  itemCount: number,
+): void {
+  getDb().prepare(`
+    INSERT INTO job_state (job_name, last_completed_at, last_outcome, item_count)
+    VALUES ('digest', ?, ?, ?)
+    ON CONFLICT(job_name) DO UPDATE SET
+      last_completed_at = excluded.last_completed_at,
+      last_outcome = excluded.last_outcome,
+      item_count = excluded.item_count
+  `).run(completedAt.toISOString(), skipped ? 'skipped' : 'success', itemCount);
+}
+
+export function recordThreadSummaryCompletion(completedAt: Date): void {
+  getDb().prepare(`
+    INSERT INTO job_state (job_name, last_completed_at, last_outcome, item_count)
+    VALUES ('thread-summary', ?, 'success', 0)
+    ON CONFLICT(job_name) DO UPDATE SET
+      last_completed_at = excluded.last_completed_at,
+      last_outcome = 'success',
+      item_count = 0
+  `).run(completedAt.toISOString());
+}
+
+function parseLegacyState(raw: string): PipelineState {
   const parsed: unknown = JSON.parse(raw);
   if (typeof parsed !== 'object' || parsed === null) throw new Error('not a JSON object');
   const state = parsed as Record<string, unknown>;
@@ -296,7 +293,7 @@ export function importLegacyState(path = LEGACY_STATE_PATH): boolean {
   ).count;
   if (count > 0 || !existsSync(path)) return false;
   try {
-    writeState(parseLegacyState(readFileSync(path, 'utf8')));
+    writeFullState(parseLegacyState(readFileSync(path, 'utf8')));
     logger.info({ path }, 'Imported legacy job state into SQLite');
     return true;
   } catch (err: unknown) {
@@ -314,13 +311,16 @@ function sameMskDay(iso: string): boolean {
 }
 
 export function isDigestPublishedToday(): boolean {
-  const state = readState();
+  return isDigestPublishedTodayWithState(readState());
+}
+
+export function isDigestPublishedTodayWithState(state: PipelineState): boolean {
   return Boolean(
     state.lastDigestDate && !state.lastSkipped && sameMskDay(state.lastDigestDate),
   );
 }
 
-export function isThreadSummaryPublishedTodayWithState(state: PipelineStateV2): boolean {
+export function isThreadSummaryPublishedTodayWithState(state: PipelineState): boolean {
   return Boolean(
     state.lastThreadSummaryDate && sameMskDay(state.lastThreadSummaryDate),
   );
@@ -386,11 +386,6 @@ export function selectMessagesInWindow(
   }));
 }
 
-export function _resetMessageStoreForTests(): void {
-  _upsertMessageStmt = null;
-  _selectMessagesStmt = null;
-}
-
 export interface RetentionSweepResult {
   rowsDeleted: number;
   durationMs: number;
@@ -429,8 +424,4 @@ export async function runRetentionSweep(): Promise<RetentionSweepResult> {
     rowsDeleted += info.changes;
   }
   throw new Error('Retention sweep exceeded 10000 batches');
-}
-
-export function _resetRetentionServiceForTests(): void {
-  _deleteBatchStmt = null;
 }

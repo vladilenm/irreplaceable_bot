@@ -7,8 +7,8 @@ import { sendMessageWithRetry } from './telegram.js';
 import type { DigestCategory, DigestItem } from './types.js';
 import {
   readState,
-  writeState,
-  isDigestPublishedToday,
+  recordDigestCompletion,
+  isDigestPublishedTodayWithState,
 } from './database.js';
 
 export interface DigestResult {
@@ -17,26 +17,16 @@ export interface DigestResult {
   skipped: boolean;
   date: Date;
   alreadyPublished: boolean;
-  /**
-   * Phase 8 fix A: when true, sender persists `lastDigestDate` AFTER a successful
-   * sendMessageWithRetry. When false (e.g. /dev-digest), sender does NOT touch
-   * state.json. Skip-path state-writes (no-articles, itemCount<1) are still
-   * applied INSIDE this pipeline because there is nothing to send.
-   */
+  /** Record completion only after Telegram confirms delivery. */
   persistState: boolean;
 }
 
 export interface RunPipelineOptions {
   /** If true, bypass isDigestPublishedToday() short-circuit. Default: false. */
   skipIdempotency?: boolean;
-  /** If true, write data/state.json after the run. Default: true. */
+  /** Persist the job result. Default: true. */
   persistState?: boolean;
 }
-
-// Phase 6 D-28: state I/O extracted to ../../services/state.service.ts.
-// Re-exported here for back-compat with existing callers (e.g. /dev-digest
-// command in Phase 03.1) that imported these from the digest module.
-export { readState, writeState, isDigestPublishedToday };
 
 function emptyResult(
   alreadyPublished: boolean,
@@ -54,10 +44,8 @@ export async function runDigestPipeline(
 
   const state = readState();
 
-  // Idempotency guard (D-01, D-02): if a non-skipped digest already shipped
-  // today in MSK, don't re-run or re-send.
-  // Dev-run: skip MSK-day idempotency guard so /dev-digest can be called repeatedly.
-  if (!skipIdempotency && isDigestPublishedToday() && state.lastSkipped === false) {
+  // Manual development runs can bypass the Moscow-day idempotency guard.
+  if (!skipIdempotency && isDigestPublishedTodayWithState(state)) {
     logger.warn(
       { lastDigestDate: state.lastDigestDate },
       'Digest already published today (MSK), skipping',
@@ -83,16 +71,7 @@ export async function runDigestPipeline(
   if (articles.length === 0) {
     logger.warn({ hoursBack }, 'No articles found in time window');
     if (persistState) {
-      // Phase 6 D-33: merge-write — preserve lastThreadSummaryDate across
-      // digest cycle writes so the digest job never clobbers the thread-summary
-      // idempotency field.
-      const prev = readState();
-      writeState({
-        ...prev,
-        lastDigestDate: new Date().toISOString(),
-        lastSkipped: true,
-        lastItemCount: 0,
-      });
+      recordDigestCompletion(new Date(), true, 0);
     }
     return {
       items: [],
@@ -122,20 +101,10 @@ export async function runDigestPipeline(
     logger.info({ itemCount }, 'Digest ready');
   }
 
-  // Phase 8 fix A: split state-write between skip-path (here, nothing to send)
-  // and success-path (sender, after Telegram confirms delivery). The skip-path
-  // write below preserves lastSkipped/lastItemCount semantics for the next
-  // cycle's `hoursBack = 48` lookback. The success-path write was removed —
-  // sendDigest now writes lastDigestDate ONLY after sendMessageWithRetry resolves.
+  // A skipped run has nothing to deliver, so it can be recorded immediately.
+  // A successful run is recorded by sendDigest only after Telegram accepts it.
   if (skipped && persistState) {
-    // Phase 6 D-33: merge-write — preserve lastThreadSummaryDate.
-    const prev = readState();
-    writeState({
-      ...prev,
-      lastDigestDate: new Date().toISOString(),
-      lastSkipped: true,
-      lastItemCount: itemCount,
-    });
+    recordDigestCompletion(new Date(), true, itemCount);
   }
 
   return {
@@ -197,13 +166,7 @@ export async function sendDigest(api: Api, result: DigestResult): Promise<void> 
   });
 
   if (result.persistState) {
-    const prev = readState();
-    writeState({
-      ...prev,
-      lastDigestDate: new Date().toISOString(),
-      lastSkipped: false,
-      lastItemCount: result.itemCount,
-    });
+    recordDigestCompletion(new Date(), false, result.itemCount);
   }
 
   logger.info(

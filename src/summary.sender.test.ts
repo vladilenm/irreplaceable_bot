@@ -16,7 +16,7 @@ import { sendThreadSummary } from './summary.js';
 
 const api = {} as Api;
 
-describe('sendThreadSummary chunks loop (DLV-09, D-38)', () => {
+describe('sendThreadSummary chunks loop', () => {
   beforeEach(() => {
     mockSendMessageWithRetry.mockReset();
   });

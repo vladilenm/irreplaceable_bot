@@ -8,9 +8,7 @@ function requireEnv(name: string): string {
   return value;
 }
 
-// Fail fast on malformed integer env vars (WR-03): a typo like THREAD_ID=abc
-// would otherwise silently become NaN and crash only at first Telegram API call,
-// potentially 9 hours after startup when the cron fires.
+// Fail at startup rather than at the first scheduled Telegram API call.
 function requireEnvInt(name: string): number {
   const value = requireEnv(name);
   if (!/^-?\d+$/.test(value)) {
@@ -19,9 +17,6 @@ function requireEnvInt(name: string): number {
   return Number(value);
 }
 
-// v2.0 Phase 4: integer ENV with optional default and a minimum bound.
-// MESSAGE_RETENTION_DAYS uses this with min=7 to defeat PRIV-02 typo regression
-// (e.g. MESSAGE_RETENTION_DAYS=9 instead of 90 would empty the summariser window).
 function readEnvIntWithDefault(name: string, defaultValue: number, min?: number): number {
   const raw = process.env[name];
   const value = raw === undefined || raw === '' ? defaultValue : Number(raw);

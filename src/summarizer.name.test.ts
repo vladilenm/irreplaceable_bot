@@ -1,8 +1,7 @@
-// Phase 6 D-24, SUM-07 — Unicode display-name normaliser unit tests.
 import { describe, it, expect } from 'vitest';
 import { normalizeDisplayName } from './summarizer.js';
 
-describe('normalizeDisplayName (D-24, SUM-07)', () => {
+describe('normalizeDisplayName', () => {
   it('Test 1: NFC idempotent on plain ASCII Cyrillic', () => {
     expect(normalizeDisplayName('Маша')).toBe('Маша');
   });

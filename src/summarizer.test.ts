@@ -1,7 +1,4 @@
-// summary-doc-260607 — Zod schema + JSON Schema mirror tests for the
-// bullet-substance contract: {topics: [{emoji, title, bullets:[{summary,
-// msgId}], links}]}. Replaces the old per-topic {messageCount, firstMessageId}.
-// buildTranscript anonymisation / sandwich / Unicode tests remain in this file.
+// Structured output, transcript safety, and citation validation.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { CapturedMessage, Topic } from './types.js';
 
@@ -28,8 +25,6 @@ import {
   summarizeThread,
 } from './summarizer.js';
 
-// ─── Schema tests (quick-260511-fkn topics-array contract) ───
-
 const topic = (over: Partial<Topic> = {}): Topic => ({
   emoji: '💻',
   title: 't',
@@ -38,7 +33,7 @@ const topic = (over: Partial<Topic> = {}): Topic => ({
   ...over,
 });
 
-describe('ThreadSummarySchema (summary-doc-260607 bullet-substance contract)', () => {
+describe('ThreadSummarySchema', () => {
   it('Test 1: minimum valid shape parses (1 topic, 1 bullet, empty links)', () => {
     const result = ThreadSummarySchema.safeParse({ topics: [topic()] });
     expect(result.success).toBe(true);
@@ -211,7 +206,7 @@ const sampleMessage = (overrides: Partial<CapturedMessage> = {}): CapturedMessag
   ...overrides,
 });
 
-describe('buildTranscript anonymisation (SUM-03) + [id=N] prefix (quick-260511-fkn)', () => {
+describe('buildTranscript anonymisation and citation prefix', () => {
   it('A1: numeric author_id NEVER appears in output AND [id=N HH:MM] prefix is emitted', () => {
     const out = buildTranscript([
       sampleMessage({ authorId: 12345, authorName: 'Маша', tgMessageId: 1 }),
@@ -280,7 +275,7 @@ function fiveMessages(ids: number[]): CapturedMessage[] {
   }));
 }
 
-describe('summarizeThread post-validation (summary-doc-260607)', () => {
+describe('summarizeThread post-validation', () => {
   beforeEach(() => {
     anthropicCreate.mockReset();
     openaiCreate.mockReset();

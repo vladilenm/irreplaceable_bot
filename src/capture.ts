@@ -46,24 +46,20 @@ async function captureHandler(ctx: Context, options: CaptureOptions): Promise<vo
     // also gets populated.
     if (msg.is_topic_message !== true) return;
 
-    // Channel-forward guards (RESEARCH §1.10, PITFALLS TG-05): linked-channel
-    // auto-forwards arrive as messages with sender_chat.type === 'channel'.
+    // Ignore automatic posts forwarded from a linked channel.
     if (msg.is_automatic_forward === true) return;
     if (msg.sender_chat?.type === 'channel') return;
 
-    // Thread whitelist guard (D-01, hot path).
+    // Reject unconfigured topics before mapping or database work.
     const threadId = msg.message_thread_id;
     if (threadId === undefined || !options.trackedThreadIds.has(threadId)) return;
 
-    // Pure mapping: Telegram update → row.
     const captured = (options.mapMessage ?? mapTelegramMessageToCaptured)(ctx);
     if (captured === null) return;
 
-    // Idempotent UPSERT (MSG-02 + MSG-04, OPS-05 long-polling redelivery).
     upsertMessage(captured);
 
-    // Per-message debug log (D-13, PRIV-05). PROD log level = 'info' → debug
-    // is off; for verification, set LOG_LEVEL=debug. NEVER log message text body.
+    // Message text is never written to logs.
     logger.debug(
       {
         chat_id: captured.chatId,
@@ -85,7 +81,7 @@ async function captureHandler(ctx: Context, options: CaptureOptions): Promise<vo
       'Message captured',
     );
   } catch (err: unknown) {
-    // REL-04: error path — log with metadata only, do NOT rethrow.
+    // Capture failure must not stop Telegram polling.
     logger.error(
       {
         err,

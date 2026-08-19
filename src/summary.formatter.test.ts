@@ -1,5 +1,4 @@
-// quick-260507-cni → summary-doc-260607 — formatter tests for the
-// bullet-substance daily summary. Each topic renders a bold {emoji} {title}
+// Each topic renders a bold {emoji} {title}
 // header plus one `• <a>summary</a>` line per bullet; topics stay grouped by
 // thread (input order, no cross-thread sort).
 import { describe, it, expect } from 'vitest';
@@ -68,7 +67,7 @@ const baseInput = (
   ...over,
 });
 
-describe('formatThreadSummaryPost — bullet-substance layout (summary-doc-260607)', () => {
+describe('formatThreadSummaryPost — bullet-substance layout', () => {
   it('FT-H1: first line is `📆 Что обсуждалось вчера DD.MM.YYYY` (MSK)', () => {
     const out = formatThreadSummaryPost(
       baseInput({ summaries: [ok({})], totalMessageCount: 12 }),
@@ -118,7 +117,7 @@ describe('formatThreadSummaryPost — bullet-substance layout (summary-doc-26060
     expect(out).not.toContain('https://t.me/c/-1003096173975');
   });
 
-  it('FT-T3 (summary-doc-260607): topics stay grouped by thread in INPUT order (no messageCount sort)', () => {
+  it('FT-T3: topics stay grouped by thread in input order', () => {
     // Three threads in input order a → b → c, regardless of message volume.
     const out = formatThreadSummaryPost(
       baseInput({

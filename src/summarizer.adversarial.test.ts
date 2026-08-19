@@ -1,9 +1,4 @@
-// Phase 6 Task 3 — Adversarial fixture exercise (D-20..D-23, SUM-05).
-// Two assertions:
-//  ADV-1: when LLM "succumbs" and returns garbage, Zod last-gate hard-rejects → schema-invalid skip.
-//  ADV-2: buildTranscript over the adversarial fixture preserves sandwich integrity,
-//          escapes literal TRANSCRIPT_END inside a message, anchors REAFFIRM after the
-//          closing delimiter, and does NOT leak any numeric author_id.
+// Adversarial prompt-injection fixtures must fail closed without leaking author ids.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import type { CapturedMessage } from './types.js';
@@ -53,7 +48,7 @@ function parseFixture(): CapturedMessage[] {
   });
 }
 
-describe('Adversarial fixture — prompt-injection resistance (D-20..D-23, SUM-05)', () => {
+describe('Adversarial fixture — prompt-injection resistance', () => {
   beforeEach(() => {
     anthropicCreate.mockReset();
     openaiCreate.mockReset();
@@ -80,7 +75,7 @@ describe('Adversarial fixture — prompt-injection resistance (D-20..D-23, SUM-0
     expect(result).toMatchObject({ skipped: true, reason: 'schema-invalid' });
   });
 
-  it('ADV-1b (summary-doc-260607): jailbreak returning valid shape but hallucinated msgId is hard-rejected', async () => {
+  it('ADV-1b: a shape-valid response with hallucinated citations is rejected', async () => {
     // Parsed fixture tgMessageIds start at 1000 and run 1000..1005 (6 messages).
     // LLM "succumbs" and returns a shape-valid topics array whose only bullet
     // cites msgId=42 which is NOT in the input id-set → the bullet is dropped,
@@ -132,8 +127,7 @@ describe('Adversarial fixture — prompt-injection resistance (D-20..D-23, SUM-0
     expect(endMatches.length).toBe(1);
 
     // (2) All fixture message bodies appear between delimiters in order. The
-    // line prefix is now `[id=N HH:MM] Name: ` (quick-260511-fkn) — probe the
-    // message TEXT after the `: ` separator, not the line start.
+    // Probe message text after the `[id=N HH:MM] Name: ` prefix.
     const startIdx = out.indexOf('<<<TRANSCRIPT_START>>>');
     const endIdx = out.indexOf('<<<TRANSCRIPT_END>>>');
     expect(endIdx).toBeGreaterThan(startIdx);
@@ -147,7 +141,7 @@ describe('Adversarial fixture — prompt-injection resistance (D-20..D-23, SUM-0
       cursor = pos;
     }
 
-    // (3) REAFFIRM string appears AFTER the closing delimiter (post-transcript reaffirm — D-22).
+    // (3) The instruction reminder appears after the closing delimiter.
     const reaffirmIdx = out.indexOf('Reminder: respond ONLY by calling submit_summary');
     expect(reaffirmIdx).toBeGreaterThan(endIdx);
 
@@ -161,8 +155,7 @@ describe('Adversarial fixture — prompt-injection resistance (D-20..D-23, SUM-0
       expect(out).not.toContain(id);
     }
 
-    // (6) quick-260511-fkn: the [id=N ...] prefix DOES appear (numeric tgMessageId
-    // is exposed, by design, so the LLM can cite it in topic.firstMessageId).
+    // (6) Telegram message ids appear so the LLM can cite a real message.
     expect(out).toContain('[id=1000 ');
   });
 });

@@ -1,13 +1,6 @@
-// Telegram API helpers: sendMessage with one retry (per plan 03-01, D-06/D-08/D-11/D-12)
 import { GrammyError, type Api } from 'grammy';
 import { logger } from './logger.js';
 
-/**
- * Phase 8 fix C: pipeline tag distinguishes digest sends from thread-summary
- * sends in structured logs. Without it, a successful thread-summary chunk
- * shipped immediately after a failed digest send looked like a delayed digest
- * success in the log stream — see prod-digest-delivery-conflict Соп-баг 1.
- */
 export type SendMessagePipeline = 'digest' | 'thread-summary';
 
 export interface SendMessageParams {
@@ -21,11 +14,7 @@ export interface SendMessageParams {
 
 const RETRY_DELAY_MS = 3000;
 
-// TODO(prod-digest-delivery-conflict): revert once root cause identified.
-// Diagnostic helper — Timeweb dashboard renders only pino `msg`, hiding
-// the structured `err` binding. Inlining the key Telegram error fields
-// into the msg string makes the failure visible in the dashboard while
-// we hunt the root cause of "Telegram sendMessage failed after retry".
+// Keep core Telegram fields in the message for log viewers that hide bindings.
 function describeSendError(err: unknown, chatId: number, threadId: number): string {
   let errorCode: string;
   let description: string;

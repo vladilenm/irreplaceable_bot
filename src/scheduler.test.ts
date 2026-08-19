@@ -15,7 +15,7 @@ beforeEach(() => {
   _resetSchedulerForTests();
 });
 
-describe('cron registry (SCHED-01..04)', () => {
+describe('cron registry', () => {
   it('C1: startScheduler registers exactly 3 named jobs', () => {
     startScheduler(api);
     const names = _getRegisteredJobNames();
@@ -55,7 +55,7 @@ describe('cron registry (SCHED-01..04)', () => {
   });
 });
 
-describe('cron thread-summary handler wiring (Plan 06-03 Task 3)', () => {
+describe('cron thread-summary handler wiring', () => {
   it('C7+C8+C9: registry still has 3 jobs and includes thread-summary', () => {
     startScheduler(api);
     const names = _getRegisteredJobNames();
@@ -66,8 +66,8 @@ describe('cron thread-summary handler wiring (Plan 06-03 Task 3)', () => {
   });
 });
 
-describe('cron retention-sweep wiring (Phase 7, Plan 07-01 Task 2)', () => {
-  it('R1 (Phase 7): retention-sweep registered as third job after digest+thread-summary', () => {
+describe('cron retention-sweep wiring', () => {
+  it('R1: retention-sweep is registered with digest and thread-summary', () => {
     startScheduler(api);
     const names = _getRegisteredJobNames();
     expect(names).toContain('retention-sweep');
@@ -77,7 +77,6 @@ describe('cron retention-sweep wiring (Phase 7, Plan 07-01 Task 2)', () => {
 
   it('R2: scheduler imports the real retention sweep', async () => {
     const src = await readFile(new URL('./scheduler.ts', import.meta.url), 'utf-8');
-    expect(src).not.toContain('retention sweep stub — Phase 7 implements');
     expect(src).toContain('runRetentionSweep');
   });
 });

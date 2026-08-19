@@ -1,6 +1,4 @@
-// Phase 6 Task 3 — empty-input gate + token gate + threshold-boundary tests.
-// Mocks both LLM SDKs at module-load time and asserts the constructors
-// are NEVER called when gates fire (SUM-02, SUM-04).
+// Both LLM SDKs are mocked so guards can prove that no request is made.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { CapturedMessage } from './types.js';
 
@@ -95,8 +93,7 @@ describe('summarizeThread gating (SUM-02 + SUM-04)', () => {
   });
 
   it('threshold boundary: exactly LOW_VOLUME_THRESHOLD messages does NOT skip on low-volume (would attempt LLM)', async () => {
-    // summary-doc-260607: mock LLM returns the bullet-substance shape AND picks
-    // msgId from the input id-set so post-validation passes.
+    // The mock cites an id from the input set so post-validation passes.
     const validShape = {
       topics: [
         { emoji: '💻', title: 't', bullets: [{ summary: 's', msgId: 1 }], links: [] },

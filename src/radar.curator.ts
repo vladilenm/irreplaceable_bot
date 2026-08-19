@@ -104,11 +104,7 @@ export async function filterArticles(articles: RawArticle[]): Promise<DigestItem
     const source = articleByUrl.get(item.url);
     if (!source || seen.has(item.url)) continue;
     seen.add(item.url);
-    result.push({
-      ...item,
-      source: source.source,
-      publishedAt: source.pubDate,
-    });
+    result.push(item);
   }
 
   logger.info(

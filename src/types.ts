@@ -20,9 +20,7 @@ export interface DigestItem {
   title: string;
   summary: string;
   url: string;
-  source: string;
   category: DigestCategory;
-  publishedAt: Date;
 }
 
 export type DigestCategory =
@@ -33,16 +31,9 @@ export type DigestCategory =
   | 'technologies'
   | 'business';
 
-export interface DigestPayload {
-  date: Date;
-  items: DigestItem[];
-  totalSources: number;
-}
-
 export interface FeedConfig {
   url: string;
   name: string;
-  sourceKey: string;
 }
 
 export interface RawArticle {
@@ -50,66 +41,46 @@ export interface RawArticle {
   description: string;
   link: string;
   source: string;
-  sourceKey: string;
   pubDate: Date;
 }
-
-// ─── v2.0 Thread Summaries — Phase 4 capture infra (D-03..D-05) ───
 
 export interface CapturedMessage {
   chatId: number;
   threadId: number;
   tgMessageId: number;
-  authorId: number | null;          // NULL для anon admins (D-04)
+  authorId: number | null;
   authorName: string;
   isAnonymous: 0 | 1;
   text: string;
   replyToMessageId: number | null;
-  createdAt: string;                 // ISO-8601 UTC (D-03)
+  createdAt: string;
   editedAt: string | null;
 }
 
-// ─── v2.0 Phase 6 — Thread summary pipeline (D-12, D-32, D-28) ───
-// quick-260507-cni — topic-style format: {emoji, title, links} introduced.
-// quick-260511-fkn — topics-array contract: one thread → 1..5 sub-topics.
-// summary-doc-260607 — bullet-substance contract: each topic carries 1..5
-// BULLETS, where each bullet is the SUBSTANCE of one sub-discussion (что
-// решили / что получили / открытый вопрос) plus the msgId of the single most
-// representative message. The formatter renders each bullet's summary AS the
-// clickable deep-link (no more "N сообщений" statistic lines). Links and
-// markup are built by code; the LLM never emits URLs to messages. msgId is
-// post-validated against the input tgMessageId set.
-
 /**
- * A single substance point inside a topic. `summary` is the meaning (rendered
- * as the clickable text); `msgId` is the one most-representative message the
- * deep-link points at. `msgId` MUST be one of the input tgMessageIds
- * (post-validated; hallucinated bullets are dropped).
+ * A summary point and the captured Telegram message that supports it.
+ * Hallucinated message ids are discarded after LLM validation.
  */
 export interface TopicBullet {
-  summary: string;                                                 // 1..160 chars — суть пункта
-  msgId: number;                                                   // MUST be in the input tgMessageId set (post-validated)
+  summary: string;
+  msgId: number;
 }
 
 /**
- * A single sub-theme inside a thread. The LLM splits a thread into 1..5 of
- * these; the formatter renders a bold {emoji} {title} header followed by one
- * bullet line per substance point. Topics are kept grouped by thread (no
- * cross-thread flat sort).
+ * A sub-theme identified by the LLM. Rendering and deep links remain code-owned.
  */
 export interface Topic {
-  emoji: string;                                                   // 1 unicode emoji
-  title: string;                                                   // ≤100 chars
-  bullets: TopicBullet[];                                          // 1..5 substance points
-  links: Array<{ url: string; description: string }>;              // 0..5 external URLs
+  emoji: string;
+  title: string;
+  bullets: TopicBullet[];
+  links: Array<{ url: string; description: string }>;
 }
 
 /**
- * What the LLM returns. Schema-validated by Zod in summarizer.service.ts.
- * Wrapper around a topics array (1..5).
+ * Schema-validated LLM response.
  */
 export interface LLMSummaryOutput {
-  topics: Topic[];                                                 // 1..5 items
+  topics: Topic[];
 }
 
 export type ThreadSummary =
@@ -119,7 +90,7 @@ export type ThreadSummary =
       windowHours: number;
       /** Input-window message count (NOT sum of topic counts). Source-of-truth. */
       messageCount: number;
-      topics: Topic[];                                             // 1..5
+      topics: Topic[];
     }
   | {
       skipped: true;
@@ -132,9 +103,9 @@ export type ThreadSummary =
 export interface RunThreadSummaryOptions {
   /** If true, bypass isThreadSummaryPublishedTodayWithState() short-circuit. Default: false. */
   skipIdempotency?: boolean;
-  /** If true, write data/state.json after the run. Default: true. */
+  /** Persist successful publication state. Default: true. */
   persistState?: boolean;
-  /** Override default 24h window (Phase 7 /dev-summary). Default: 24. */
+  /** Override the default 24-hour window. */
   windowHours?: number;
   /** Explicit override for tests/manual runs; defaults to config.trackedThreadIds. */
   trackedThreadIds?: readonly number[];
@@ -147,37 +118,21 @@ export interface ThreadSummaryResult {
   threadsSkippedError: number;
   totalMessageCount: number;
   date: Date;
-  chunks: string[];   // formatted HTML chunks; empty if alreadyPublished or no topic is renderable
+  chunks: string[];
   /**
-   * Phase 8 fix A: when true, cron handler (or any caller) MUST call
-   * markThreadSummaryPublished(prevState, date) AFTER successful
-   * sendThreadSummary so lastThreadSummaryDate persists ONLY on confirmed
-   * delivery. When false (e.g. /dev-summary), the caller MUST NOT write state.
+   * When true, the caller records completion only after Telegram confirms delivery.
    */
   persistState: boolean;
   /**
-   * Phase 8 fix A: snapshot of state read at the start of the cycle, used by
-   * the post-send merge-write so lastDigestDate is preserved (D-33).
-   */
-  prevState: PipelineStateV2;
-  /**
-   * Phase 8 fix B: true when there is at least one tracked thread AND every
-   * thread was skipped with reason:'llm-error'. The cron handler MUST refuse
-   * to publish in this case AND MUST NOT advance lastThreadSummaryDate, so the
-   * next cycle can re-attempt once the LLM is back. Other no-topic outcomes
-   * also produce zero chunks; this flag stays specific to transport outages so
-   * operations can distinguish them from empty/schema/size skips.
+   * True when every tracked thread failed at the LLM transport layer.
+   * This is distinct from a valid run that simply produced no topics.
    */
   llmOutage: boolean;
 }
 
-/**
- * State.json shape — Phase 6 D-28 extends with lastThreadSummaryDate.
- * Mirrors PipelineState from digest.service.ts but lives in state.service.ts owned scope.
- */
-export interface PipelineStateV2 {
+export interface PipelineState {
   lastDigestDate: string | null;
   lastSkipped: boolean;
   lastItemCount: number;
-  lastThreadSummaryDate: string | null;  // NEW Phase 6 D-28 — separate field
+  lastThreadSummaryDate: string | null;
 }

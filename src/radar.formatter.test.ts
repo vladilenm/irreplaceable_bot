@@ -6,9 +6,7 @@ const item = (overrides: Partial<DigestItem> = {}): DigestItem => ({
   title: 'Новый <агент>',
   summary: 'Работает быстрее & дешевле.',
   url: 'https://example.com/news?a=1&b=2',
-  source: 'Example',
   category: 'agents',
-  publishedAt: new Date('2026-05-02T05:00:00.000Z'),
   ...overrides,
 });
 

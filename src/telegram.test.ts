@@ -1,9 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { Api } from 'grammy';
 
-// Phase 8 fix C: contract tests for the neutral telegram log + pipeline tag.
-// We mock bot.api.sendMessage to control success/failure and spy on the pino
-// logger to assert the new log shape.
+// Mock Telegram delivery and assert the structured log context.
 
 const { mockSendMessage } = vi.hoisted(() => ({
   mockSendMessage: vi.fn(),
@@ -14,7 +12,7 @@ import { logger } from './logger.js';
 
 const api = { sendMessage: mockSendMessage } as unknown as Api;
 
-describe('sendMessageWithRetry log shape (Phase 8 fix C)', () => {
+describe('sendMessageWithRetry log shape', () => {
   beforeEach(() => {
     mockSendMessage.mockReset();
   });

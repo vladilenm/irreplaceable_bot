@@ -17,7 +17,7 @@ function buildGrammyError(errorCode: number, description = 'Conflict'): GrammyEr
   );
 }
 
-describe('classifyStartupError (Phase 8 fix D)', () => {
+describe('classifyStartupError', () => {
   it('D1: GrammyError with error_code 409 → polling-conflict-409', () => {
     const err = buildGrammyError(409, 'terminated by other getUpdates request');
     expect(classifyStartupError(err)).toBe('polling-conflict-409');

@@ -1,10 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { initDb, getDb, _resetForTests } from './database.js';
-import {
-  upsertMessage,
-  selectMessagesInWindow,
-  _resetMessageStoreForTests,
-} from './database.js';
+import { upsertMessage, selectMessagesInWindow } from './database.js';
 import type { CapturedMessage } from './types.js';
 
 const baseMsg = (
@@ -25,7 +21,6 @@ const baseMsg = (
 
 beforeEach(() => {
   _resetForTests();
-  _resetMessageStoreForTests();
   initDb();
   getDb().exec('DELETE FROM messages;');
 });

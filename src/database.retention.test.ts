@@ -1,9 +1,5 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { initDb, getDb, _resetForTests, _resetMessageStoreForTests } from './database.js';
-import {
-  runRetentionSweep,
-  _resetRetentionServiceForTests,
-} from './database.js';
+import { initDb, getDb, _resetForTests, runRetentionSweep } from './database.js';
 import { logger } from './logger.js';
 import { config } from './config.js';
 
@@ -39,8 +35,6 @@ function insertBatchOld(count: number, oldIso: string): void {
 
 beforeEach(() => {
   _resetForTests();
-  _resetMessageStoreForTests();
-  _resetRetentionServiceForTests();
   initDb();
   // Wipe messages table between tests
   getDb().exec('DELETE FROM messages;');
