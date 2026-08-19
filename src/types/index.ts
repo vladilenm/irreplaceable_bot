@@ -161,7 +161,7 @@ export interface ThreadSummaryResult {
   threadsSkippedError: number;
   totalMessageCount: number;
   date: Date;
-  chunks: string[];   // formatted HTML chunks; empty array if alreadyPublished or zero tracked threads
+  chunks: string[];   // formatted HTML chunks; empty if alreadyPublished or no topic is renderable
   /**
    * Phase 8 fix A: when true, cron handler (or any caller) MUST call
    * markThreadSummaryPublished(prevState, date) AFTER successful
@@ -177,11 +177,10 @@ export interface ThreadSummaryResult {
   /**
    * Phase 8 fix B: true when there is at least one tracked thread AND every
    * thread was skipped with reason:'llm-error'. The cron handler MUST refuse
-   * to publish in this case (publishing would put a misleading «тихо: N из N»
-   * in the group, masking an LLM outage as a quiet day) AND MUST NOT advance
-   * lastThreadSummaryDate, so the next cycle can re-attempt once the LLM is
-   * back. A genuine quiet day (low-volume / transcript-too-large / mixed
-   * skip-reasons) keeps current behaviour and publishes the «тихо» chunk.
+   * to publish in this case AND MUST NOT advance lastThreadSummaryDate, so the
+   * next cycle can re-attempt once the LLM is back. Other no-topic outcomes
+   * also produce zero chunks; this flag stays specific to transport outages so
+   * operations can distinguish them from empty/schema/size skips.
    */
   llmOutage: boolean;
 }

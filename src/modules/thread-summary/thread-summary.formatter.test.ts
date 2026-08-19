@@ -285,32 +285,21 @@ describe('formatThreadSummaryPost — bullet-substance layout (summary-doc-26060
     expect(lines[lines.length - 1]).toBe('#dailysummary');
   });
 
-  it('FT-EDGE-1: zero summaries → single chunk with header + #dailysummary only', () => {
+  it('FT-EDGE-1: zero summaries → no Telegram payload', () => {
     const out = formatThreadSummaryPost(
       baseInput({ summaries: [], totalMessageCount: 0 }),
     );
-    expect(out.length).toBe(1);
-    const chunk = out[0]!;
-    expect(chunk).toMatch(/^📆 Что обсуждалось вчера/);
-    expect(chunk).toContain('#dailysummary');
-    expect(chunk).not.toContain('Всего было написано');
-    expect(chunk).not.toContain('Интересные ссылки:');
+    expect(out).toEqual([]);
   });
 
-  it('FT-EDGE-2: all skipped → header + total + footer (no topic blocks, no Интересные section)', () => {
+  it('FT-EDGE-2: all skipped → no misleading empty Telegram payload', () => {
     const out = formatThreadSummaryPost(
       baseInput({
         summaries: [skip('low-volume', 1), skip('low-volume', 2), skip('low-volume', 3)],
         totalMessageCount: 0,
       }),
     );
-    expect(out.length).toBe(1);
-    const chunk = out[0]!;
-    expect(chunk).toMatch(/^📆 Что обсуждалось вчера/);
-    expect(chunk).toContain('Всего было написано 0 сообщений');
-    expect(chunk).toContain('#dailysummary');
-    expect(chunk).not.toContain('https://t.me/c/');
-    expect(chunk).not.toContain('Интересные ссылки:');
+    expect(out).toEqual([]);
   });
 
   it('FT-SPLIT: many threads with long titles + bullets → multiple chunks each ≤ MAX_CHUNK_LENGTH; footer only on last', () => {

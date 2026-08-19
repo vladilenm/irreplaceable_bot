@@ -23,8 +23,8 @@
 // - Topics are kept GROUPED BY THREAD (input order), no cross-thread sort.
 //
 // Edge cases:
-// - Zero summaries (no tracked threads): single chunk with header + footer only.
-// - All skipped: single chunk with header + total + footer (no topic blocks).
+// - Zero summaries (no tracked threads): no chunks; nothing is published.
+// - All skipped / zero topics: no chunks; never publish an empty fallback card.
 // - Splitter: block-boundary (a topic block = header + its bullets is atomic);
 //   never splits mid-line; footer goes only on last chunk.
 //
@@ -88,7 +88,7 @@ export interface FormatThreadSummaryInput {
   summaries: ThreadSummary[];
   /** Cron-fire date (MSK day used in header). */
   date: Date;
-  /** Sum of messageCount across non-skipped summaries (orchestrator-computed). */
+  /** Count of captured rows selected across tracked threads (orchestrator-computed). */
   totalMessageCount: number;
   /** Deduped {url, description} array across non-skipped summaries (orchestrator-computed). */
   aggregatedLinks: Array<{ url: string; description: string }>;
@@ -103,14 +103,6 @@ export interface FormatThreadSummaryInput {
 export function formatThreadSummaryPost(input: FormatThreadSummaryInput): string[] {
   const { summaries, date, totalMessageCount, aggregatedLinks, chatId } = input;
   const chatIdNoPrefix = stripChatIdPrefix(chatId);
-  const headerLine = `📆 Что обсуждалось вчера ${formatHeaderDate(date)}`;
-
-  // Edge case: zero tracked threads → header + footer only.
-  if (summaries.length === 0) {
-    return [`${headerLine}${SECTION_SEPARATOR}${FOOTER_TAG}`];
-  }
-
-  const totalLine = `Всего было написано ${totalMessageCount} сообщений`;
 
   // summary-doc-260607: flatten summaries → topics PRESERVING thread order.
   // Topics stay grouped by their thread (no cross-thread sort): all of a
@@ -121,11 +113,15 @@ export function formatThreadSummaryPost(input: FormatThreadSummaryInput): string
       s.skipped ? [] : s.topics.map((t) => ({ ...t, threadId: s.threadId })),
   );
 
-  // Edge case: all skipped (or zero topics, defensive) → header + total + footer only.
+  // A post without at least one substantive topic looks like a bot failure and
+  // can even claim there were 0 messages when capture rows exist. Returning no
+  // chunks activates the cron handler's existing no-send/no-state-advance path.
   if (allTopics.length === 0) {
-    return [`${headerLine}\n${totalLine}${SECTION_SEPARATOR}${FOOTER_TAG}`];
+    return [];
   }
 
+  const headerLine = `📆 Что обсуждалось вчера ${formatHeaderDate(date)}`;
+  const totalLine = `Всего было написано ${totalMessageCount} сообщений`;
   const topicBlocks = allTopics.map((t) => buildTopicBlock(t, chatIdNoPrefix));
   const linkLines = aggregatedLinks
     .map(buildLinkLine)

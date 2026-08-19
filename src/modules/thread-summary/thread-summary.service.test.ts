@@ -29,7 +29,9 @@ const {
     }),
     mockIsThreadSummaryPublishedTodayWithState: vi.fn(() => false),
     mockListTrackedThreadIds: vi.fn(() => [100, 200, 300]),
-    mockSelectMessagesInWindow: vi.fn(() => [] as CapturedMessage[]),
+    mockSelectMessagesInWindow: vi.fn(
+      (_threadId: number, _sinceIso: string) => [] as CapturedMessage[],
+    ),
     mockSummarizeThread: vi.fn(),
   };
 });
@@ -179,14 +181,11 @@ describe('runThreadSummaryPipeline (DLV-06, DLV-10, D-32..D-35)', () => {
     expect(mockSummarizeThread).toHaveBeenCalledTimes(3);
   });
 
-  it('O3: zero tracked threads → returns 0 counts but DOES build chunks (header-only)', async () => {
+  it('O3: zero tracked threads → returns 0 counts and no Telegram chunks', async () => {
     mockListTrackedThreadIds.mockReturnValue([]);
     const r = await runThreadSummaryPipeline();
     expect(r.threadsSummarised).toBe(0);
-    expect(r.chunks.length).toBe(1);
-    // Header line of topic-style format.
-    expect(r.chunks[0]).toContain('📆 Что обсуждалось вчера');
-    expect(r.chunks[0]).toContain('#dailysummary');
+    expect(r.chunks).toEqual([]);
   });
 
   it('O4: per-thread error isolation (D-34) — one fail does not abort', async () => {
@@ -361,7 +360,7 @@ describe('runThreadSummaryPipeline LLM-outage detection (Phase 8 fix B)', () => 
     expect(r.threadsSkippedError).toBe(3);
   });
 
-  it('B3: mixed skip-reasons (one low-volume, rest llm-error) → llmOutage:false, chunks NOT empty', async () => {
+  it('B3: mixed skip-reasons with no successful topic → llmOutage:false, chunks empty', async () => {
     mockSummarizeThread.mockImplementation((input: { threadId: number }) => {
       if (input.threadId === 100) {
         return Promise.resolve({
@@ -382,32 +381,35 @@ describe('runThreadSummaryPipeline LLM-outage detection (Phase 8 fix B)', () => 
     });
     const r = await runThreadSummaryPipeline();
     expect(r.llmOutage).toBe(false);
-    expect(r.chunks.length).toBeGreaterThan(0);
+    expect(r.chunks).toEqual([]);
   });
 
-  it('B4: genuine quiet day (all low-volume) → llmOutage:false, formatter publishes header + total + footer', async () => {
-    mockSummarizeThread.mockImplementation((input: { threadId: number }) =>
+  it('B4: all skipped → no chunks, while totalMessageCount reflects rows selected from the DB', async () => {
+    mockSelectMessagesInWindow.mockImplementation((threadId: number) => {
+      if (threadId === 100) return [msg(1), msg(2)];
+      if (threadId === 200) return [msg(3)];
+      return [];
+    });
+    mockSummarizeThread.mockImplementation((input: { threadId: number; messages: CapturedMessage[] }) =>
       Promise.resolve({
         skipped: true as const,
         threadId: input.threadId,
         windowHours: 24,
-        messageCount: 1,
+        messageCount: input.messages.length,
         reason: 'low-volume' as const,
       }),
     );
     const r = await runThreadSummaryPipeline();
     expect(r.llmOutage).toBe(false);
-    expect(r.chunks.length).toBe(1);
-    // quick-260507-cni format: all-skipped → header + total-line + footer.
-    expect(r.chunks[0]).toContain('📆 Что обсуждалось вчера');
-    expect(r.chunks[0]).toContain('Всего было написано 0 сообщений');
-    expect(r.chunks[0]).toContain('#dailysummary');
+    expect(r.totalMessageCount).toBe(3);
+    expect(r.chunks).toEqual([]);
   });
 
   it('B5: zero tracked threads → llmOutage:false (vacuously not an outage)', async () => {
     mockListTrackedThreadIds.mockReturnValue([]);
     const r = await runThreadSummaryPipeline();
     expect(r.llmOutage).toBe(false);
+    expect(r.chunks).toEqual([]);
   });
 
   it('B6: at least one thread succeeded → llmOutage:false even if others llm-error', async () => {

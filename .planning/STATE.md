@@ -4,8 +4,8 @@ milestone: v2.0
 milestone_name: Thread Summaries
 status: executing
 stopped_at: Phase 6 context gathered
-last_updated: "2026-04-30T11:49:02.103Z"
-last_activity: 2026-04-30
+last_updated: "2026-08-19T13:00:00+03:00"
+last_activity: 2026-08-19
 progress:
   total_phases: 4
   completed_phases: 2
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-04-27)
 Phase: 07
 Plan: Not started
 Status: Executing Phase 07
-Last activity: 2026-05-11 - Completed quick task 260511-fkn: Сегментация под-тем внутри треда в thread-summary (LLM-side segmentation)
+Last activity: 2026-08-19 - Resolved empty thread-summary fallback: summarise any non-empty transcript, suppress posts without topics
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -135,6 +135,7 @@ None.
 | 260503-cq1 | Diagnostic patch: surface Telegram sendMessage error details (error_code, description, chatId, threadId) in pino msg so Timeweb dashboard exposes root cause of `Telegram sendMessage failed after retry` | 2026-05-03 | 53d3329 | [260503-cq1-diagnostic-patch-surface-telegram-sendme](./quick/260503-cq1-diagnostic-patch-surface-telegram-sendme/) |
 | 260507-cni | Переход thread-summary на topic-style формат: schema {emoji,title,links}, новый formatter с t.me/c deep-links и секцией «Интересные ссылки», futer #dailysummary | 2026-05-07 | 96fe1b8 | [260507-cni-thread-summary-topic-style](./quick/260507-cni-thread-summary-topic-style/) |
 | 260511-fkn | Сегментация под-тем внутри треда в thread-summary (LLM-side segmentation): контракт LLM → topics: Array<{emoji,title,messageCount,firstMessageId,links}> (1..5), tgMessageId в транскрипте, post-validation против set(input ids), flat-sort топиков по messageCount DESC | 2026-05-11 | 36dcb9e | [260511-fkn-thread-summary-llm-side-segmentation](./quick/260511-fkn-thread-summary-llm-side-segmentation/) |
+| 260819-summary-empty | Устранить ложный thread-summary «0 сообщений»: суммаризировать любой непустой transcript, считать выбранные DB rows, не публиковать без готовых topics | 2026-08-19 | — | [empty-thread-summary-zero-messages](./debug/empty-thread-summary-zero-messages.md) |
 
 ### Roadmap Evolution
 

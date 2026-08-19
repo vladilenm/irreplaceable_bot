@@ -1,4 +1,4 @@
-// Phase 6 Task 3 — low-volume gate + token gate + threshold-boundary tests.
+// Phase 6 Task 3 — empty-input gate + token gate + threshold-boundary tests.
 // Mocks both LLM SDKs at module-load time and asserts the constructors
 // are NEVER called when gates fire (SUM-02, SUM-04).
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -45,14 +45,27 @@ describe('summarizeThread gating (SUM-02 + SUM-04)', () => {
     openaiCreate.mockReset();
   });
 
-  it('L1: <5 messages returns low-volume skip and does NOT call LLM', async () => {
+  it('L1: one message is summarised instead of being discarded as low-volume', async () => {
+    const validShape = {
+      topics: [
+        { emoji: '💻', title: 't', bullets: [{ summary: 's', msgId: 1 }], links: [] },
+      ],
+    };
+    anthropicCreate.mockResolvedValueOnce({
+      content: [{ type: 'tool_use', name: 'submit_summary', input: validShape }],
+    });
+    openaiCreate.mockResolvedValueOnce({
+      choices: [{ message: { content: JSON.stringify(validShape) } }],
+    });
+
     const result = await summarizeThread({
       threadId: 1,
       windowHours: 24,
-      messages: [fakeMsg(1), fakeMsg(2), fakeMsg(3), fakeMsg(4)],
+      messages: [fakeMsg(1)],
     });
-    expect(result).toMatchObject({ skipped: true, reason: 'low-volume' });
-    expect(anthropicCreate).not.toHaveBeenCalled();
+
+    expect(result).toMatchObject({ skipped: false, messageCount: 1 });
+    expect(anthropicCreate).toHaveBeenCalledTimes(1);
     expect(openaiCreate).not.toHaveBeenCalled();
   });
 

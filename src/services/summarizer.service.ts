@@ -123,7 +123,7 @@ export const THREAD_SUMMARIZER_JSON_SCHEMA = {
 
 // ─── Constants ───
 
-export const LOW_VOLUME_THRESHOLD = 5;
+export const LOW_VOLUME_THRESHOLD = 1;
 export const TOKEN_LIMIT = 15000;
 export const CHARS_PER_TOKEN = 3.5; // D-08 char-heuristic fallback
 
@@ -281,7 +281,7 @@ export interface SummarizeThreadInput {
 
 /**
  * Pure summarizer — no DB access, no Telegram calls. Contract:
- * - <5 messages → {skipped:true, reason:'low-volume'}, NO LLM call (SUM-02)
+ * - 0 messages → {skipped:true, reason:'low-volume'}, NO LLM call (SUM-02)
  * - >15k token estimate → {skipped:true, reason:'transcript-too-large'} (SUM-04)
  * - LLM error → {skipped:true, reason:'llm-error'}
  * - Schema-invalid → {skipped:true, reason:'schema-invalid'}
@@ -292,7 +292,8 @@ export async function summarizeThread(input: SummarizeThreadInput): Promise<Thre
   const { threadId, windowHours, messages } = input;
   const messageCount = messages.length;
 
-  // Gate 1: low-volume skip (SUM-02). LLM client NEVER constructed.
+  // Gate 1: empty-input skip (SUM-02). Any real message is worth summarising;
+  // the LLM client is skipped only when the capture window is actually empty.
   if (messageCount < LOW_VOLUME_THRESHOLD) {
     logger.info(
       { threadId, messageCount, windowHours },

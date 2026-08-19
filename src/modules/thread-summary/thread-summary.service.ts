@@ -122,6 +122,10 @@ export async function runThreadSummaryPipeline(
     // Per-thread try/catch (D-34) — one fail doesn't abort cycle.
     try {
       const messages = selectMessagesInWindow(threadId, sinceIso);
+      // Count captured rows, not only summaries the LLM managed to interpret.
+      // This keeps result metadata (and the rendered total on partial success)
+      // truthful even when a sibling thread is skipped.
+      totalMessageCount += messages.length;
       // summary-doc-260607: the LLM picks a msgId per bullet from the
       // [id=N ...] prefixes in the transcript. Orchestrator computes no ids.
       const summary = await summarizeThread({ threadId, windowHours, messages });
@@ -135,7 +139,6 @@ export async function runThreadSummaryPipeline(
         }
       } else {
         threadsSummarised++;
-        totalMessageCount += summary.messageCount;
       }
     } catch (err: unknown) {
       logger.error({ err, threadId }, `Per-thread summary failed, isolating: threadId=${threadId} err=${errMsg(err)}`);
@@ -170,15 +173,12 @@ export async function runThreadSummaryPipeline(
 
   const date = new Date();
 
-  // Phase 8 fix B: distinguish full LLM-outage from a genuine quiet day. If
-  // every tracked thread skipped with reason:'llm-error', publishing the
-  // formatter's «тихо: N из N» chunk would silently mask the outage as a
-  // normal low-activity day. Detect this case BEFORE building chunks so the
-  // pipeline returns chunks=[] and llmOutage=true; the cron handler refuses
-  // to publish AND refuses to advance lastThreadSummaryDate.
-  // Mixed skip-reasons (some low-volume, some llm-error) and genuine quiet
-  // days (all low-volume / transcript-too-large) keep their existing «тихо»
-  // chunk — that's a real signal, not a masked failure.
+  // Phase 8 fix B: distinguish a full LLM transport outage for operations. If
+  // every tracked thread skipped with reason:'llm-error', the pipeline returns
+  // chunks=[] and llmOutage=true; the cron handler refuses to publish AND
+  // refuses to advance lastThreadSummaryDate.
+  // Other all-skipped combinations also yield zero chunks in the formatter;
+  // `llmOutage` remains a narrower operational signal for transport outages.
   const llmOutage =
     summaries.length > 0 &&
     summaries.every(
