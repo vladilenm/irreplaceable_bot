@@ -1,6 +1,7 @@
 import { fetchFeeds } from '../../services/rss.service.js';
 import { filterArticles } from '../../services/ai.service.js';
 import { logger } from '../../utils/logger.js';
+import type { DigestItem } from '../../types/index.js';
 import {
   readState,
   writeState,
@@ -8,7 +9,7 @@ import {
 } from '../../services/state.service.js';
 
 export interface DigestResult {
-  text: string;
+  items: DigestItem[];
   itemCount: number;
   skipped: boolean;
   date: Date;
@@ -39,12 +40,7 @@ function emptyResult(
   skipped: boolean,
   persistState: boolean,
 ): DigestResult {
-  return { text: '', itemCount: 0, skipped, date: new Date(), alreadyPublished, persistState };
-}
-
-function countDigestItems(text: string): number {
-  const matches = text.match(/→ https?:\/\//g);
-  return matches ? matches.length : 0;
+  return { items: [], itemCount: 0, skipped, date: new Date(), alreadyPublished, persistState };
 }
 
 export async function runDigestPipeline(
@@ -96,7 +92,7 @@ export async function runDigestPipeline(
       });
     }
     return {
-      text: '',
+      items: [],
       itemCount: 0,
       skipped: true,
       date: new Date(),
@@ -110,8 +106,8 @@ export async function runDigestPipeline(
     'Fetched articles, sending to AI filter',
   );
 
-  const text = await filterArticles(articles);
-  const itemCount = countDigestItems(text);
+  const items = await filterArticles(articles);
+  const itemCount = items.length;
   const skipped = itemCount < 1;
 
   if (skipped) {
@@ -140,7 +136,7 @@ export async function runDigestPipeline(
   }
 
   return {
-    text,
+    items,
     itemCount,
     skipped,
     date: new Date(),

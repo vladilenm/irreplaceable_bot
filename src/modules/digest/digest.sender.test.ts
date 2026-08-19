@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { DigestResult } from './digest.service.js';
 import type { PipelineStateV2 } from '../../types/index.js';
+import type { DigestItem } from '../../types/index.js';
 import type { Api } from 'grammy';
 
 // Phase 8 fix A: contract tests for the post-send state-write split.
@@ -46,8 +47,17 @@ import { sendDigest } from './digest.sender.js';
 
 const api = {} as Api;
 
+const item: DigestItem = {
+  title: 'Новость',
+  summary: 'Практический вывод',
+  url: 'https://example.com',
+  source: 'Example',
+  category: 'tools',
+  publishedAt: new Date('2026-05-02T05:00:00.000Z'),
+};
+
 const okResult = (overrides: Partial<DigestResult> = {}): DigestResult => ({
-  text: 'header → https://example.com',
+  items: [item],
   itemCount: 1,
   skipped: false,
   date: new Date('2026-05-02T06:00:00.000Z'),
@@ -105,7 +115,7 @@ describe('sendDigest post-send state-write contract (Phase 8 fix A)', () => {
   });
 
   it('A5: skipped:true → no send, no writeState (skip-path state-write is the pipeline\'s job, not the sender\'s)', async () => {
-    await sendDigest(api, okResult({ skipped: true, text: '' }));
+    await sendDigest(api, okResult({ skipped: true, items: [] }));
     expect(mockSendMessageWithRetry).not.toHaveBeenCalled();
     expect(mockWriteState).not.toHaveBeenCalled();
   });

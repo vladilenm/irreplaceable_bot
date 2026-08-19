@@ -12,12 +12,12 @@ export async function sendDigest(api: Api, result: DigestResult): Promise<void> 
     logger.warn({ itemCount: result.itemCount }, 'Digest skipped, not sending');
     return;
   }
-  if (result.text === '') {
-    logger.warn('Digest text is empty, not sending');
+  if (result.items.length === 0) {
+    logger.warn('Digest items are empty, not sending');
     return;
   }
 
-  const html = formatDigestHtml(result.text);
+  const html = formatDigestHtml(result.items, result.date);
 
   // Phase 8 fix A: state.json write is post-send, not pre-send. If
   // sendMessageWithRetry throws (Telegram down, 409 polling-conflict on the

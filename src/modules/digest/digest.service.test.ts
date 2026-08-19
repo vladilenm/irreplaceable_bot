@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { PipelineStateV2, RawArticle } from '../../types/index.js';
+import type { DigestItem, PipelineStateV2, RawArticle } from '../../types/index.js';
 
 // Phase 8 fix A: contract tests for the digest pipeline's split state-write.
 // Pipeline writes state ONLY on the skip path (no-articles, itemCount<1) where
@@ -56,6 +56,15 @@ const fakeArticle: RawArticle = {
   pubDate: new Date(),
 };
 
+const fakeDigestItem: DigestItem = {
+  title: 'Новость',
+  summary: 'Практический вывод',
+  url: fakeArticle.link,
+  source: fakeArticle.source,
+  category: 'tools',
+  publishedAt: fakeArticle.pubDate,
+};
+
 beforeEach(() => {
   mockState.current = {
     lastDigestDate: null,
@@ -75,7 +84,7 @@ beforeEach(() => {
 describe('runDigestPipeline state-write split (Phase 8 fix A)', () => {
   it('D1: success path → result.persistState:true, writeState NOT called by pipeline', async () => {
     mockFetchFeeds.mockResolvedValue([fakeArticle, fakeArticle]);
-    mockFilterArticles.mockResolvedValue('item → https://example.com/x');
+    mockFilterArticles.mockResolvedValue([fakeDigestItem]);
     const r = await runDigestPipeline();
     expect(r.skipped).toBe(false);
     expect(r.itemCount).toBe(1);
@@ -97,7 +106,7 @@ describe('runDigestPipeline state-write split (Phase 8 fix A)', () => {
 
   it('D3: skip path (AI filter returns 0 items) → writeState IS called by pipeline', async () => {
     mockFetchFeeds.mockResolvedValue([fakeArticle]);
-    mockFilterArticles.mockResolvedValue('no items here, just text');
+    mockFilterArticles.mockResolvedValue([]);
     const r = await runDigestPipeline();
     expect(r.skipped).toBe(true);
     expect(r.itemCount).toBe(0);
@@ -117,7 +126,7 @@ describe('runDigestPipeline state-write split (Phase 8 fix A)', () => {
 
   it('D5: persistState:false on success → result.persistState propagates as false', async () => {
     mockFetchFeeds.mockResolvedValue([fakeArticle]);
-    mockFilterArticles.mockResolvedValue('item → https://example.com/x');
+    mockFilterArticles.mockResolvedValue([fakeDigestItem]);
     const r = await runDigestPipeline({ persistState: false });
     expect(r.persistState).toBe(false);
     expect(mockWriteState).not.toHaveBeenCalled();
