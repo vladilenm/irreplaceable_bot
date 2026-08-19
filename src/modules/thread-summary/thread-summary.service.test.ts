@@ -9,7 +9,6 @@ const {
   mockReadState,
   mockWriteState,
   mockIsThreadSummaryPublishedTodayWithState,
-  mockListTrackedThreadIds,
   mockSelectMessagesInWindow,
   mockSummarizeThread,
 } = vi.hoisted(() => {
@@ -28,7 +27,6 @@ const {
       state.current = s;
     }),
     mockIsThreadSummaryPublishedTodayWithState: vi.fn(() => false),
-    mockListTrackedThreadIds: vi.fn(() => [100, 200, 300]),
     mockSelectMessagesInWindow: vi.fn(
       (_chatId: number, _threadId: number, _sinceIso: string) => [] as CapturedMessage[],
     ),
@@ -41,9 +39,6 @@ vi.mock('../../services/state.service.js', () => ({
   writeState: mockWriteState,
   isThreadSummaryPublishedTodayWithState: mockIsThreadSummaryPublishedTodayWithState,
 }));
-vi.mock('../../services/tracking.service.js', () => ({
-  listTrackedThreadIds: mockListTrackedThreadIds,
-}));
 vi.mock('../../stores/message-store.js', () => ({
   selectMessagesInWindow: mockSelectMessagesInWindow,
 }));
@@ -53,20 +48,20 @@ vi.mock('../../services/summarizer.service.js', () => ({
 // Stub config so importing the orchestrator does not require live env vars.
 vi.mock('../../config.js', () => ({
   config: {
-    targetChatId: '-1003096173975',
-    aiRadarThreadId: '0',
+    targetChatId: -1003096173975,
+    aiRadarThreadId: 0,
     digestCron: '0 6 * * *',
     aiApiKey: 'k',
     aiModel: 'm',
     botToken: 't',
     logLevel: 'info',
     nodeEnv: 'test',
-    threadSummaryThreadId: '0',
+    threadSummaryThreadId: 0,
     threadSummaryCron: '30 3 * * *',
     messageRetentionDays: 90,
     retentionSweepCron: '0 1 * * *',
     dbPath: 'data/messages.db',
-    initialTrackedThreadIds: [],
+    trackedThreadIds: [100, 200, 300],
   },
 }));
 
@@ -146,7 +141,6 @@ beforeEach(() => {
   mockWriteState.mockClear();
   mockIsThreadSummaryPublishedTodayWithState.mockClear();
   mockIsThreadSummaryPublishedTodayWithState.mockReturnValue(false);
-  mockListTrackedThreadIds.mockReturnValue([100, 200, 300]);
   mockSelectMessagesInWindow.mockReturnValue([]);
   mockSummarizeThread.mockReset();
 });
@@ -182,8 +176,7 @@ describe('runThreadSummaryPipeline (DLV-06, DLV-10, D-32..D-35)', () => {
   });
 
   it('O3: zero tracked threads → returns 0 counts and no Telegram chunks', async () => {
-    mockListTrackedThreadIds.mockReturnValue([]);
-    const r = await runThreadSummaryPipeline();
+    const r = await runThreadSummaryPipeline({ trackedThreadIds: [] });
     expect(r.threadsSummarised).toBe(0);
     expect(r.chunks).toEqual([]);
   });
@@ -246,7 +239,6 @@ describe('runThreadSummaryPipeline (DLV-06, DLV-10, D-32..D-35)', () => {
   });
 
   it('O7-CONTRACT (summary-doc-260607): orchestrator calls summarizeThread WITHOUT message ids (LLM picks per bullet)', async () => {
-    mockListTrackedThreadIds.mockReturnValue([100]);
     mockSelectMessagesInWindow.mockReturnValue([
       msg(7475),
       msg(7460),
@@ -257,7 +249,7 @@ describe('runThreadSummaryPipeline (DLV-06, DLV-10, D-32..D-35)', () => {
     mockSummarizeThread.mockImplementation(async (input: { threadId: number }) =>
       okSummary(input.threadId, 5),
     );
-    await runThreadSummaryPipeline();
+    await runThreadSummaryPipeline({ trackedThreadIds: [100] });
     expect(mockSummarizeThread).toHaveBeenCalled();
     const call = mockSummarizeThread.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(call).toBeDefined();
@@ -268,7 +260,6 @@ describe('runThreadSummaryPipeline (DLV-06, DLV-10, D-32..D-35)', () => {
   });
 
   it('O7-MULTI (summary-doc-260607): a single thread with two topics renders TWO bold headers, each bullet with its own deep-link', async () => {
-    mockListTrackedThreadIds.mockReturnValue([100]);
     mockSelectMessagesInWindow.mockReturnValue(
       Array.from({ length: 8 }, (_, i) => msg(7000 + i)),
     );
@@ -278,7 +269,7 @@ describe('runThreadSummaryPipeline (DLV-06, DLV-10, D-32..D-35)', () => {
         { msgId: 7005, title: 'multi-topic-B', summary: 'итог-B' },
       ]),
     );
-    const r = await runThreadSummaryPipeline();
+    const r = await runThreadSummaryPipeline({ trackedThreadIds: [100] });
     const text = r.chunks.join('\n');
     // Both topic headers present.
     expect(text).toContain('<b>multi-topic-A</b>');
@@ -291,7 +282,6 @@ describe('runThreadSummaryPipeline (DLV-06, DLV-10, D-32..D-35)', () => {
   });
 
   it('O8-AGG: aggregated links deduped case-insensitively across non-skipped summaries', async () => {
-    mockListTrackedThreadIds.mockReturnValue([100, 200]);
     mockSelectMessagesInWindow.mockReturnValue(
       Array.from({ length: 5 }, (_, i) => msg(i + 1)),
     );
@@ -307,7 +297,7 @@ describe('runThreadSummaryPipeline (DLV-06, DLV-10, D-32..D-35)', () => {
         { url: 'https://example.com/c', description: 'c-ru' },
       ]);
     });
-    const r = await runThreadSummaryPipeline();
+    const r = await runThreadSummaryPipeline({ trackedThreadIds: [100, 200] });
     const text = r.chunks.join('\n');
     // Original "a-ru" description is preserved (first occurrence wins).
     expect(text).toContain('a-ru');
@@ -406,8 +396,7 @@ describe('runThreadSummaryPipeline LLM-outage detection (Phase 8 fix B)', () => 
   });
 
   it('B5: zero tracked threads → llmOutage:false (vacuously not an outage)', async () => {
-    mockListTrackedThreadIds.mockReturnValue([]);
-    const r = await runThreadSummaryPipeline();
+    const r = await runThreadSummaryPipeline({ trackedThreadIds: [] });
     expect(r.llmOutage).toBe(false);
     expect(r.chunks).toEqual([]);
   });

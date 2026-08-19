@@ -50,10 +50,11 @@ function formatHeaderDate(date: Date): string {
   return date.toLocaleDateString('ru-RU', { timeZone: 'Europe/Moscow' });
 }
 
-function stripChatIdPrefix(chatId: string): string {
+function stripChatIdPrefix(chatId: number): string {
+  const value = String(chatId);
   // Telegram supergroup ids start with -100; the t.me/c/ link path uses the
   // numeric body without the -100 prefix.
-  return chatId.startsWith('-100') ? chatId.slice(4) : chatId.replace(/^-/, '');
+  return value.startsWith('-100') ? value.slice(4) : value.replace(/^-/, '');
 }
 
 function msgLink(chatIdNoPrefix: string, threadId: number, msgId: number): string {
@@ -92,8 +93,8 @@ export interface FormatThreadSummaryInput {
   totalMessageCount: number;
   /** Deduped {url, description} array across non-skipped summaries (orchestrator-computed). */
   aggregatedLinks: Array<{ url: string; description: string }>;
-  /** config.targetChatId, e.g. "-1003096173975". */
-  chatId: string;
+  /** config.targetChatId, e.g. -1003096173975. */
+  chatId: number;
 }
 
 /**

@@ -218,4 +218,7 @@ bot.command('dev-digest', async (ctx) => {
 // v2.0 Phase 4: capture handler — MUST be registered AFTER all commands and
 // AFTER bot.catch() (CODE-01: Grammy middleware order). Capture is terminal
 // (does not call next()), so commands must match first.
-registerCaptureHandlers(bot, { targetChatId: Number(config.targetChatId) });
+registerCaptureHandlers(bot, {
+  targetChatId: config.targetChatId,
+  trackedThreadIds: new Set(config.trackedThreadIds),
+});

@@ -11,12 +11,12 @@ function requireEnv(name: string): string {
 // Fail fast on malformed integer env vars (WR-03): a typo like THREAD_ID=abc
 // would otherwise silently become NaN and crash only at first Telegram API call,
 // potentially 9 hours after startup when the cron fires.
-function requireEnvInt(name: string): string {
+function requireEnvInt(name: string): number {
   const value = requireEnv(name);
   if (!/^-?\d+$/.test(value)) {
     throw new Error(`Environment variable ${name} must be an integer, got "${value}"`);
   }
-  return value;
+  return Number(value);
 }
 
 // v2.0 Phase 4: integer ENV with optional default and a minimum bound.
@@ -34,9 +34,7 @@ function readEnvIntWithDefault(name: string, defaultValue: number, min?: number)
   return value;
 }
 
-// v2.0 Phase 4 D-02: CSV of message_thread_id values to seed tracked_threads on first boot.
-// Empty string → []. Whitespace tolerated. Non-integer entry → throw at startup.
-function parseInitialTrackedThreadIds(raw: string): number[] {
+function parseTrackedThreadIds(raw: string): number[] {
   if (raw.trim() === '') return [];
   return raw
     .split(',')
@@ -45,7 +43,7 @@ function parseInitialTrackedThreadIds(raw: string): number[] {
     .map((s) => {
       const n = Number(s);
       if (!Number.isInteger(n)) {
-        throw new Error(`INITIAL_TRACKED_THREAD_IDS contains non-integer: "${s}"`);
+        throw new Error(`TRACKED_THREAD_IDS contains non-integer: "${s}"`);
       }
       return n;
     });
@@ -61,11 +59,14 @@ export const config: BotConfig = {
   aiBaseUrl: process.env['AI_BASE_URL'],
   logLevel: process.env['LOG_LEVEL'] ?? 'info',
   nodeEnv: process.env['NODE_ENV'] ?? 'production',
-  // ── v2.0 thread summaries (Phase 4) ──
   threadSummaryThreadId: requireEnvInt('THREAD_SUMMARY_THREAD_ID'),
   threadSummaryCron: process.env['THREAD_SUMMARY_CRON'] ?? '30 3 * * *',
   messageRetentionDays: readEnvIntWithDefault('MESSAGE_RETENTION_DAYS', 90, 7),
   retentionSweepCron: process.env['RETENTION_SWEEP_CRON'] ?? '0 1 * * *',
   dbPath: process.env['DB_PATH'] ?? 'data/messages.db',
-  initialTrackedThreadIds: parseInitialTrackedThreadIds(process.env['INITIAL_TRACKED_THREAD_IDS'] ?? ''),
+  trackedThreadIds: parseTrackedThreadIds(
+    process.env['TRACKED_THREAD_IDS'] ??
+      process.env['INITIAL_TRACKED_THREAD_IDS'] ??
+      '',
+  ),
 };

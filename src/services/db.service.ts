@@ -78,15 +78,34 @@ const MIGRATIONS: ReadonlyArray<Migration> = [
       DROP TABLE IF EXISTS forgotten_users;
     `,
   },
-  // future versions append here
+  {
+    version: 4,
+    description: 'Store scheduled-job state in SQLite',
+    sql: `
+      CREATE TABLE job_state (
+        job_name          TEXT PRIMARY KEY,
+        last_completed_at TEXT,
+        last_outcome      TEXT NOT NULL CHECK (last_outcome IN ('success', 'skipped')),
+        item_count        INTEGER NOT NULL DEFAULT 0
+      );
+    `,
+  },
+  {
+    version: 5,
+    description: 'Remove unused user and tracked-thread tables',
+    sql: `
+      DROP TABLE IF EXISTS users;
+      DROP TABLE IF EXISTS tracked_threads;
+    `,
+  },
+  // Future versions append here. Shipped migrations are immutable.
 ];
 
 let _db: Database.Database | null = null;
 
 /**
  * Open the SQLite database, apply pragmas in canonical order, run pending
- * migrations inside transactions, and seed tracked_threads from
- * INITIAL_TRACKED_THREAD_IDS on first boot only (D-02).
+ * migrations inside transactions.
  *
  * SYNCHRONOUS — better-sqlite3 design choice. Throws on WAL pragma failure
  * (DB-01 silent-fallback defence). Idempotent: subsequent calls are no-ops.
@@ -152,27 +171,6 @@ export function initDb(): void {
       applyMigration(m);
       appliedCount++;
     }
-  }
-
-  // 5. ENV-seed tracked_threads if BOTH table empty AND ENV non-empty (D-02).
-  const trackedCount = (
-    _db.prepare('SELECT COUNT(*) AS c FROM tracked_threads').get() as { c: number }
-  ).c;
-  if (trackedCount === 0 && config.initialTrackedThreadIds.length > 0) {
-    const insertStmt = _db.prepare(`
-      INSERT INTO tracked_threads (thread_id, chat_id, added_by, added_at)
-      VALUES (?, ?, NULL, ?)
-    `);
-    const seedTxn = _db.transaction((ids: number[]) => {
-      const now = new Date().toISOString();
-      const chatId = Number(config.targetChatId);
-      for (const id of ids) insertStmt.run(id, chatId, now);
-    });
-    seedTxn(config.initialTrackedThreadIds);
-    logger.info(
-      { count: config.initialTrackedThreadIds.length, ids: config.initialTrackedThreadIds },
-      'Bootstrapped tracked_threads from INITIAL_TRACKED_THREAD_IDS',
-    );
   }
 
   logger.info(

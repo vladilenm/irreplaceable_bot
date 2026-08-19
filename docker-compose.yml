@@ -11,7 +11,7 @@ services:
     #
     # Persistence (production): configured entirely via the Timeweb dashboard
     # Disk UI. Create a Disk in the dashboard and mount it to `/app/data` —
-    # this is where SQLite (better-sqlite3) and state.json live. The platform
+    # this is where SQLite (better-sqlite3) lives. The platform
     # injects the disk into the container without any compose-level
     # declaration.
     #
@@ -53,7 +53,7 @@ services:
       MESSAGE_RETENTION_DAYS: "${MESSAGE_RETENTION_DAYS:-90}"
       RETENTION_SWEEP_CRON: "${RETENTION_SWEEP_CRON:-0 1 * * *}"
       DB_PATH: "${DB_PATH:-data/messages.db}"
-      INITIAL_TRACKED_THREAD_IDS: "${INITIAL_TRACKED_THREAD_IDS:-}"
+      TRACKED_THREAD_IDS: "${TRACKED_THREAD_IDS:-}"
     logging:
       driver: json-file
       options:

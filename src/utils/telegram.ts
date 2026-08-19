@@ -11,8 +11,8 @@ import { logger } from './logger.js';
 export type SendMessagePipeline = 'digest' | 'thread-summary';
 
 export interface SendMessageParams {
-  chatId: string;
-  threadId: string;
+  chatId: number;
+  threadId: number;
   text: string;
   parseMode: 'HTML';
   /** Optional: tags structured log entries with the originating pipeline. */
@@ -26,7 +26,7 @@ const RETRY_DELAY_MS = 3000;
 // the structured `err` binding. Inlining the key Telegram error fields
 // into the msg string makes the failure visible in the dashboard while
 // we hunt the root cause of "Telegram sendMessage failed after retry".
-function describeSendError(err: unknown, chatId: string, threadId: string): string {
+function describeSendError(err: unknown, chatId: number, threadId: number): string {
   let errorCode: string;
   let description: string;
   if (err instanceof GrammyError) {
@@ -48,7 +48,7 @@ function delay(ms: number): Promise<void> {
 
 async function attemptSend(api: Api, params: SendMessageParams): Promise<void> {
   await api.sendMessage(params.chatId, params.text, {
-    message_thread_id: Number(params.threadId),
+    message_thread_id: params.threadId,
     parse_mode: params.parseMode,
     link_preview_options: { is_disabled: true },
   });

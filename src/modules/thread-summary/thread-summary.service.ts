@@ -9,7 +9,6 @@
 
 import { logger, errMsg } from '../../utils/logger.js';
 import { config } from '../../config.js';
-import { listTrackedThreadIds } from '../../services/tracking.service.js';
 import { selectMessagesInWindow } from '../../stores/message-store.js';
 import { summarizeThread } from '../../services/summarizer.service.js';
 import {
@@ -106,7 +105,7 @@ export async function runThreadSummaryPipeline(
   }
 
   const sinceIso = nowMinusHoursIso(windowHours);
-  const threadIds = listTrackedThreadIds();
+  const threadIds = opts.trackedThreadIds ?? config.trackedThreadIds;
   logger.info(
     { threadCount: threadIds.length, windowHours, sinceIso, skipIdempotency, persistState },
     'Starting thread-summary pipeline',
@@ -121,7 +120,7 @@ export async function runThreadSummaryPipeline(
   for (const threadId of threadIds) {
     // Per-thread try/catch (D-34) — one fail doesn't abort cycle.
     try {
-      const messages = selectMessagesInWindow(Number(config.targetChatId), threadId, sinceIso);
+      const messages = selectMessagesInWindow(config.targetChatId, threadId, sinceIso);
       // Count captured rows, not only summaries the LLM managed to interpret.
       // This keeps result metadata (and the rendered total on partial success)
       // truthful even when a sibling thread is skipped.

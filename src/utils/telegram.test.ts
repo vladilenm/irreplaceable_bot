@@ -28,8 +28,8 @@ describe('sendMessageWithRetry log shape (Phase 8 fix C)', () => {
     const infoSpy = vi.spyOn(logger, 'info');
     mockSendMessage.mockResolvedValue({});
     await sendMessageWithRetry(api, {
-      chatId: '-100',
-      threadId: '42',
+      chatId: -100,
+      threadId: 42,
       text: 'hi',
       parseMode: 'HTML',
       pipeline: 'digest',
@@ -48,17 +48,17 @@ describe('sendMessageWithRetry log shape (Phase 8 fix C)', () => {
     const infoSpy = vi.spyOn(logger, 'info');
     mockSendMessage.mockResolvedValue({});
     await sendMessageWithRetry(api, {
-      chatId: '-100',
-      threadId: '42',
+      chatId: -100,
+      threadId: 42,
       text: 'hi',
       parseMode: 'HTML',
       pipeline: 'thread-summary',
     });
 
     const successCall = infoSpy.mock.calls.find((c) => c[1] === 'Telegram sendMessage ok');
-    const binding = successCall?.[0] as { chatId: string; threadId: string; pipeline: string };
-    expect(binding.chatId).toBe('-100');
-    expect(binding.threadId).toBe('42');
+    const binding = successCall?.[0] as { chatId: number; threadId: number; pipeline: string };
+    expect(binding.chatId).toBe(-100);
+    expect(binding.threadId).toBe(42);
     expect(binding.pipeline).toBe('thread-summary');
   });
 
@@ -71,8 +71,8 @@ describe('sendMessageWithRetry log shape (Phase 8 fix C)', () => {
       .mockResolvedValueOnce({});
 
     const promise = sendMessageWithRetry(api, {
-      chatId: '-100',
-      threadId: '42',
+      chatId: -100,
+      threadId: 42,
       text: 'hi',
       parseMode: 'HTML',
       pipeline: 'digest',
@@ -107,8 +107,8 @@ describe('sendMessageWithRetry log shape (Phase 8 fix C)', () => {
       .mockRejectedValueOnce(new Error('flaky-2'));
 
     const promise = sendMessageWithRetry(api, {
-      chatId: '-100',
-      threadId: '42',
+      chatId: -100,
+      threadId: 42,
       text: 'hi',
       parseMode: 'HTML',
       pipeline: 'thread-summary',
@@ -135,8 +135,8 @@ describe('sendMessageWithRetry log shape (Phase 8 fix C)', () => {
     const infoSpy = vi.spyOn(logger, 'info');
     mockSendMessage.mockResolvedValue({});
     await sendMessageWithRetry(api, {
-      chatId: '-100',
-      threadId: '42',
+      chatId: -100,
+      threadId: 42,
       text: 'hi',
       parseMode: 'HTML',
     });

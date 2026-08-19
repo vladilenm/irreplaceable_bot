@@ -1,20 +1,19 @@
 export interface BotConfig {
   botToken: string;
-  targetChatId: string;
-  aiRadarThreadId: string;
+  targetChatId: number;
+  aiRadarThreadId: number;
   digestCron: string;
   aiApiKey: string;
   aiModel: string;
   aiBaseUrl?: string;
   logLevel: string;
   nodeEnv: string;
-  // ── v2.0 thread summaries (Phase 4) ──
-  threadSummaryThreadId: string;     // requireEnvInt — gates Phase 7 publish
-  threadSummaryCron: string;         // default '30 3 * * *' (06:30 MSK)
-  messageRetentionDays: number;      // default 90, MIN 7 enforced
-  retentionSweepCron: string;        // default '0 1 * * *' (04:00 MSK)
-  dbPath: string;                    // default 'data/messages.db'
-  initialTrackedThreadIds: number[]; // CSV-parsed, default []
+  threadSummaryThreadId: number;
+  threadSummaryCron: string;
+  messageRetentionDays: number;
+  retentionSweepCron: string;
+  dbPath: string;
+  trackedThreadIds: number[];
 }
 
 export interface DigestItem {
@@ -68,21 +67,6 @@ export interface CapturedMessage {
   replyToMessageId: number | null;
   createdAt: string;                 // ISO-8601 UTC (D-03)
   editedAt: string | null;
-}
-
-export interface TrackedThread {
-  threadId: number;
-  chatId: number;
-  addedBy: number | null;            // NULL when seeded from ENV bootstrap (D-02)
-  addedAt: string;
-  title: string | null;              // Phase 6 D-05 — forum-topic name cache; NULL until a future title-writer is introduced
-}
-
-export interface ForgottenUser {
-  authorId: number;
-  forgottenAt: string;
-  deletedCount: number;
-  requestedVia: 'self' | 'admin' | 'bootstrap-test';
 }
 
 // ─── v2.0 Phase 6 — Thread summary pipeline (D-12, D-32, D-28) ───
@@ -152,6 +136,8 @@ export interface RunThreadSummaryOptions {
   persistState?: boolean;
   /** Override default 24h window (Phase 7 /dev-summary). Default: 24. */
   windowHours?: number;
+  /** Explicit override for tests/manual runs; defaults to config.trackedThreadIds. */
+  trackedThreadIds?: readonly number[];
 }
 
 export interface ThreadSummaryResult {

@@ -2,17 +2,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Bot, Context } from 'grammy';
 import type { CapturedMessage } from '../../types/index.js';
 
-const { mockIsThreadTracked, mockUpsertMessage, mockMapMessage } = vi.hoisted(() => ({
-  mockIsThreadTracked: vi.fn(() => true),
+const { mockUpsertMessage, mockMapMessage } = vi.hoisted(() => ({
   mockUpsertMessage: vi.fn(),
   mockMapMessage: vi.fn(),
 }));
 
 vi.mock('../../utils/logger.js', () => ({
   logger: { debug: vi.fn(), error: vi.fn() },
-}));
-vi.mock('../../services/tracking.service.js', () => ({
-  isThreadTracked: mockIsThreadTracked,
 }));
 vi.mock('../../stores/message-store.js', () => ({
   upsertMessage: mockUpsertMessage,
@@ -38,7 +34,6 @@ const captured: CapturedMessage = {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mockIsThreadTracked.mockReturnValue(true);
   mockMapMessage.mockReturnValue(captured);
 });
 
@@ -51,7 +46,10 @@ describe('capture chat boundary', () => {
       }),
     } as unknown as Bot;
 
-    registerCaptureHandlers(bot, { targetChatId: -1001 });
+    registerCaptureHandlers(bot, {
+      targetChatId: -1001,
+      trackedThreadIds: new Set([10]),
+    });
     await handler?.({
       chat: { id: -2002 },
       msg: {
@@ -62,5 +60,30 @@ describe('capture chat boundary', () => {
     } as Context);
 
     expect(mockUpsertMessage).not.toHaveBeenCalled();
+  });
+
+  it('captures only thread ids passed in options', async () => {
+    let handler: ((ctx: Context) => Promise<void>) | undefined;
+    const bot = {
+      on: vi.fn((_query, next) => {
+        handler = next as (ctx: Context) => Promise<void>;
+      }),
+    } as unknown as Bot;
+
+    registerCaptureHandlers(bot, {
+      targetChatId: -2002,
+      trackedThreadIds: new Set([10]),
+    });
+    const context = (threadId: number) => ({
+      chat: { id: -2002 },
+      msg: { is_topic_message: true, message_thread_id: threadId },
+      update: { update_id: threadId },
+    } as Context);
+
+    await handler?.(context(99));
+    expect(mockUpsertMessage).not.toHaveBeenCalled();
+
+    await handler?.(context(10));
+    expect(mockUpsertMessage).toHaveBeenCalledTimes(1);
   });
 });

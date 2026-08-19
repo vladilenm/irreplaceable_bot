@@ -24,7 +24,7 @@ import {
 import { sendThreadSummary } from '../modules/thread-summary/thread-summary.sender.js';
 import { runRetentionSweep } from '../services/retention.service.js';
 
-// Module-level registry. Singleton-by-import (mirrors tracking.service trackedSet pattern).
+// Module-level registry used only to stop registered jobs during shutdown.
 const tasks = new Map<string, ScheduledTask>();
 
 type CronHandler = () => Promise<void>;

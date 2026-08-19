@@ -35,14 +35,7 @@ export async function runPreflight(bot: Bot): Promise<void> {
       );
     }
 
-    const targetChatId = Number(config.targetChatId);
-    if (!Number.isInteger(targetChatId)) {
-      logger.warn(
-        { targetChatId: config.targetChatId },
-        'TARGET_CHAT_ID is not numeric — skipping admin status check',
-      );
-      return;
-    }
+    const targetChatId = config.targetChatId;
     const member = await bot.api.getChatMember(targetChatId, me.id);
     if (member.status !== 'administrator' && member.status !== 'creator') {
       logger.warn(

@@ -3,7 +3,7 @@ import { bot } from './bot.js';
 import { logger, bootId, errMsg } from './utils/logger.js';
 import { startScheduler, stopScheduler } from './scheduler/cron.js';
 import { initDb, closeDb } from './services/db.service.js';
-import { loadTrackingWhitelist } from './services/tracking.service.js';
+import { importLegacyState } from './services/state.service.js';
 import { runPreflight } from './utils/preflight.js';
 import {
   classifyStartupError,
@@ -24,11 +24,7 @@ async function main(): Promise<void> {
   // Throws on WAL pragma failure (DB-01) — exit-fast preferred over silent
   // degraded mode. Better-sqlite3 is sync by design.
   initDb();
-
-  // v2.0 Phase 4 (TRK-05): rebuild in-memory whitelist Set from DB BEFORE
-  // bot.start(). If polling started first, capture handler would race against
-  // an empty Set on the first ms of messages.
-  loadTrackingWhitelist();
+  importLegacyState();
 
   // Start long-polling — fire-and-forget with explicit .catch so startup
   // errors are logged and cause a clean exit rather than an unhandled rejection.

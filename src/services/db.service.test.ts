@@ -6,8 +6,8 @@ beforeEach(() => {
   initDb();
 });
 
-describe('migration v3 — drop forgotten_users (Phase 7)', () => {
-  it('Mig-T1: schema_migrations contains versions 1, 2, and 3', () => {
+describe('database migrations', () => {
+  it('applies all migrations through job-state storage', () => {
     const versions = (
       getDb()
         .prepare('SELECT version FROM schema_migrations ORDER BY version')
@@ -16,6 +16,32 @@ describe('migration v3 — drop forgotten_users (Phase 7)', () => {
     expect(versions).toContain(1);
     expect(versions).toContain(2);
     expect(versions).toContain(3);
+    expect(versions).toContain(4);
+    expect(versions).toContain(5);
+  });
+
+  it('drops tables that had no runtime writer or consumer', () => {
+    const names = (
+      getDb()
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('users', 'tracked_threads')",
+        )
+        .all() as Array<{ name: string }>
+    ).map((row) => row.name);
+    expect(names).toEqual([]);
+  });
+
+  it('creates normalized job_state rows instead of relying on state.json', () => {
+    const columns = (
+      getDb().prepare('PRAGMA table_info(job_state)').all() as Array<{ name: string }>
+    ).map((column) => column.name);
+
+    expect(columns).toEqual([
+      'job_name',
+      'last_completed_at',
+      'last_outcome',
+      'item_count',
+    ]);
   });
 
   it('Mig-T2: forgotten_users table does not exist after initDb', () => {

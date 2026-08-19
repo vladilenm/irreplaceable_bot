@@ -1,29 +1,25 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import {
-  existsSync,
-  unlinkSync,
-  writeFileSync as realWriteFileSync,
-} from 'node:fs';
-import { fileURLToPath } from 'node:url';
-
-const STATE_PATH = fileURLToPath(new URL('../../data/state.json', import.meta.url));
-const TMP_PATH = `${STATE_PATH}.tmp`;
-
-beforeEach(() => {
-  if (existsSync(STATE_PATH)) unlinkSync(STATE_PATH);
-  if (existsSync(TMP_PATH)) unlinkSync(TMP_PATH);
-});
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { initDb, getDb, _resetForTests } from './db.service.js';
 
 import {
   readState,
   writeState,
   isDigestPublishedToday,
   isThreadSummaryPublishedTodayWithState,
+  importLegacyState,
 } from './state.service.js';
 import type { PipelineStateV2 } from '../types/index.js';
 
-describe('state.service atomic writes (STATE-01)', () => {
-  it('S1: writeState then readState round-trip', () => {
+beforeEach(() => {
+  _resetForTests();
+  initDb();
+});
+
+describe('SQLite job state', () => {
+  it('writeState then readState round-trips both independent jobs', () => {
     writeState({
       lastDigestDate: '2026-04-29T10:00:00.000Z',
       lastSkipped: false,
@@ -37,7 +33,7 @@ describe('state.service atomic writes (STATE-01)', () => {
     expect(got.lastThreadSummaryDate).toBeNull();
   });
 
-  it('S3: missing file returns defaults', () => {
+  it('missing rows return defaults', () => {
     const got = readState();
     expect(got).toEqual({
       lastDigestDate: null,
@@ -47,26 +43,29 @@ describe('state.service atomic writes (STATE-01)', () => {
     });
   });
 
-  it('S4: corrupt JSON THROWS with State file corrupted message (STATE-02)', () => {
-    realWriteFileSync(STATE_PATH, '{not valid json[');
-    expect(() => readState()).toThrowError(/State file corrupted/);
-  });
-
-  it('S5: legacy v1.0 state file (no lastThreadSummaryDate) reads back with null in new field', () => {
-    realWriteFileSync(
-      STATE_PATH,
+  it('imports a legacy state.json only when job_state is empty', () => {
+    const legacyPath = join(mkdtempSync(join(tmpdir(), 'club-bot-state-')), 'state.json');
+    writeFileSync(
+      legacyPath,
       JSON.stringify({
         lastDigestDate: '2026-04-29T06:00:00.000Z',
         lastSkipped: false,
         lastItemCount: 5,
       }),
     );
+
+    expect(importLegacyState(legacyPath)).toBe(true);
     const got = readState();
     expect(got.lastThreadSummaryDate).toBeNull();
     expect(got.lastDigestDate).toBe('2026-04-29T06:00:00.000Z');
+    expect(got.lastItemCount).toBe(5);
+
+    writeState({ ...got, lastDigestDate: 'newer' });
+    expect(importLegacyState(legacyPath)).toBe(false);
+    expect(readState().lastDigestDate).toBe('newer');
   });
 
-  it('S8: writeState then writeState preserves explicitly-passed shape', () => {
+  it('stores digest and thread-summary as separate rows', () => {
     writeState({
       lastDigestDate: 'A',
       lastSkipped: false,
@@ -79,14 +78,17 @@ describe('state.service atomic writes (STATE-01)', () => {
       lastItemCount: 0,
       lastThreadSummaryDate: 'B',
     });
-    const got = readState();
-    expect(got.lastDigestDate).toBe('C');
-    expect(got.lastThreadSummaryDate).toBe('B');
+    const rows = getDb()
+      .prepare('SELECT job_name FROM job_state ORDER BY job_name')
+      .all() as Array<{ job_name: string }>;
+    expect(rows.map((row) => row.job_name)).toEqual(['digest', 'thread-summary']);
+    expect(readState().lastDigestDate).toBe('C');
+    expect(readState().lastThreadSummaryDate).toBe('B');
   });
 });
 
-describe('state.service idempotency checks (D-31)', () => {
-  it('S6: isDigestPublishedToday — null → false; same MSK day → true', () => {
+describe('job idempotency checks', () => {
+  it('digest: null is false and the same MSK day is true', () => {
     expect(isDigestPublishedToday()).toBe(false);
     writeState({
       lastDigestDate: new Date().toISOString(),
@@ -97,7 +99,7 @@ describe('state.service idempotency checks (D-31)', () => {
     expect(isDigestPublishedToday()).toBe(true);
   });
 
-  it('S7: isThreadSummaryPublishedTodayWithState — separate from digest, same MSK-day pattern', () => {
+  it('thread-summary remains independent from digest', () => {
     const state: PipelineStateV2 = {
       lastDigestDate: null,
       lastSkipped: false,
@@ -108,7 +110,7 @@ describe('state.service idempotency checks (D-31)', () => {
     expect(isDigestPublishedToday()).toBe(false);
   });
 
-  it('S6b: previous MSK day → false', () => {
+  it('previous MSK day is false', () => {
     writeState({
       lastDigestDate: '2020-01-01T10:00:00.000Z',
       lastSkipped: false,
@@ -116,18 +118,5 @@ describe('state.service idempotency checks (D-31)', () => {
       lastThreadSummaryDate: null,
     });
     expect(isDigestPublishedToday()).toBe(false);
-  });
-});
-
-describe('atomic write proof (STATE-01)', () => {
-  it('S2: after writeState the .tmp file does not exist (was renamed) and final exists', () => {
-    writeState({
-      lastDigestDate: 'X',
-      lastSkipped: false,
-      lastItemCount: 0,
-      lastThreadSummaryDate: null,
-    });
-    expect(existsSync(TMP_PATH)).toBe(false);
-    expect(existsSync(STATE_PATH)).toBe(true);
   });
 });

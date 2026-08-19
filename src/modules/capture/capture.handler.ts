@@ -1,6 +1,5 @@
 import type { Bot, Context } from 'grammy';
 import { logger } from '../../utils/logger.js';
-import { isThreadTracked } from '../../services/tracking.service.js';
 import { upsertMessage } from '../../stores/message-store.js';
 import { mapTelegramMessageToCaptured } from './capture.mapper.js';
 
@@ -21,6 +20,7 @@ import { mapTelegramMessageToCaptured } from './capture.mapper.js';
  */
 export interface CaptureOptions {
   targetChatId: number;
+  trackedThreadIds: ReadonlySet<number>;
 }
 
 export function registerCaptureHandlers(bot: Bot, options: CaptureOptions): void {
@@ -52,7 +52,7 @@ async function captureHandler(ctx: Context, options: CaptureOptions): Promise<vo
 
     // Thread whitelist guard (D-01, hot path).
     const threadId = msg.message_thread_id;
-    if (threadId === undefined || !isThreadTracked(threadId)) return;
+    if (threadId === undefined || !options.trackedThreadIds.has(threadId)) return;
 
     // Pure mapping: Telegram update → row.
     const captured = mapTelegramMessageToCaptured(ctx);

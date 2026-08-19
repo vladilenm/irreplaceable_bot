@@ -28,7 +28,7 @@ beforeEach(() => {
   _resetForTests();
   _resetMessageStoreForTests();
   initDb();
-  getDb().exec('DELETE FROM messages; DELETE FROM tracked_threads;');
+  getDb().exec('DELETE FROM messages;');
 });
 
 describe('selectMessagesInWindow (W1, W2)', () => {

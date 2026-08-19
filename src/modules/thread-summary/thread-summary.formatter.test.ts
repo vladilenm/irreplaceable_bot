@@ -6,7 +6,7 @@ import { describe, it, expect } from 'vitest';
 import { formatThreadSummaryPost, MAX_CHUNK_LENGTH } from './thread-summary.formatter.js';
 import type { ThreadSummary, Topic, TopicBullet } from '../../types/index.js';
 
-const CHAT_ID = '-1003096173975';
+const CHAT_ID = -1003096173975;
 const CHAT_ID_NOPREFIX = '3096173975';
 
 interface OkOverrides {
@@ -111,7 +111,7 @@ describe('formatThreadSummaryPost — bullet-substance layout (summary-doc-26060
       baseInput({
         summaries: [ok({ threadId: 100, bullets: [{ summary: 's', msgId: 5 }] })],
         totalMessageCount: 1,
-        chatId: '-1003096173975',
+        chatId: -1003096173975,
       }),
     ).join('\n');
     expect(out).toContain(`https://t.me/c/${CHAT_ID_NOPREFIX}/100/5`);
