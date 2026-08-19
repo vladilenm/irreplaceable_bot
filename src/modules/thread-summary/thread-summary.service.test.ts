@@ -30,7 +30,7 @@ const {
     mockIsThreadSummaryPublishedTodayWithState: vi.fn(() => false),
     mockListTrackedThreadIds: vi.fn(() => [100, 200, 300]),
     mockSelectMessagesInWindow: vi.fn(
-      (_threadId: number, _sinceIso: string) => [] as CapturedMessage[],
+      (_chatId: number, _threadId: number, _sinceIso: string) => [] as CapturedMessage[],
     ),
     mockSummarizeThread: vi.fn(),
   };
@@ -385,7 +385,7 @@ describe('runThreadSummaryPipeline LLM-outage detection (Phase 8 fix B)', () => 
   });
 
   it('B4: all skipped → no chunks, while totalMessageCount reflects rows selected from the DB', async () => {
-    mockSelectMessagesInWindow.mockImplementation((threadId: number) => {
+    mockSelectMessagesInWindow.mockImplementation((_chatId: number, threadId: number) => {
       if (threadId === 100) return [msg(1), msg(2)];
       if (threadId === 200) return [msg(3)];
       return [];

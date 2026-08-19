@@ -7,7 +7,7 @@ import type { CapturedMessage } from '../types/index.js';
 // initDb() hasn't run, so we defer .prepare() until first call.
 
 let _upsertStmt: Statement<[CapturedMessage]> | null = null;
-let _selectWindowStmt: Statement<[number, string]> | null = null;
+let _selectWindowStmt: Statement<[number, number, string]> | null = null;
 // Top-participants statement uses 5 positional placeholders:
 // (thread_id, since, thread_id, since, limit). better-sqlite3's
 // Statement<P> generic types `.all(...args: P)` against a tuple, so we
@@ -47,12 +47,12 @@ function upsertStmt(): Statement<[CapturedMessage]> {
   return _upsertStmt;
 }
 
-function selectWindowStmt(): Statement<[number, string]> {
-  _selectWindowStmt ??= getDb().prepare<[number, string]>(`
+function selectWindowStmt(): Statement<[number, number, string]> {
+  _selectWindowStmt ??= getDb().prepare<[number, number, string]>(`
     SELECT chat_id, thread_id, tg_message_id, author_id, author_name,
            is_anonymous, text, reply_to_message_id, created_at, edited_at
     FROM messages
-    WHERE thread_id = ? AND created_at >= ?
+    WHERE chat_id = ? AND thread_id = ? AND created_at >= ?
     ORDER BY created_at ASC
   `);
   return _selectWindowStmt;
@@ -110,10 +110,11 @@ export function upsertMessage(m: CapturedMessage): void {
  * ordered chronologically. Used by orchestrator to build LLM transcript.
  */
 export function selectMessagesInWindow(
+  chatId: number,
   threadId: number,
   sinceIso: string,
 ): CapturedMessage[] {
-  const rows = selectWindowStmt().all(threadId, sinceIso) as CapturedMessageRow[];
+  const rows = selectWindowStmt().all(chatId, threadId, sinceIso) as CapturedMessageRow[];
   return rows.map((r) => ({
     chatId: r.chat_id,
     threadId: r.thread_id,

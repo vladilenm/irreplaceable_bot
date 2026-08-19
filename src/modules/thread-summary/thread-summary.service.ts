@@ -121,7 +121,7 @@ export async function runThreadSummaryPipeline(
   for (const threadId of threadIds) {
     // Per-thread try/catch (D-34) — one fail doesn't abort cycle.
     try {
-      const messages = selectMessagesInWindow(threadId, sinceIso);
+      const messages = selectMessagesInWindow(Number(config.targetChatId), threadId, sinceIso);
       // Count captured rows, not only summaries the LLM managed to interpret.
       // This keeps result metadata (and the rendered total on partial success)
       // truthful even when a sibling thread is skipped.

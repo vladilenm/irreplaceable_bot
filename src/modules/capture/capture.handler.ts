@@ -19,20 +19,26 @@ import { mapTelegramMessageToCaptured } from './capture.mapper.js';
  * Channel posts arrive as channel_post / edited_channel_post update types —
  * not covered by this filter, never fire.
  */
-export function registerCaptureHandlers(bot: Bot): void {
+export interface CaptureOptions {
+  targetChatId: number;
+}
+
+export function registerCaptureHandlers(bot: Bot, options: CaptureOptions): void {
   bot.on(
     ['message:text', 'message:caption', 'edited_message:text', 'edited_message:caption'],
-    captureHandler,
+    (ctx) => captureHandler(ctx, options),
   );
 }
 
-async function captureHandler(ctx: Context): Promise<void> {
+async function captureHandler(ctx: Context, options: CaptureOptions): Promise<void> {
   // REL-04: full body wrapped in try/catch — DB errors, mapper throws, schema
   // mismatches are logged and SWALLOWED so the long-polling loop survives.
   // Belt-and-suspenders: bot.catch() in src/bot.ts is the second safety net.
   try {
     const msg = ctx.msg;
     if (!msg) return;
+
+    if (ctx.chat?.id !== options.targetChatId) return;
 
     // Forum-topic guard (RESEARCH §1.9, PITFALLS TG-03): is_topic_message
     // distinguishes forum-mode from reply-chain-mode where message_thread_id

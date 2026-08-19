@@ -38,7 +38,7 @@ describe('selectMessagesInWindow (W1, W2)', () => {
     upsertMessage(baseMsg({ id: 3, createdAt: '2026-04-29T10:30:00.000Z' })); // in
     upsertMessage(baseMsg({ id: 4, createdAt: '2026-04-29T11:00:00.000Z' })); // in
     upsertMessage(baseMsg({ id: 5, createdAt: '2026-04-29T11:30:00.000Z' })); // in
-    const got = selectMessagesInWindow(100, '2026-04-29T10:00:00.000Z');
+    const got = selectMessagesInWindow(-1001, 100, '2026-04-29T10:00:00.000Z');
     expect(got).toHaveLength(3);
     expect(got.map((m) => m.tgMessageId)).toEqual([3, 4, 5]);
   });
@@ -50,9 +50,22 @@ describe('selectMessagesInWindow (W1, W2)', () => {
     upsertMessage(
       baseMsg({ id: 11, threadId: 100, createdAt: '2026-04-29T11:00:00.000Z' }),
     );
-    const got = selectMessagesInWindow(100, '2026-04-29T10:00:00.000Z');
+    const got = selectMessagesInWindow(-1001, 100, '2026-04-29T10:00:00.000Z');
     expect(got).toHaveLength(1);
     expect(got[0]?.tgMessageId).toBe(11);
+  });
+
+  it('W3: does not mix matching thread ids from different chats', () => {
+    upsertMessage(
+      baseMsg({ id: 20, chatId: -1001, threadId: 100 }),
+    );
+    upsertMessage(
+      baseMsg({ id: 21, chatId: -2002, threadId: 100 }),
+    );
+
+    const got = selectMessagesInWindow(-1001, 100, '2026-04-29T10:00:00.000Z');
+
+    expect(got.map((m) => m.tgMessageId)).toEqual([20]);
   });
 });
 
