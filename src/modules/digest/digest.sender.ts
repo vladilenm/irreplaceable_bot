@@ -5,8 +5,9 @@ import { readState, writeState } from '../../services/state.service.js';
 import { config } from '../../config.js';
 import { logger } from '../../utils/logger.js';
 import type { DigestResult } from './digest.service.js';
+import type { Api } from 'grammy';
 
-export async function sendDigest(result: DigestResult): Promise<void> {
+export async function sendDigest(api: Api, result: DigestResult): Promise<void> {
   if (result.skipped) {
     logger.warn({ itemCount: result.itemCount }, 'Digest skipped, not sending');
     return;
@@ -23,7 +24,7 @@ export async function sendDigest(result: DigestResult): Promise<void> {
   // sender side, etc.) the catch in cron handler / /digest handler swallows
   // the throw and lastDigestDate stays UNCHANGED — so the next /digest call
   // can retry instead of being blocked by isDigestPublishedToday() === true.
-  await sendMessageWithRetry({
+  await sendMessageWithRetry(api, {
     chatId: config.targetChatId,
     threadId: config.aiRadarThreadId,
     text: html,

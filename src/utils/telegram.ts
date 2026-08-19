@@ -1,6 +1,5 @@
 // Telegram API helpers: sendMessage with one retry (per plan 03-01, D-06/D-08/D-11/D-12)
-import { GrammyError } from 'grammy';
-import { bot } from '../bot.js';
+import { GrammyError, type Api } from 'grammy';
 import { logger } from './logger.js';
 
 /**
@@ -47,22 +46,22 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function attemptSend(params: SendMessageParams): Promise<void> {
-  await bot.api.sendMessage(params.chatId, params.text, {
+async function attemptSend(api: Api, params: SendMessageParams): Promise<void> {
+  await api.sendMessage(params.chatId, params.text, {
     message_thread_id: Number(params.threadId),
     parse_mode: params.parseMode,
     link_preview_options: { is_disabled: true },
   });
 }
 
-export async function sendMessageWithRetry(params: SendMessageParams): Promise<void> {
+export async function sendMessageWithRetry(api: Api, params: SendMessageParams): Promise<void> {
   const logBinding = {
     chatId: params.chatId,
     threadId: params.threadId,
     pipeline: params.pipeline,
   };
   try {
-    await attemptSend(params);
+    await attemptSend(api, params);
     logger.info(logBinding, 'Telegram sendMessage ok');
     return;
   } catch (err: unknown) {
@@ -72,7 +71,7 @@ export async function sendMessageWithRetry(params: SendMessageParams): Promise<v
     );
     await delay(RETRY_DELAY_MS);
     try {
-      await attemptSend(params);
+      await attemptSend(api, params);
       logger.info(logBinding, 'Telegram sendMessage ok (after retry)');
     } catch (retryErr: unknown) {
       logger.fatal(

@@ -12,6 +12,7 @@
 // expression logs ERROR and skips (does not throw, other jobs still register).
 import cron from 'node-cron';
 import type { ScheduledTask } from 'node-cron';
+import type { Api } from 'grammy';
 import { config } from '../config.js';
 import { logger, errMsg } from '../utils/logger.js';
 import { runDigestPipeline } from '../modules/digest/digest.service.js';
@@ -58,14 +59,14 @@ function registerJob(name: string, cronExpr: string, handler: CronHandler): bool
 
 // ─── Job handlers ───
 
-async function digestHandler(): Promise<void> {
+async function digestHandler(api: Api): Promise<void> {
   // Existing v1.0 handler body — moved verbatim from previous src/scheduler/cron.ts.
   const result = await runDigestPipeline();
   if (result.alreadyPublished) {
     logger.warn('Cron: digest already published today, skipping send');
     return;
   }
-  await sendDigest(result);
+  await sendDigest(api, result);
   logger.info(
     { itemCount: result.itemCount, skipped: result.skipped },
     'Cron: digest cycle complete',
@@ -77,7 +78,7 @@ async function digestHandler(): Promise<void> {
  * Orchestrator handles idempotency internally (D-33 + DLV-10). Sender ships
  * each chunk via sendMessageWithRetry. This handler is the cron-side glue.
  */
-async function threadSummaryHandler(): Promise<void> {
+async function threadSummaryHandler(api: Api): Promise<void> {
   // Phase 6 D-33 + DLV-10 — orchestrator handles idempotency internally.
   const result = await runThreadSummaryPipeline();
   if (result.alreadyPublished) {
@@ -104,7 +105,7 @@ async function threadSummaryHandler(): Promise<void> {
     logger.warn('Cron: thread-summary returned 0 chunks, nothing to send');
     return;
   }
-  await sendThreadSummary(result.chunks);
+  await sendThreadSummary(api, result.chunks);
   // Phase 8 fix A: persist lastThreadSummaryDate AFTER sendThreadSummary
   // resolves. If any chunk-level send threw, we never get here — the registerJob
   // try/catch catches it and the idempotency flag stays UNCHANGED so the next
@@ -137,9 +138,9 @@ async function retentionSweepHandler(): Promise<void> {
 
 // ─── Public API (unchanged signature — SCHED-01) ───
 
-export function startScheduler(): void {
-  registerJob('digest', config.digestCron, digestHandler);
-  registerJob('thread-summary', config.threadSummaryCron, threadSummaryHandler);
+export function startScheduler(api: Api): void {
+  registerJob('digest', config.digestCron, () => digestHandler(api));
+  registerJob('thread-summary', config.threadSummaryCron, () => threadSummaryHandler(api));
   registerJob('retention-sweep', config.retentionSweepCron, retentionSweepHandler);
   logger.info({ jobCount: tasks.size, jobs: [...tasks.keys()] }, 'Scheduler started');
 }

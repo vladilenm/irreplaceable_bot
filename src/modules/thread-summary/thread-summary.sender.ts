@@ -4,12 +4,13 @@
 import { sendMessageWithRetry } from '../../utils/telegram.js';
 import { config } from '../../config.js';
 import { logger } from '../../utils/logger.js';
+import type { Api } from 'grammy';
 
 /**
  * Send thread-summary HTML chunks to THREAD_SUMMARY_THREAD_ID.
  * No-op for empty array. Per-chunk send is sequential (avoids burst rate-limit).
  */
-export async function sendThreadSummary(chunks: string[]): Promise<void> {
+export async function sendThreadSummary(api: Api, chunks: string[]): Promise<void> {
   if (chunks.length === 0) {
     logger.debug('sendThreadSummary: zero chunks, skipping');
     return;
@@ -17,7 +18,7 @@ export async function sendThreadSummary(chunks: string[]): Promise<void> {
   for (let i = 0; i < chunks.length; i++) {
     const chunk = chunks[i];
     if (chunk === undefined || chunk === '') continue;
-    await sendMessageWithRetry({
+    await sendMessageWithRetry(api, {
       chatId: config.targetChatId,
       threadId: config.threadSummaryThreadId,
       text: chunk,

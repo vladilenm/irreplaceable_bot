@@ -90,7 +90,7 @@ bot.command('digest', async (ctx) => {
       return;
     }
 
-    await sendDigest(result);
+    await sendDigest(bot.api, result);
 
     await ctx.api.editMessageText(
       statusMsg.chat.id,
@@ -189,7 +189,7 @@ bot.command('dev-digest', async (ctx) => {
       return;
     }
 
-    await sendDigest(result);
+    await sendDigest(bot.api, result);
 
     logger.info(
       { itemCount: result.itemCount, devRun: true },

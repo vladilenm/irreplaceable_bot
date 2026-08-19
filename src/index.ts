@@ -39,7 +39,7 @@ async function main(): Promise<void> {
   void bot.start({
     onStart: () => {
       logger.info('Bot is running (long-polling mode)');
-      startScheduler();
+      startScheduler(bot.api);
       // v2.0 Phase 4 (MSG-08, OPS-03): non-blocking preflight self-check.
       // Logs WARN if privacy mode ON or bot is not admin in target chat.
       void runPreflight(bot);

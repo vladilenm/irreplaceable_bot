@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import type { Api } from 'grammy';
 
 // Phase 8 fix C: contract tests for the neutral telegram log + pipeline tag.
 // We mock bot.api.sendMessage to control success/failure and spy on the pino
@@ -8,16 +9,10 @@ const { mockSendMessage } = vi.hoisted(() => ({
   mockSendMessage: vi.fn(),
 }));
 
-vi.mock('../bot.js', () => ({
-  bot: {
-    api: {
-      sendMessage: mockSendMessage,
-    },
-  },
-}));
-
 import { sendMessageWithRetry } from './telegram.js';
 import { logger } from './logger.js';
+
+const api = { sendMessage: mockSendMessage } as unknown as Api;
 
 describe('sendMessageWithRetry log shape (Phase 8 fix C)', () => {
   beforeEach(() => {
@@ -32,7 +27,7 @@ describe('sendMessageWithRetry log shape (Phase 8 fix C)', () => {
   it('C1: success path → logs neutral "Telegram sendMessage ok" (NOT "Digest message sent to Telegram")', async () => {
     const infoSpy = vi.spyOn(logger, 'info');
     mockSendMessage.mockResolvedValue({});
-    await sendMessageWithRetry({
+    await sendMessageWithRetry(api, {
       chatId: '-100',
       threadId: '42',
       text: 'hi',
@@ -52,7 +47,7 @@ describe('sendMessageWithRetry log shape (Phase 8 fix C)', () => {
   it('C2: success log binding includes pipeline + chatId + threadId', async () => {
     const infoSpy = vi.spyOn(logger, 'info');
     mockSendMessage.mockResolvedValue({});
-    await sendMessageWithRetry({
+    await sendMessageWithRetry(api, {
       chatId: '-100',
       threadId: '42',
       text: 'hi',
@@ -75,7 +70,7 @@ describe('sendMessageWithRetry log shape (Phase 8 fix C)', () => {
       .mockRejectedValueOnce(new Error('flaky'))
       .mockResolvedValueOnce({});
 
-    const promise = sendMessageWithRetry({
+    const promise = sendMessageWithRetry(api, {
       chatId: '-100',
       threadId: '42',
       text: 'hi',
@@ -111,7 +106,7 @@ describe('sendMessageWithRetry log shape (Phase 8 fix C)', () => {
       .mockRejectedValueOnce(new Error('flaky-1'))
       .mockRejectedValueOnce(new Error('flaky-2'));
 
-    const promise = sendMessageWithRetry({
+    const promise = sendMessageWithRetry(api, {
       chatId: '-100',
       threadId: '42',
       text: 'hi',
@@ -139,7 +134,7 @@ describe('sendMessageWithRetry log shape (Phase 8 fix C)', () => {
   it('C5: pipeline is optional — omitted call still works and binding has pipeline:undefined', async () => {
     const infoSpy = vi.spyOn(logger, 'info');
     mockSendMessage.mockResolvedValue({});
-    await sendMessageWithRetry({
+    await sendMessageWithRetry(api, {
       chatId: '-100',
       threadId: '42',
       text: 'hi',
