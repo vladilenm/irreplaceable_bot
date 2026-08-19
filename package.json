@@ -1,7 +1,7 @@
 {
   "name": "nezamenimye-bot",
   "version": "0.1.0",
-  "description": "Telegram bot for the Nezamenimye club - daily AI digest",
+  "description": "Telegram bot for the Nezamenimye club: AI radar and daily thread summaries",
   "type": "module",
   "scripts": {
     "build": "tsc",

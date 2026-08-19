@@ -3,9 +3,7 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# v2.0 SETUP-05: native build deps for better-sqlite3 fallback path.
-# 99% of installs use the linuxmusl-x64 prebuild for ABI 115; toolchain
-# exists for the failure mode (network hiccup, ABI drift).
+# Native toolchain is the fallback when better-sqlite3 has no matching prebuild.
 RUN apk add --no-cache python3 make g++
 
 COPY package.json package-lock.json ./
@@ -28,19 +26,11 @@ RUN npm ci --omit=dev
 
 COPY --from=builder /app/dist ./dist
 
-# Runtime assets read at startup via import.meta.url:
-#   - src/services/rss.service.ts        → ../../config/feeds.json
-#   - src/services/ai.service.ts         → ../../prompts/curator.md
-#   - src/services/summarizer.service.ts → ../../prompts/thread-summarizer.md
-# These resolve to /app/config and /app/prompts at runtime (dist sits at /app/dist).
-# Without these COPYs the container ENOENTs on first scheduled run.
+# Runtime source configuration and LLM prompts are not bundled by TypeScript.
 COPY config ./config
 COPY prompts ./prompts
 
-# v2.0 SETUP-07: pre-create /app/data with botuser ownership BEFORE USER directive.
-# When bind-mount overlay arrives empty, container inherits these perms;
-# when bind-mount has host perms, host-side `chown -R 1001:1001 ./data` covers it
-# (documented in Phase 0-Ops checklist).
+# SQLite runs as an unprivileged user and writes only to /app/data.
 RUN addgroup -g 1001 -S botuser && \
     adduser -S botuser -u 1001 && \
     mkdir -p /app/data && \

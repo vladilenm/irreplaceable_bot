@@ -2,48 +2,15 @@ services:
   bot:
     build: .
     restart: unless-stopped
-    # v2.0 SETUP-06 (Timeweb App Platform compatible):
-    # Timeweb App Platform's compose sanitizer REJECTS any `volumes:`
-    # declarations (both service-level and top-level). Attempting to declare
-    # them yields: `Sanitizer check error volumes is not allowed in
-    # docker-compose.yml`. Therefore this file MUST contain zero `volumes:`
-    # entries.
-    #
-    # Persistence (production): configured entirely via the Timeweb dashboard
-    # Disk UI. Create a Disk in the dashboard and mount it to `/app/data` —
-    # this is where SQLite (better-sqlite3) lives. The platform
-    # injects the disk into the container without any compose-level
-    # declaration.
-    #
-    # Env vars (production): NOT loaded from a `.env` file. Set every required
-    # variable via the Timeweb dashboard UI; the platform injects them into
-    # the container at runtime.
-    #
-    # Local dev: create a gitignored `docker-compose.override.yml` next to
-    # this file with the bot service overrides you need locally — typically
-    # `env_file: .env` and `volumes: - ./data:/app/data`. Docker Compose
-    # automatically merges `docker-compose.override.yml` on `docker compose
-    # up`, so production builds stay clean while local dev keeps its bind
-    # mount and .env loading. The override file is in .gitignore.
-    #
-    # Env-var injection (production): Timeweb's compose sanitizer ONLY forwards
-    # dashboard-defined env vars into the container when each var is explicitly
-    # listed in this service's `environment:` block via `${VAR}` interpolation.
-    # Without the block below, dashboard values are dropped and the bot
-    # crash-loops with "Missing required environment variable: BOT_TOKEN" at
-    # config.ts boot. Required vars use bare `${VAR}` (fail-fast if unset);
-    # optional vars use `${VAR:-default}` mirroring src/config.ts defaults.
-    # Local dev: docker-compose.override.yml supplies env_file + volumes; the
-    # interpolation tokens here are also resolved from the local `.env` file
-    # which Compose v2 reads automatically next to this file.
+    # Timeweb rejects volumes in compose. Mount a persistent disk at /app/data
+    # in the dashboard; use docker-compose.override.yml for local bind mounts.
+    # Variables must stay explicit here for Timeweb dashboard injection.
     environment:
-      # ── Required (fail-fast in src/config.ts via requireEnv / requireEnvInt) ──
       BOT_TOKEN: "${BOT_TOKEN}"
       TARGET_CHAT_ID: "${TARGET_CHAT_ID}"
       AI_RADAR_THREAD_ID: "${AI_RADAR_THREAD_ID}"
       AI_API_KEY: "${AI_API_KEY}"
       THREAD_SUMMARY_THREAD_ID: "${THREAD_SUMMARY_THREAD_ID}"
-      # ── Optional (defaults mirror src/config.ts) ──
       DIGEST_CRON: "${DIGEST_CRON:-0 6 * * *}"
       AI_MODEL: "${AI_MODEL:-claude-sonnet-4-20250514}"
       AI_BASE_URL: "${AI_BASE_URL:-}"
