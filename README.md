@@ -1,58 +1,75 @@
 # Nezamenimye Bot
 
-Telegram-бот Клуба Незаменимых с двумя ежедневными продуктами:
+Telegram-бот Клуба Незаменимых с тремя продуктовыми сценариями:
 
-- **AI-радар** собирает RSS-источники, отдаёт статьи LLM на отбор и публикует короткий дайджест.
-- **Сводка клуба** сохраняет сообщения выбранных форум-топиков и публикует содержательную выжимку со ссылками на исходные сообщения.
-- **Подбор участников** отвечает на точный hashtag `#запрос` в любом forum-топике: ищет релевантные карточки клуба и публикует 3–5 Telegram-упоминаний с краткой, проверяемой причиной.
+- AI-радар отбирает материалы из RSS и публикует дайджест;
+- сводка клуба сохраняет сообщения выбранных форум-топиков и готовит ежедневную выжимку;
+- подбор участников реагирует на точный хэштег `#запрос`, ищет по карточкам клуба и отвечает 3–5 релевантными Telegram-упоминаниями с проверяемыми причинами.
 
-Проект намеренно устроен просто: один Node.js-процесс, SQLite, три cron-задачи и плоская структура `src`. LLM возвращает только структурированные данные; HTML, ссылки и ограничения публикации контролирует код.
+Рабочее хранилище — PostgreSQL с расширением pgvector. В production предполагается Timeweb Managed PostgreSQL; диск контейнера для данных не используется. OpenAI `text-embedding-3-small` строит 1536-мерные embeddings карточек и запросов, а LLM делает только финальный выбор из найденных кандидатов. Telegram usernames всегда подставляет код, а не модель.
 
-## Быстрый запуск
+## Локальный запуск
 
-Нужны Node.js 20+ и Telegram-бот, добавленный администратором в целевую группу с выключенным Privacy Mode.
+Нужны Node.js 22+, Docker и Telegram-бот, добавленный администратором в целевую группу с выключенным Privacy Mode.
 
 ```bash
 cp .env.example .env
+docker compose -f docker-compose.test.yml up -d --wait
 npm ci
+```
+
+Заполните в `.env` как минимум `BOT_TOKEN`, `TARGET_CHAT_ID`, `AI_API_KEY` и `EMBEDDING_API_KEY`. Для радара и сводки задайте соответствующие thread id. Локальные `DATABASE_URL` из примера уже указывают на контейнер pgvector на порту `55432`.
+
+Создать 20 тестовых карточек и их embeddings:
+
+```bash
+npm run seed:members
+```
+
+После этого включите `REQUEST_MATCHING_ENABLED=true` и запустите бот:
+
+```bash
 npm run dev
 ```
 
-Обязательные переменные:
+Напишите в целевой группе сообщение вида `#запрос Ищу специалиста по B2B-продажам`. Бот должен ответить в том же топике. Если после всех проверок осталось меньше трёх уверенных совпадений, он намеренно ничего не тегает.
+
+Остановить локальную БД без удаления данных:
+
+```bash
+docker compose -f docker-compose.test.yml down
+```
+
+## Основные переменные
 
 | Переменная | Назначение |
 |---|---|
-| `BOT_TOKEN` | токен Telegram-бота |
-| `TARGET_CHAT_ID` | id целевой супергруппы |
-| `AI_RADAR_THREAD_ID` | топик для AI-радара |
-| `THREAD_SUMMARY_THREAD_ID` | топик для ежедневной сводки |
-| `TRACKED_THREAD_IDS` | CSV со списком топиков, сообщения которых сохраняются |
-| `AI_API_KEY` | ключ Anthropic или OpenAI-совместимого API |
-| `NOTION_TOKEN` | read-content токен Notion для карточек участников; нужен только при включённом подборе |
-| `NOTION_DATA_SOURCE_ID` | ID Notion data source с карточками участников; не ID родительской database |
-| `EMBEDDING_API_KEY` | отдельный ключ OpenAI для embeddings |
+| `DATABASE_URL` | URL runtime-роли PostgreSQL |
+| `DATABASE_MIGRATION_URL` | URL владельца схемы для миграций |
+| `DATABASE_SSL` | `true` в Timeweb, `false` только для локального контейнера |
+| `DATABASE_CA_CERT` | CA-сертификат Timeweb; в панели можно передать одной строкой с `\n` |
+| `DATABASE_POOL_MAX` | размер пула, по умолчанию 5 |
+| `EMBEDDING_API_KEY` | ключ OpenAI для embeddings |
+| `EMBEDDING_MODEL` | зафиксированная модель индекса, по умолчанию `text-embedding-3-small` |
+| `MEMBER_INDEX_CRON` | доиндексация новых и изменённых карточек |
+| `REQUEST_MATCHING_ENABLED` | feature flag подбора участников |
+| `ALLOW_MOCK_MEMBER_SEED` | обязательное явное разрешение тестовых карточек в production |
 
-Выбор LLM задаётся через `AI_MODEL`. Для OpenAI-совместимого провайдера укажите `AI_BASE_URL`. Расписания в `DIGEST_CRON`, `THREAD_SUMMARY_CRON` и `RETENTION_SWEEP_CRON` интерпретируются в UTC.
+Полный список находится в [.env.example](./.env.example). Cron-выражения интерпретируются в UTC.
 
-Подбор участников выключен по умолчанию (`REQUEST_MATCHING_ENABLED=false`). Для запуска понадобятся также `EMBEDDING_MODEL`, `MEMBER_SYNC_CRON`, `REQUEST_MATCH_CONCURRENCY`, `REQUEST_QUEUE_LIMIT` и `REQUEST_PROCESSING_TIMEOUT_MINUTES`. Порядок безопасного rollout приведён в [эксплуатации](./docs/operations.md#подбор-участников-по-запросу).
-
-Полный список настроек с безопасными значениями по умолчанию находится в [.env.example](./.env.example).
-
-## Команды бота
-
-- `/start` — краткая справка.
-- `/digest` — ручной запуск радара; только для администраторов, не публикуется повторно в тот же московский день.
-- `/status` — состояние последнего радара, индекса участников и аптайм; только для администраторов.
-- `/dev-digest` — повторяемый реальный прогон без изменения состояния задачи.
-
-## Разработка
+## Команды
 
 ```bash
 npm test
 npm run typecheck
 npm run build
+npm run seed:members
+npm run migrate:sqlite -- /absolute/path/messages.db
+npm run eval:member-matching -- /absolute/path/member-matching-eval.json
 ```
 
-Конфигурация источников лежит в `config/feeds.json`, промпты — в `prompts/`. Подробнее: [архитектура](./docs/architecture.md) и [эксплуатация](./docs/operations.md).
+Импорт SQLite допустим только в полностью пустую PostgreSQL-схему и не изменяет исходный файл. Eval-набор и реальные карточки не должны попадать в Git.
 
-Карточки участников, сами запросы, embeddings и приватный eval-набор не записываются в Git и не попадают в обычные логи. LLM не получает или не публикует usernames: Telegram-упоминания берутся только из локального SQLite snapshot.
+Команды Telegram: `/start`, `/digest`, `/status`, `/dev-digest`. Запускайте ровно один экземпляр приложения на один `BOT_TOKEN`.
+
+Подробности: [архитектура](./docs/architecture.md) и [эксплуатация в Timeweb](./docs/operations.md).

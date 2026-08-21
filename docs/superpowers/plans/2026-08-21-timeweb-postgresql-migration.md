@@ -6,7 +6,7 @@
 
 **Architecture:** A `pg` connection pool is injected into focused asynchronous repositories for messages, job state, members, and member requests. PostgreSQL is the only durable runtime store; migrations use an advisory lock, member search uses exact cosine distance over `vector(1536)`, and future web writes pass through a member directory service that keeps stale embeddings out of search.
 
-**Tech Stack:** Node.js 20, TypeScript 6, `pg`, `pgvector`, PostgreSQL 16, pgvector, Vitest, Docker Compose, grammY, OpenAI embeddings.
+**Tech Stack:** Node.js 22, TypeScript 6, `pg`, `pgvector`, PostgreSQL 16, pgvector, Vitest, Docker Compose, grammY, OpenAI embeddings.
 
 ## Global Constraints
 

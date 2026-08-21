@@ -1,13 +1,10 @@
 # Build stage
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS builder
 
 WORKDIR /app
 
-# Native toolchain is the fallback when better-sqlite3 has no matching prebuild.
-RUN apk add --no-cache python3 make g++
-
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN npm ci --ignore-scripts
 
 COPY tsconfig.json ./
 COPY src ./src
@@ -15,7 +12,7 @@ COPY src ./src
 RUN npm run build
 
 # Production stage
-FROM node:20-alpine
+FROM node:22-alpine
 
 WORKDIR /app
 
@@ -30,11 +27,8 @@ COPY --from=builder /app/dist ./dist
 COPY config ./config
 COPY prompts ./prompts
 
-# SQLite runs as an unprivileged user and writes only to /app/data.
 RUN addgroup -g 1001 -S botuser && \
-    adduser -S botuser -u 1001 && \
-    mkdir -p /app/data && \
-    chown -R botuser:botuser /app/data
+    adduser -S botuser -u 1001
 USER botuser
 
-CMD ["node", "dist/index.js"]
+CMD ["sh", "-c", "node dist/db/migrate.js && node dist/index.js"]

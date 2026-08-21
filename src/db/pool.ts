@@ -5,7 +5,9 @@ export function createPool(config: DatabaseConfig, url = config.runtimeUrl): Poo
   return new Pool({
     connectionString: url,
     max: config.poolMax,
-    ssl: config.ssl ? { rejectUnauthorized: true } : false,
+    ssl: config.ssl
+      ? { rejectUnauthorized: true, ...(config.caCert ? { ca: config.caCert } : {}) }
+      : false,
     options: `-c statement_timeout=${String(config.statementTimeoutMs)}`,
   });
 }

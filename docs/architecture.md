@@ -1,62 +1,74 @@
 # Архитектура
 
-## Принципы
+## Границы системы
 
-1. **Вертикальные продуктовые срезы.** Радар живёт в `radar*`, сводка — в `summary*` и `summarizer.ts`.
-2. **Один источник состояния.** Сообщения, миграции и состояние cron-задач хранятся в SQLite через `database.ts`.
-3. **LLM не управляет публикацией.** Модель возвращает JSON по схеме; код проверяет ссылки и message id, экранирует HTML и решает, когда публиковать.
-4. **Явные зависимости.** Telegram `Api` передаётся в отправщики параметром. Глобальных хранилищ и service locator нет.
-5. **Состояние после результата.** Успешный запуск фиксируется только после подтверждённой доставки Telegram. Дайджест и сводка обновляют независимые строки SQLite.
-6. **Проверяемый подбор.** `#запрос` получает semantic top-20 в памяти, а LLM возвращает только ID, reason и точный evidence. Код валидирует evidence по исходной карточке и сам подставляет Telegram username.
+Приложение остаётся одним Node.js-процессом, но работа с данными отделена от Telegram, расписаний и LLM через явные асинхронные репозитории. Единственный runtime-источник состояния — PostgreSQL с pgvector. SQLite поддерживается только одноразовым CLI-импортёром и не входит в production-граф приложения.
+
+Основные правила:
+
+1. `application.ts` управляет жизненным циклом: миграции отдельным подключением, readiness-check, репозитории, Telegram polling, scheduler и корректная остановка.
+2. Бизнес-сценарии получают `Persistence` и внешние клиенты параметрами; скрытого глобального хранилища нет.
+3. LLM возвращает структурированные данные, но не управляет ссылками, Telegram usernames или фактом публикации.
+4. Состояние cron-задачи меняется только после подтверждённого внешнего результата.
+5. Карточки сначала сохраняются в PostgreSQL, затем независимо индексируются. Ошибка одной карточки не блокирует остальные.
 
 ## Потоки данных
 
 ```mermaid
 flowchart LR
-  Telegram["Telegram updates"] --> Capture["capture.ts"] --> DB["database.ts / SQLite"]
-  RSS["RSS feeds"] --> Radar["radar.sources.ts → radar.curator.ts → radar.ts"]
-  Radar --> LLM["llm.ts"]
-  DB --> Summary["summarizer.ts → summary.ts"]
-  Summary --> LLM
-  Notion["Notion data source"] --> MemberSync["members.notion.ts → MemberSyncService"]
-  MemberSync --> Embeddings["OpenAI embeddings"]
-  Embeddings --> MemberDB["members + embeddings / SQLite"]
-  Telegram --> Requests["requests.ts (#запрос)"]
-  Requests --> MemberDB
-  Requests --> Matcher["top-20 + request.matcher.ts"]
-  Matcher --> LLM
-  Matcher --> TelegramAPI
-  Scheduler["scheduler.ts"] --> Radar
-  Scheduler --> Summary
-  Scheduler --> MemberSync
-  Radar --> TelegramAPI["telegram.ts"]
-  Summary --> TelegramAPI
-  TelegramAPI --> Telegram
+  Telegram["Telegram"] --> Bot["Bot / capture / requests"]
+  Bot --> Repos["Async repositories"]
+  Repos --> PG["Timeweb PostgreSQL + pgvector"]
+
+  RSS["RSS"] --> Radar["AI radar"] --> LLM["LLM provider"]
+  PG --> Summary["Daily summary"] --> LLM
+  Radar --> Telegram
+  Summary --> Telegram
+
+  Web["Будущее web-приложение"] --> Backend["Backend каталога"]
+  Seed["20 mock-карточек"] --> Directory["MemberDirectoryService"]
+  Backend --> Directory
+  Directory --> OpenAI["OpenAI embeddings"]
+  Directory --> PG
+
+  Bot --> Queue["member_requests"]
+  Queue --> QueryEmbedding["Один embedding запроса"]
+  QueryEmbedding --> Search["Exact cosine top-20"]
+  PG --> Search
+  Search --> Rerank["Grounded LLM rerank"]
+  Rerank --> Telegram
 ```
 
-## Файлы
+Будущее web-приложение не должно подключаться к PostgreSQL прямо из браузера. Оно вызывает собственный backend, а тот нормализует карточку и использует тот же сервис каталога или эквивалентный application API.
 
-| Область | Файлы | Ответственность |
-|---|---|---|
-| Запуск | `index.ts`, `startup.ts` | миграции, polling, preflight, сигналы завершения |
-| Telegram | `bot.ts`, `capture.ts`, `requests.ts`, `telegram.ts` | команды, приём сообщений, `#запрос`, надёжная отправка |
-| AI-радар | `radar.ts`, `radar.sources.ts`, `radar.curator.ts` | RSS → отбор → HTML → публикация |
-| Сводка | `summary.ts`, `summarizer.ts` | окно сообщений → JSON-сводка → deep links → публикация |
-| Подбор участников | `members*.ts`, `embeddings.ts`, `request.matcher.ts`, `request.runtime.ts`, `request.repository.ts` | Notion snapshot, embeddings, cosine search, grounded rerank, идемпотентность |
-| Данные | `database.ts` | SQLite, миграции, сообщения, cron-state, snapshots участников, retention |
-| Инфраструктура | `scheduler.ts`, `llm.ts`, `config.ts`, `logger.ts`, `types.ts` | cron, провайдеры LLM, env, логи, общие типы |
+## Подбор по `#запрос`
 
-Тесты находятся рядом с кодом: `*.test.ts`. Новая абстракция оправдана только если у неё есть отдельная ответственность, второй реальный потребитель или изолируемая внешняя граница.
+1. Обработчик реагирует только на Telegram entity с точным хэштегом `#запрос` в `TARGET_CHAT_ID`.
+2. Запрос атомарно резервируется в `member_requests`. Повторная доставка того же сообщения не запускает второй pipeline.
+3. Для текста запроса создаётся один 1536-мерный embedding OpenAI.
+4. PostgreSQL вычисляет cosine distance и возвращает точный top-20. При каталоге до 1000 карточек ANN-индекс не нужен: exact search проще и предсказуемее.
+5. В поиск попадают только активные карточки, у которых embedding создан текущей моделью и соответствует текущему content hash. Устаревший vector никогда не используется молча.
+6. LLM выбирает 3–5 кандидатов только из top-20 и обязан вернуть evidence из карточки. Код проверяет ID и evidence, затем сам формирует упоминания.
+7. При менее чем трёх валидных результатах ответ не публикуется. Статус запроса переводится в терминальное состояние.
 
-## Надёжность
+## Данные
 
-- Захват принимает сообщения только из `TARGET_CHAT_ID` и `TRACKED_THREAD_IDS`.
-- Повторная доставка Telegram обрабатывается SQLite UPSERT-ом.
-- Цитаты сводки проходят проверку по id входных сообщений; выдуманные id отбрасываются.
-- URL радара принимаются только из входного набора статей.
-- Ошибка одного форум-топика не останавливает остальные.
-- Полный отказ LLM блокирует публикацию сводки и не продвигает состояние cron.
-- Отправка Telegram повторяется один раз; состояние записывается только после успеха.
-- Snapshot карточек и vectors обновляются в одной SQLite-транзакции; при ошибке сохраняется предыдущий доступный индекс.
-- Повторная доставка одного Telegram-сообщения резервируется через `member_requests`, поэтому не запускает второй LLM pipeline.
-- При менее чем трёх валидных grounded matches бот не публикует ни одного упоминания.
+| Таблица | Назначение |
+|---|---|
+| `schema_migrations` | применённые миграции |
+| `messages` | сообщения отслеживаемых топиков |
+| `job_state` | состояния радара и сводок |
+| `members` | нормализованные карточки и content hash |
+| `member_embeddings` | pgvector(1536), модель и hash |
+| `member_index_state` | состояние индексации |
+| `member_requests` | очередь, идемпотентность и результат запросов |
+
+Telegram id хранятся как `bigint` и на границе приложения проверяются на безопасное преобразование. Удаление старых сообщений выполняется ограниченными батчами. Миграции защищены advisory lock, поэтому конкурентный старт не применит одну миграцию дважды.
+
+## Надёжность и приватность
+
+- Пул ограничен `DATABASE_POOL_MAX`, а каждый SQL statement — `DATABASE_STATEMENT_TIMEOUT_MS`.
+- Scheduler останавливается раньше Telegram polling, а пул закрывается последним.
+- Зависший `member_requests.processing` можно безопасно вернуть в обработку после configured timeout.
+- Логи содержат технические ID, счётчики и классы ошибок, но не тексты запросов, профили, embeddings или ключи.
+- Текст карточки и запроса передаётся OpenAI. До загрузки реальных данных нужны согласие участников и проверка требований к трансграничной обработке.

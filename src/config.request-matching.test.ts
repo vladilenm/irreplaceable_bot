@@ -65,6 +65,15 @@ describe('readDatabaseConfig', () => {
     });
   });
 
+  it('normalizes an escaped Timeweb CA certificate for verified TLS', () => {
+    expect(readDatabaseConfig({
+      ...valid,
+      DATABASE_CA_CERT: '-----BEGIN CERTIFICATE-----\\nabc\\n-----END CERTIFICATE-----',
+    })).toMatchObject({
+      caCert: '-----BEGIN CERTIFICATE-----\nabc\n-----END CERTIFICATE-----',
+    });
+  });
+
   it('rejects invalid booleans and non-positive limits', () => {
     expect(() => readDatabaseConfig({ ...valid, DATABASE_SSL: 'yes' }))
       .toThrow('DATABASE_SSL must be true or false');

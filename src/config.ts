@@ -99,6 +99,9 @@ export function readDatabaseConfig(env: NodeJS.ProcessEnv): DatabaseConfig {
     runtimeUrl: required('DATABASE_URL'),
     migrationUrl: required('DATABASE_MIGRATION_URL'),
     ssl: sslRaw === 'true',
+    ...(env['DATABASE_CA_CERT']
+      ? { caCert: env['DATABASE_CA_CERT'].replace(/\\n/g, '\n') }
+      : {}),
     poolMax: positive('DATABASE_POOL_MAX', 5),
     statementTimeoutMs: positive('DATABASE_STATEMENT_TIMEOUT_MS', 10_000),
   };

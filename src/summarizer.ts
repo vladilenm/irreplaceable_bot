@@ -145,7 +145,7 @@ export function buildTranscript(messages: CapturedMessage[]): string {
   for (const m of messages) {
     const displayName = normalizeDisplayName(m.authorName);
     const safeText = escapeForTranscript(m.text);
-    // Telegram message ids let the LLM cite evidence; author ids never leave SQLite.
+    // Telegram message ids let the LLM cite evidence; author ids never leave persistence.
     const time = m.createdAt.slice(11, 16); // 'HH:MM' from ISO 8601
     lines.push(`[id=${m.tgMessageId} ${time}] ${displayName}: ${safeText}`);
   }

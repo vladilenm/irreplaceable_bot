@@ -1,73 +1,112 @@
 # Эксплуатация
 
-## Docker и Timeweb
+## Локальная PostgreSQL
 
 ```bash
-docker compose up --build -d
+cp .env.example .env
+docker compose -f docker-compose.test.yml up -d --wait
+npm ci
+npm run seed:members
 ```
 
-`docker-compose.yml` не объявляет `volumes`: Timeweb отклоняет такие compose-файлы. В production подключите постоянный диск через панель платформы в `/app/data` и задайте переменные окружения там же. Для локального Docker можно создать gitignored-файл `docker-compose.override.yml` с `env_file: .env` и bind mount `./data:/app/data`.
+Контейнер поднимает PostgreSQL с pgvector на `127.0.0.1:55432`; логин, база и URL уже указаны в `.env.example`. `seed:members` добавляет ровно 20 вымышленных карточек и обращается к OpenAI, поэтому нужен настоящий `EMBEDDING_API_KEY`.
 
-Запускайте ровно один экземпляр бота на один `BOT_TOKEN`. Telegram допускает только одного long-polling клиента. При конфликте бот пишет ошибку 409, ждёт 60 секунд и завершает процесс, чтобы supervisor не создавал плотный restart loop.
+Быстрая проверка:
 
-## SQLite
+```bash
+docker compose -f docker-compose.test.yml exec postgres-test \
+  psql -U club_bot -d club_bot_test -c "SELECT extversion FROM pg_extension WHERE extname = 'vector';"
 
-Рабочая база по умолчанию: `data/messages.db`. При старте бот:
+docker compose -f docker-compose.test.yml exec postgres-test \
+  psql -U club_bot -d club_bot_test -c "SELECT COUNT(*) FROM members WHERE source = 'mock';"
+```
 
-1. включает WAL и проверяет, что режим действительно активен;
-2. применяет недостающие forward-only миграции;
-3. один раз импортирует старый `data/state.json`, только если таблица `job_state` ещё пуста.
+Обычная остановка сохраняет данные: `docker compose -f docker-compose.test.yml down`. Ключ `-v` удалит локальный volume — используйте его только намеренно.
 
-После успешного импорта `state.json` больше не используется и может оставаться как rollback-копия. Не запускайте несколько контейнеров с одной базой и одним токеном.
+## Timeweb Managed PostgreSQL
 
-Для резервной копии остановите бот и сохраните весь каталог `/app/data`. При online-backup используйте SQLite backup API или снапшот диска, который согласован с WAL.
+### 1. Создание кластера
 
-## Расписания
+1. Создайте Managed PostgreSQL поддерживаемой версии, предпочтительно PostgreSQL 16, в том же регионе и приватной сети, где будет приложение.
+2. Создайте базу `club_bot` и отдельного владельца схемы/миграций.
+3. Включите расширение pgvector в панели Timeweb либо подключитесь владельцем и выполните `CREATE EXTENSION IF NOT EXISTS vector;`.
+4. Для постоянной связи приложения используйте приватный адрес. Публичный доступ включайте только на время локального импорта/диагностики и затем отключайте.
 
-Cron-выражения считаются в UTC. Значения по умолчанию:
+Справка Timeweb: [Managed PostgreSQL](https://timeweb.cloud/docs/dbaas/postgresql), [расширения PostgreSQL](https://timeweb.cloud/docs/dbaas/postgresql/extensions), [подключение и TLS](https://timeweb.cloud/docs/dbaas/postgresql/connect-to-database), [управление публичным IP](https://timeweb.cloud/docs/dbaas/dbaas-manage/public-ip-access).
 
-| Задача | UTC | Москва |
-|---|---:|---:|
-| AI-радар | `0 6 * * *` | 09:00 |
-| Сводка клуба | `30 3 * * *` | 06:30 |
-| Очистка сообщений | `0 1 * * *` | 04:00 |
+### 2. Роли
 
-Очистка удаляет сообщения старше `MESSAGE_RETENTION_DAYS` небольшими батчами. Минимальное допустимое значение — 7 дней.
+На вкладке кластера «Пользователи» создайте двух пользователей:
 
-## Telegram
+- `club_bot_migration` с правами `CREATE`, `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `REFERENCES` на базу `club_bot`; его URL идёт в `DATABASE_MIGRATION_URL`;
+- `club_bot_runtime` только с `SELECT`, `INSERT`, `UPDATE`, `DELETE`; его URL идёт в `DATABASE_URL`.
 
-Бот должен быть администратором целевой группы, а Privacy Mode должен быть выключен через BotFather. Startup preflight проверяет оба условия и пишет предупреждение, не останавливая процесс.
+Timeweb не выдаёт root-доступ и рекомендует управлять пользователями и их привилегиями через панель. На минимальном тарифе 1 CPU / 1 ГБ отдельные пользователи недоступны: для строгого разделения migration/runtime нужен следующий тариф. Пароль с `@`, `:`, `/` или другими специальными символами должен быть percent-encoded внутри URL. См. [пользователи и привилегии PostgreSQL](https://timeweb.cloud/docs/dbaas/postgresql/users-and-privileges).
 
-При диагностике проверьте:
+### 3. TLS
 
-- совпадает ли `TARGET_CHAT_ID` с группой;
-- входят ли нужные forum topic id в `TRACKED_THREAD_IDS`;
-- подключён ли постоянный диск к `/app/data`;
-- нет ли второго процесса с тем же токеном;
-- корректны ли `AI_MODEL`, `AI_API_KEY` и, при необходимости, `AI_BASE_URL`.
+Для Timeweb задайте `DATABASE_SSL=true`. Скачайте корневой сертификат из панели/инструкции Timeweb и передайте PEM через `DATABASE_CA_CERT`. В App Platform удобно сохранить его одной строкой с литеральными разделителями `\n`; приложение превратит их в переводы строк. Проверка сертификата остаётся включённой (`rejectUnauthorized=true`). Не переключайте production на `DATABASE_SSL=false`.
 
-Логи структурированные (pino). Текст сообщений участников не логируется.
+### 4. App Platform
 
-## Подбор участников по запросу
+Timeweb пересоздаёт контейнеры приложения, поэтому данные в контейнере не считаются постоянными. `docker-compose.yml` не содержит `volumes` и подключается к внешней Managed PostgreSQL. В App Platform задайте секреты/переменные:
 
-Функция отвечает только на Telegram entity с точным `#запрос` в `TARGET_CHAT_ID`, в любом forum-топике. Обычные сообщения не вызывают embeddings или LLM. При успехе бот отвечает в исходном топике тремя–пятью `@username`; если надёжных совпадений меньше трёх, упоминаний не будет.
+- `DATABASE_URL`, `DATABASE_MIGRATION_URL`, `DATABASE_SSL=true`, `DATABASE_CA_CERT`;
+- `DATABASE_POOL_MAX=5`, `DATABASE_STATEMENT_TIMEOUT_MS=10000`;
+- `BOT_TOKEN`, `TARGET_CHAT_ID`, Telegram thread ids;
+- `AI_API_KEY`, `AI_MODEL` и при необходимости `AI_BASE_URL`;
+- `EMBEDDING_API_KEY`, `EMBEDDING_MODEL=text-embedding-3-small`;
+- `MEMBER_INDEX_CRON=*/15 * * * *` и ограничения очереди;
+- сначала `REQUEST_MATCHING_ENABLED=false`;
+- обычно `ALLOW_MOCK_MEMBER_SEED=false`.
 
-### Настройка и rollout
+Разворачивайте ровно один экземпляр на один `BOT_TOKEN`: Telegram long polling не допускает конкурирующие процессы. Документация: [Docker Compose в App Platform](https://timeweb.cloud/docs/apps/deploying-with-docker-compose), [переменные](https://timeweb.cloud/docs/apps/variables), [жизненный цикл контейнеров](https://timeweb.cloud/docs/apps/how-it-works).
 
-1. Создайте Notion connection с правом read content и расшарьте ей data source с карточками клуба.
-2. В data source обязательны свойства: `Name` (title), `Telegram` (rich text) и `Profile` (rich text).
-3. Скопируйте именно ID data source, а не ID родительской database. См. [Notion: query a data source](https://developers.notion.com/reference/query-a-data-source) и [guide по database/data source](https://developers.notion.com/guides/data-apis/working-with-databases).
-4. Заполните `NOTION_TOKEN`, `NOTION_DATA_SOURCE_ID`, `EMBEDDING_API_KEY` и `EMBEDDING_MODEL`, но оставьте `REQUEST_MATCHING_ENABLED=false`.
-5. Запустите один экземпляр бота, убедитесь через `/status`, что индекс синхронизировался, затем выполните приватную проверку на 20–30 подготовленных запросах:
+## Rollout
+
+1. Сделайте backup/snapshot Managed PostgreSQL.
+2. Разверните приложение с `REQUEST_MATCHING_ENABLED=false`. При старте применятся идемпотентные миграции и выполнится readiness-check.
+3. Если нужна старая SQLite, временно разрешите доступ к БД только со своей машины и выполните:
 
    ```bash
-   npm run eval:member-matching -- /absolute/path/member-matching-eval.json
+   npm run migrate:sqlite -- /absolute/path/messages.db
    ```
 
-   Набор JSON содержит только `query` и `expectedUsernames`, не должен попадать в Git и считается успешным при результате не ниже 80%.
-6. Включите `REQUEST_MATCHING_ENABLED=true` и перезапустите единственный production-экземпляр.
-7. Для rollback снова выключите флаг и перезапустите процесс: радар, захват сообщений и сводки продолжат работать независимо.
+   PostgreSQL должна быть полностью пустой. Импорт идёт одной транзакцией, проверяет количества строк и не изменяет SQLite-файл.
+4. Только для тестовой среды создайте mocks: `npm run seed:members`. В production команда дополнительно требует `ALLOW_MOCK_MEMBER_SEED=true`.
+5. Проверьте индекс и 20–30 закрытых контрольных запросов. Замените или деактивируйте mocks до загрузки реального каталога.
+6. Включите `REQUEST_MATCHING_ENABLED=true` и перезапустите единственный экземпляр.
 
-`MEMBER_SYNC_CRON` по умолчанию синхронизирует каталог раз в 15 минут. `REQUEST_MATCH_CONCURRENCY`, `REQUEST_QUEUE_LIMIT` и `REQUEST_PROCESSING_TIMEOUT_MINUTES` ограничивают нагрузку и обрабатывают зависшие запросы.
+Проверочные SQL-запросы:
 
-Не добавляйте реальные карточки, request-тексты, embeddings, Notion token, OpenAI key или eval-набор в коммиты. Логи feature содержат только технические ID, количество результатов и класс ошибки.
+```sql
+SELECT extversion FROM pg_extension WHERE extname = 'vector';
+SELECT COUNT(*) AS mock_members FROM members WHERE source = 'mock';
+SELECT provider, embedding_model, active_count, pending_count, last_success_at
+FROM member_index_state;
+SELECT status, COUNT(*) FROM member_requests GROUP BY status ORDER BY status;
+SELECT COUNT(*) AS captured_messages FROM messages;
+SELECT job_name, last_completed_at, last_outcome, item_count FROM job_state;
+```
+
+Для приватной оценки:
+
+```bash
+npm run eval:member-matching -- /absolute/path/member-matching-eval.json
+```
+
+Eval JSON содержит только `query` и `expectedUsernames`, не коммитится и считается успешным при результате не ниже 80%.
+
+## Rollback и восстановление
+
+- Быстрый rollback функции: `REQUEST_MATCHING_ENABLED=false` и перезапуск. Радар и сводки продолжат работать.
+- Миграции forward-only; перед изменениями схемы используйте backup/snapshot Timeweb.
+- Возврат всего приложения на SQLite возможен только старой версией кода и с нетронутой копией исходного файла. Новые данные из PostgreSQL обратно автоматически не экспортируются.
+- База не хранится в Docker-образе или файловой системе App Platform.
+
+## Диагностика и безопасность
+
+- `/status` показывает состояние радара, индекса участников и аптайм.
+- При Telegram 409 найдите второй процесс с тем же токеном.
+- Тексты сообщений, профили, embeddings, ключи и database URLs не должны попадать в Git или обычные логи.
+- Запросы и карточки передаются OpenAI. Перед загрузкой реальных профилей получите информированное согласие участников и проверьте применимые требования к персональным данным и трансграничной передаче с профильным юристом.

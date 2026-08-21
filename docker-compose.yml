@@ -2,8 +2,6 @@ services:
   bot:
     build: .
     restart: unless-stopped
-    # Timeweb rejects volumes in compose. Mount a persistent disk at /app/data
-    # in the dashboard; use docker-compose.override.yml for local bind mounts.
     # Variables must stay explicit here for Timeweb dashboard injection.
     environment:
       BOT_TOKEN: "${BOT_TOKEN}"
@@ -19,17 +17,21 @@ services:
       THREAD_SUMMARY_CRON: "${THREAD_SUMMARY_CRON:-30 3 * * *}"
       MESSAGE_RETENTION_DAYS: "${MESSAGE_RETENTION_DAYS:-90}"
       RETENTION_SWEEP_CRON: "${RETENTION_SWEEP_CRON:-0 1 * * *}"
-      DB_PATH: "${DB_PATH:-data/messages.db}"
+      DATABASE_URL: "${DATABASE_URL}"
+      DATABASE_MIGRATION_URL: "${DATABASE_MIGRATION_URL}"
+      DATABASE_SSL: "${DATABASE_SSL:-true}"
+      DATABASE_CA_CERT: "${DATABASE_CA_CERT:-}"
+      DATABASE_POOL_MAX: "${DATABASE_POOL_MAX:-5}"
+      DATABASE_STATEMENT_TIMEOUT_MS: "${DATABASE_STATEMENT_TIMEOUT_MS:-10000}"
       TRACKED_THREAD_IDS: "${TRACKED_THREAD_IDS:-}"
       REQUEST_MATCHING_ENABLED: "${REQUEST_MATCHING_ENABLED:-false}"
-      NOTION_TOKEN: "${NOTION_TOKEN:-}"
-      NOTION_DATA_SOURCE_ID: "${NOTION_DATA_SOURCE_ID:-}"
       EMBEDDING_API_KEY: "${EMBEDDING_API_KEY:-}"
       EMBEDDING_MODEL: "${EMBEDDING_MODEL:-text-embedding-3-small}"
-      MEMBER_SYNC_CRON: "${MEMBER_SYNC_CRON:-*/15 * * * *}"
+      MEMBER_INDEX_CRON: "${MEMBER_INDEX_CRON:-*/15 * * * *}"
       REQUEST_MATCH_CONCURRENCY: "${REQUEST_MATCH_CONCURRENCY:-2}"
       REQUEST_QUEUE_LIMIT: "${REQUEST_QUEUE_LIMIT:-50}"
       REQUEST_PROCESSING_TIMEOUT_MINUTES: "${REQUEST_PROCESSING_TIMEOUT_MINUTES:-10}"
+      ALLOW_MOCK_MEMBER_SEED: "${ALLOW_MOCK_MEMBER_SEED:-false}"
     logging:
       driver: json-file
       options:

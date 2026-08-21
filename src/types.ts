@@ -11,6 +11,7 @@ export interface DatabaseConfig {
   runtimeUrl: string;
   migrationUrl: string;
   ssl: boolean;
+  caCert?: string;
   poolMax: number;
   statementTimeoutMs: number;
 }

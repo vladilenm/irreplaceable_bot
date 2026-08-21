@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { readFile } from 'node:fs/promises';
 import { GrammyError } from 'grammy';
 import {
   classifyStartupError,
@@ -48,5 +49,27 @@ describe('classifyStartupError', () => {
 
   it('D6: backoff constant is at least 30s (sanity check that we are not busy-looping)', () => {
     expect(POLLING_CONFLICT_BACKOFF_MS).toBeGreaterThanOrEqual(30_000);
+  });
+});
+
+describe('PostgreSQL deployment files', () => {
+  it('passes managed database settings without SQLite disk assumptions', async () => {
+    const [compose, dockerfile, env] = await Promise.all([
+      readFile(new URL('../docker-compose.yml', import.meta.url), 'utf8'),
+      readFile(new URL('../Dockerfile', import.meta.url), 'utf8'),
+      readFile(new URL('../.env.example', import.meta.url), 'utf8'),
+    ]);
+
+    expect(compose).toContain('DATABASE_URL:');
+    expect(compose).toContain('DATABASE_MIGRATION_URL:');
+    expect(compose).toContain('ALLOW_MOCK_MEMBER_SEED:');
+    expect(compose).not.toContain('DB_PATH:');
+    expect(compose).not.toContain('NOTION_TOKEN:');
+    expect(dockerfile).toContain('FROM node:22-alpine');
+    expect(dockerfile).not.toContain('better-sqlite3');
+    expect(dockerfile).not.toContain('/app/data');
+    expect(compose).toContain('DATABASE_SSL: "${DATABASE_SSL:-true}"');
+    expect(env).toContain('DATABASE_SSL=false');
+    expect(env).toContain('MEMBER_INDEX_CRON=*/15 * * * *');
   });
 });
