@@ -143,4 +143,22 @@ describe('sendMessageWithRetry log shape', () => {
     const binding = successCall?.[0] as { pipeline?: string };
     expect(binding.pipeline).toBeUndefined();
   });
+
+  it('returns sent message and attaches reply_parameters', async () => {
+    mockSendMessage.mockResolvedValue({ message_id: 99 });
+
+    const sent = await sendMessageWithRetry(api, {
+      chatId: -100,
+      threadId: 42,
+      replyToMessageId: 77,
+      text: 'hi',
+      parseMode: 'HTML',
+      pipeline: 'member-request',
+    });
+
+    expect(sent.message_id).toBe(99);
+    expect(mockSendMessage).toHaveBeenCalledWith(-100, 'hi', expect.objectContaining({
+      reply_parameters: { message_id: 77, allow_sending_without_reply: true },
+    }));
+  });
 });

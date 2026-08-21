@@ -1,13 +1,14 @@
 import { GrammyError, type Api } from 'grammy';
 import { logger } from './logger.js';
 
-export type SendMessagePipeline = 'digest' | 'thread-summary';
+export type SendMessagePipeline = 'digest' | 'thread-summary' | 'member-request';
 
 export interface SendMessageParams {
   chatId: number;
   threadId: number;
   text: string;
   parseMode: 'HTML';
+  replyToMessageId?: number;
   /** Optional: tags structured log entries with the originating pipeline. */
   pipeline?: SendMessagePipeline;
 }
@@ -35,24 +36,32 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function attemptSend(api: Api, params: SendMessageParams): Promise<void> {
-  await api.sendMessage(params.chatId, params.text, {
+type SentMessage = Awaited<ReturnType<Api['sendMessage']>>;
+
+async function attemptSend(api: Api, params: SendMessageParams): Promise<SentMessage> {
+  return api.sendMessage(params.chatId, params.text, {
     message_thread_id: params.threadId,
     parse_mode: params.parseMode,
     link_preview_options: { is_disabled: true },
+    ...(params.replyToMessageId === undefined ? {} : {
+      reply_parameters: {
+        message_id: params.replyToMessageId,
+        allow_sending_without_reply: true,
+      },
+    }),
   });
 }
 
-export async function sendMessageWithRetry(api: Api, params: SendMessageParams): Promise<void> {
+export async function sendMessageWithRetry(api: Api, params: SendMessageParams): Promise<SentMessage> {
   const logBinding = {
     chatId: params.chatId,
     threadId: params.threadId,
     pipeline: params.pipeline,
   };
   try {
-    await attemptSend(api, params);
+    const sent = await attemptSend(api, params);
     logger.info(logBinding, 'Telegram sendMessage ok');
-    return;
+    return sent;
   } catch (err: unknown) {
     logger.error(
       { ...logBinding, err },
@@ -60,8 +69,9 @@ export async function sendMessageWithRetry(api: Api, params: SendMessageParams):
     );
     await delay(RETRY_DELAY_MS);
     try {
-      await attemptSend(api, params);
+      const sent = await attemptSend(api, params);
       logger.info(logBinding, 'Telegram sendMessage ok (after retry)');
+      return sent;
     } catch (retryErr: unknown) {
       logger.fatal(
         { ...logBinding, err: retryErr },
