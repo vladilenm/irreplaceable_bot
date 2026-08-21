@@ -12,32 +12,17 @@
 4. Состояние cron-задачи меняется только после подтверждённого внешнего результата.
 5. Карточки сначала сохраняются в PostgreSQL, затем независимо индексируются. Ошибка одной карточки не блокирует остальные.
 
-## Потоки данных
+## Production-поток
 
-```mermaid
-flowchart LR
-  Telegram["Telegram"] --> Bot["Bot / capture / requests"]
-  Bot --> Repos["Async repositories"]
-  Repos --> PG["Timeweb PostgreSQL + pgvector"]
-
-  RSS["RSS"] --> Radar["AI radar"] --> LLM["LLM provider"]
-  PG --> Summary["Daily summary"] --> LLM
-  Radar --> Telegram
-  Summary --> Telegram
-
-  Web["Будущее web-приложение"] --> Backend["Backend каталога"]
-  Seed["20 mock-карточек"] --> Directory["MemberDirectoryService"]
-  Backend --> Directory
-  Directory --> OpenAI["OpenAI embeddings"]
-  Directory --> PG
-
-  Bot --> Queue["member_requests"]
-  Queue --> QueryEmbedding["Один embedding запроса"]
-  QueryEmbedding --> Search["Exact cosine top-20"]
-  PG --> Search
-  Search --> Rerank["Grounded LLM rerank"]
-  Rerank --> Telegram
+```text
+Telegram -> bot on Timeweb App Platform
+         -> Timeweb AI Gateway (chat + embeddings, one token)
+         -> Timeweb Managed PostgreSQL (messages + members + vector index)
 ```
+
+Операционные константы — модели, размерность embeddings, расписания, лимиты базы, обработки запросов и логирования — находятся в `src/runtime-defaults.ts`. Идентичность развёртывания и секреты находятся ровно в семи значениях окружения: `BOT_TOKEN`, `TARGET_CHAT_ID`, `AI_RADAR_THREAD_ID`, `THREAD_SUMMARY_THREAD_ID`, `TRACKED_THREAD_IDS`, `TIMEWEB_AI_TOKEN` и `DATABASE_URL`.
+
+`config/timeweb-cloud-ca.crt` — публичный материал сертификата для проверки TLS Managed PostgreSQL, а не секрет. Для не-локального домена из `DATABASE_URL` приложение использует этот сертификат; для loopback-подключения TLS не требуется.
 
 Будущее web-приложение не должно подключаться к PostgreSQL прямо из браузера. Оно вызывает собственный backend, а тот нормализует карточку и использует тот же сервис каталога или эквивалентный application API.
 
@@ -45,7 +30,7 @@ flowchart LR
 
 1. Обработчик реагирует только на Telegram entity с точным хэштегом `#запрос` в `TARGET_CHAT_ID`.
 2. Запрос атомарно резервируется в `member_requests`. Повторная доставка того же сообщения не запускает второй pipeline.
-3. Для текста запроса создаётся один 1536-мерный embedding OpenAI.
+3. Через Timeweb AI Gateway создаётся один 1536-мерный embedding запроса.
 4. PostgreSQL вычисляет cosine distance и возвращает точный top-20. При каталоге до 1000 карточек ANN-индекс не нужен: exact search проще и предсказуемее.
 5. В поиск попадают только активные карточки, у которых embedding создан текущей моделью и соответствует текущему content hash. Устаревший vector никогда не используется молча.
 6. LLM выбирает 3–5 кандидатов только из top-20 и обязан вернуть evidence из карточки. Код проверяет ID и evidence, затем сам формирует упоминания.
@@ -67,8 +52,7 @@ Telegram id хранятся как `bigint` и на границе прилож
 
 ## Надёжность и приватность
 
-- Пул ограничен `DATABASE_POOL_MAX`, а каждый SQL statement — `DATABASE_STATEMENT_TIMEOUT_MS`.
 - Scheduler останавливается раньше Telegram polling, а пул закрывается последним.
-- Зависший `member_requests.processing` можно безопасно вернуть в обработку после configured timeout.
+- Зависший `member_requests.processing` можно безопасно вернуть в обработку после заданного интервала.
 - Логи содержат технические ID, счётчики и классы ошибок, но не тексты запросов, профили, embeddings или ключи.
-- Текст карточки и запроса передаётся OpenAI. До загрузки реальных данных нужны согласие участников и проверка требований к трансграничной обработке.
+- Текст карточки и запроса передаётся через Timeweb AI Gateway. До загрузки реальных данных нужны согласие участников и проверка требований к трансграничной обработке.
