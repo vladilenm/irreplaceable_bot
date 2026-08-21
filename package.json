@@ -9,7 +9,8 @@
     "dev": "tsx watch src/index.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "eval:member-matching": "tsx src/evaluate-member-matching.ts"
   },
   "keywords": [],
   "author": "",

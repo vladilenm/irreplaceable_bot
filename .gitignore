@@ -8,3 +8,4 @@ data/
 docker-compose.override.yml
 .claude/worktrees
 .superpowers/
+member-matching-eval*.json
