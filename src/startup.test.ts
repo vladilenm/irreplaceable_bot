@@ -53,23 +53,31 @@ describe('classifyStartupError', () => {
 });
 
 describe('PostgreSQL deployment files', () => {
-  it('passes managed database settings without SQLite disk assumptions', async () => {
+  it('injects exactly the seven App Platform environment variables', async () => {
     const [compose, dockerfile, env] = await Promise.all([
       readFile(new URL('../docker-compose.yml', import.meta.url), 'utf8'),
       readFile(new URL('../Dockerfile', import.meta.url), 'utf8'),
       readFile(new URL('../.env.example', import.meta.url), 'utf8'),
     ]);
 
-    expect(compose).toContain('DATABASE_URL:');
-    expect(compose).toContain('DATABASE_MIGRATION_URL:');
-    expect(compose).toContain('ALLOW_MOCK_MEMBER_SEED:');
-    expect(compose).not.toContain('DB_PATH:');
-    expect(compose).not.toContain('NOTION_TOKEN:');
-    expect(dockerfile).toContain('FROM node:22-alpine');
-    expect(dockerfile).not.toContain('better-sqlite3');
-    expect(dockerfile).not.toContain('/app/data');
-    expect(compose).toContain('DATABASE_SSL: "${DATABASE_SSL:-true}"');
-    expect(env).toContain('DATABASE_SSL=false');
-    expect(env).toContain('MEMBER_INDEX_CRON=*/15 * * * *');
+    const composeEnvNames = [...compose.matchAll(/^\s{6}([A-Z][A-Z0-9_]+):/gm)]
+      .map((match) => match[1]);
+    expect(composeEnvNames).toEqual([
+      'BOT_TOKEN',
+      'TARGET_CHAT_ID',
+      'AI_RADAR_THREAD_ID',
+      'THREAD_SUMMARY_THREAD_ID',
+      'TRACKED_THREAD_IDS',
+      'TIMEWEB_AI_TOKEN',
+      'DATABASE_URL',
+    ]);
+
+    const exampleEnvNames = env
+      .split('\n')
+      .filter((line) => /^[A-Z][A-Z0-9_]*=/.test(line))
+      .map((line) => line.slice(0, line.indexOf('=')));
+    expect(exampleEnvNames).toEqual(composeEnvNames);
+    expect(dockerfile).toContain('COPY config ./config');
+    expect(dockerfile).toContain('ENV NODE_ENV=production');
   });
 });

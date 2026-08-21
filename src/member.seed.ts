@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { pathToFileURL } from 'node:url';
-import { config } from './config.js';
+import { readDatabaseConfig, readTimewebAiToken } from './config.js';
 import { runMigrations } from './db/migrations.js';
 import { assertDatabaseReady, createPool } from './db/pool.js';
 import { OpenAiEmbeddingProvider } from './embeddings.js';
@@ -8,10 +8,11 @@ import { logger } from './logger.js';
 import { MemberDirectoryService } from './member-directory.service.js';
 import { PgMemberRepository } from './members.repository.js';
 import type { MemberSourceRecord } from './members.js';
+import { RUNTIME_DEFAULTS } from './runtime-defaults.js';
 
-export interface MockSeedEnvironment {
-  NODE_ENV?: string;
-  ALLOW_MOCK_MEMBER_SEED?: string;
+export interface MockSeedOptions {
+  nodeEnv: string;
+  allowProduction: boolean;
 }
 
 const MOCK_UPDATED_AT = '2026-08-21T00:00:00.000Z';
@@ -55,10 +56,10 @@ export const MOCK_MEMBERS: readonly MemberSourceRecord[] = PROFILES.map(
 
 export async function seedMockMembers(
   service: MemberDirectoryService,
-  env: MockSeedEnvironment,
+  options: MockSeedOptions,
 ): Promise<{ upserted: number; indexed: number }> {
-  if (env.NODE_ENV === 'production' && env.ALLOW_MOCK_MEMBER_SEED !== 'true') {
-    throw new Error('ALLOW_MOCK_MEMBER_SEED=true is required in production');
+  if (options.nodeEnv === 'production' && !options.allowProduction) {
+    throw new Error('--allow-production is required in production');
   }
   const upserted = await service.upsert(MOCK_MEMBERS);
   const result = await service.indexPending(100);
@@ -66,7 +67,8 @@ export async function seedMockMembers(
 }
 
 async function runSeedCli(): Promise<void> {
-  const { database, requestMatching } = config;
+  const database = readDatabaseConfig(process.env);
+  const timewebAiToken = readTimewebAiToken(process.env);
   const migrationPool = createPool(database);
   try {
     await runMigrations(migrationPool);
@@ -79,13 +81,16 @@ async function runSeedCli(): Promise<void> {
     const service = new MemberDirectoryService({
       repository: new PgMemberRepository(pool),
       embeddings: new OpenAiEmbeddingProvider({
-        apiKey: requestMatching.embeddingApiKey,
-        baseUrl: requestMatching.embeddingBaseUrl,
-        model: requestMatching.embeddingModel,
-        dimensions: requestMatching.embeddingDimensions,
+        apiKey: timewebAiToken,
+        baseUrl: RUNTIME_DEFAULTS.ai.baseUrl,
+        model: RUNTIME_DEFAULTS.ai.embeddingModel,
+        dimensions: RUNTIME_DEFAULTS.ai.embeddingDimensions,
       }),
     });
-    const result = await seedMockMembers(service, process.env);
+    const result = await seedMockMembers(service, {
+      nodeEnv: process.env.NODE_ENV ?? 'production',
+      allowProduction: process.argv.includes('--allow-production'),
+    });
     logger.info(
       { event: 'mock-member-seed', upserted: result.upserted, indexed: result.indexed },
       'Mock member seed complete',

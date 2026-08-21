@@ -29,11 +29,17 @@ afterAll(async () => {
 });
 
 it('seeds exactly 20 deterministic mock members twice without duplicates', async () => {
-  await expect(seedMockMembers(service, { NODE_ENV: 'development' })).resolves.toEqual({
+  await expect(seedMockMembers(service, {
+    nodeEnv: 'development',
+    allowProduction: false,
+  })).resolves.toEqual({
     upserted: 20,
     indexed: 20,
   });
-  await expect(seedMockMembers(service, { NODE_ENV: 'development' })).resolves.toEqual({
+  await expect(seedMockMembers(service, {
+    nodeEnv: 'development',
+    allowProduction: false,
+  })).resolves.toEqual({
     upserted: 20,
     indexed: 0,
   });
@@ -55,8 +61,17 @@ it('seeds exactly 20 deterministic mock members twice without duplicates', async
   expect(rows.rows[19]).toMatchObject({ external_id: 'mock-20', active: true });
 });
 
-it('blocks production seed without the explicit guard', async () => {
-  await expect(seedMockMembers(service, { NODE_ENV: 'production' }))
-    .rejects.toThrow('ALLOW_MOCK_MEMBER_SEED=true is required');
+it('blocks production seeding without an explicit CLI decision', async () => {
+  await expect(seedMockMembers(service, {
+    nodeEnv: 'production',
+    allowProduction: false,
+  })).rejects.toThrow('--allow-production is required in production');
   await expect(repository.countBySource('mock')).resolves.toBe(0);
+});
+
+it('allows exactly twenty mock cards with production opt-in', async () => {
+  await expect(seedMockMembers(service, {
+    nodeEnv: 'production',
+    allowProduction: true,
+  })).resolves.toEqual({ upserted: 20, indexed: 20 });
 });
