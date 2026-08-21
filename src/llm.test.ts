@@ -11,7 +11,7 @@ vi.mock('openai', () => ({
   })),
 }));
 
-import { requestJson } from './llm.js';
+import { LlmSchemaError, requestJson } from './llm.js';
 
 const baseConfig = {
   apiKey: 'gateway-token',
@@ -52,5 +52,30 @@ describe('LLM transport', () => {
       apiKey: 'gateway-token',
       baseURL: 'https://api.timeweb.ai/v1',
     });
+  });
+
+  it('reports malformed JSON with response length without leaking response content', async () => {
+    const malformedContent = 'sensitive-profile-DO-NOT-LOG';
+    openaiCreate.mockResolvedValueOnce({
+      choices: [{ message: { content: malformedContent } }],
+    });
+
+    let caught: unknown;
+    try {
+      await requestJson(baseConfig, {
+        system: 'system',
+        user: 'user',
+        maxTokens: 100,
+        schemaName: 'result',
+        schema: { type: 'object' },
+      });
+    } catch (error: unknown) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(LlmSchemaError);
+    const message = (caught as Error).message;
+    expect(message).not.toContain(malformedContent);
+    expect(message).toContain(`responseLength=${String(malformedContent.length)}`);
   });
 });

@@ -78,10 +78,9 @@ export async function requestJson<T>(
   }
   try {
     return JSON.parse(content) as T;
-  } catch (cause: unknown) {
+  } catch {
     throw new LlmSchemaError(
-      `OpenAI-compatible response is not valid JSON (first 100 chars): ${content.slice(0, 100)}`,
-      { cause },
+      `OpenAI-compatible response is not valid JSON (responseLength=${String(content.length)})`,
     );
   }
 }
