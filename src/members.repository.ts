@@ -1,8 +1,7 @@
 import type Database from 'better-sqlite3';
-import type { Pool } from 'pg';
+import type { Pool, PoolClient } from 'pg';
 import { registerTypes, toSql } from 'pgvector/pg';
 import { withTransaction } from './db/pool.js';
-import { logger } from './logger.js';
 import { buildMemberId, memberContentHash } from './members.js';
 import type {
   IndexedMember,
@@ -357,7 +356,7 @@ interface IndexStatusRow {
 }
 
 const VECTOR_DIMENSIONS = 1536;
-const registeredPools = new WeakSet<Pool>();
+const registeredClients = new WeakSet<PoolClient>();
 
 function validateVector(values: readonly number[]): number[] {
   if (
@@ -391,17 +390,20 @@ function mapIndexStatus(row: IndexStatusRow): MemberIndexStatus {
 }
 
 export class PgMemberRepository implements MemberRepository {
-  constructor(private readonly pool: Pool) {
-    if (!registeredPools.has(pool)) {
-      registeredPools.add(pool);
-      pool.on('connect', (client) => {
-        void registerTypes(client).catch((error: unknown) => {
-          logger.error(
-            { errorClass: error instanceof Error ? error.name : 'unknown' },
-            'Failed to register pgvector types',
-          );
-        });
-      });
+  constructor(private readonly pool: Pool) {}
+
+  private async withVectorClient<T>(
+    work: (client: PoolClient) => Promise<T>,
+  ): Promise<T> {
+    const client = await this.pool.connect();
+    try {
+      if (!registeredClients.has(client)) {
+        await registerTypes(client);
+        registeredClients.add(client);
+      }
+      return await work(client);
+    } finally {
+      client.release();
     }
   }
 
@@ -481,17 +483,19 @@ export class PgMemberRepository implements MemberRepository {
     values: readonly number[],
   ): Promise<void> {
     const vector = validateVector(values);
-    await this.pool.query(`
-      INSERT INTO member_embeddings (
-        member_id, model, dimensions, content_hash, embedding, updated_at
-      ) VALUES ($1, $2, $3, $4, $5::vector, now())
-      ON CONFLICT(member_id) DO UPDATE SET
-        model = EXCLUDED.model,
-        dimensions = EXCLUDED.dimensions,
-        content_hash = EXCLUDED.content_hash,
-        embedding = EXCLUDED.embedding,
-        updated_at = EXCLUDED.updated_at
-    `, [memberId, model, VECTOR_DIMENSIONS, contentHash, toSql(vector)]);
+    await this.withVectorClient(async (client) => {
+      await client.query(`
+        INSERT INTO member_embeddings (
+          member_id, model, dimensions, content_hash, embedding, updated_at
+        ) VALUES ($1, $2, $3, $4, $5::vector, now())
+        ON CONFLICT(member_id) DO UPDATE SET
+          model = EXCLUDED.model,
+          dimensions = EXCLUDED.dimensions,
+          content_hash = EXCLUDED.content_hash,
+          embedding = EXCLUDED.embedding,
+          updated_at = EXCLUDED.updated_at
+      `, [memberId, model, VECTOR_DIMENSIONS, contentHash, toSql(vector)]);
+    });
   }
 
   async search(
@@ -503,20 +507,21 @@ export class PgMemberRepository implements MemberRepository {
     const vector = validateVector(values);
     validateLimit(limit);
     const excluded = requesterUsername?.replace(/^@/, '').toLowerCase() ?? null;
-    const result = await this.pool.query<SimilarMemberRow>(`
-      SELECT m.member_id, m.display_name, m.telegram_username, m.profile_text,
-        1 - (e.embedding <=> $1::vector) AS similarity
-      FROM members AS m
-      INNER JOIN member_embeddings AS e
-        ON e.member_id = m.member_id
-       AND e.content_hash = m.content_hash
-       AND e.model = $2
-       AND e.dimensions = $3
-      WHERE m.active = true
-        AND ($4::text IS NULL OR lower(m.telegram_username) <> $4)
-      ORDER BY e.embedding <=> $1::vector, m.member_id
-      LIMIT $5
-    `, [toSql(vector), model, VECTOR_DIMENSIONS, excluded, limit]);
+    const result = await this.withVectorClient((client) =>
+      client.query<SimilarMemberRow>(`
+        SELECT m.member_id, m.display_name, m.telegram_username, m.profile_text,
+          1 - (e.embedding <=> $1::vector) AS similarity
+        FROM members AS m
+        INNER JOIN member_embeddings AS e
+          ON e.member_id = m.member_id
+         AND e.content_hash = m.content_hash
+         AND e.model = $2
+         AND e.dimensions = $3
+        WHERE m.active = true
+          AND ($4::text IS NULL OR lower(m.telegram_username) <> $4)
+        ORDER BY e.embedding <=> $1::vector, m.member_id
+        LIMIT $5
+      `, [toSql(vector), model, VECTOR_DIMENSIONS, excluded, limit]));
     return result.rows.map((row) => ({
       member: {
         memberId: row.member_id,

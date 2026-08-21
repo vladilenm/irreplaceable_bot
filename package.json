@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "seed:members": "tsx src/member.seed.ts",
     "eval:member-matching": "tsx src/evaluate-member-matching.ts"
   },
   "keywords": [],
