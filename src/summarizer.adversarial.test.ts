@@ -3,14 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import type { CapturedMessage } from './types.js';
 
-const anthropicCreate = vi.fn();
 const openaiCreate = vi.fn();
-
-vi.mock('@anthropic-ai/sdk', () => ({
-  default: vi.fn().mockImplementation(() => ({
-    messages: { create: anthropicCreate },
-  })),
-}));
 
 vi.mock('openai', () => ({
   default: vi.fn().mockImplementation(() => ({
@@ -50,17 +43,11 @@ function parseFixture(): CapturedMessage[] {
 
 describe('Adversarial fixture — prompt-injection resistance', () => {
   beforeEach(() => {
-    anthropicCreate.mockReset();
     openaiCreate.mockReset();
   });
 
   it('ADV-1: jailbreak that bypasses prompt-side defences is hard-rejected by Zod (schema-invalid skip)', async () => {
     // LLM "succumbs" and returns garbage tool-use payload (no topics field at all).
-    anthropicCreate.mockResolvedValueOnce({
-      content: [
-        { type: 'tool_use', name: 'submit_summary', input: { leak: 'pwned' } },
-      ],
-    });
     openaiCreate.mockResolvedValueOnce({
       choices: [{ message: { content: JSON.stringify({ leak: 'pwned' }) } }],
     });
@@ -87,15 +74,6 @@ describe('Adversarial fixture — prompt-injection resistance', () => {
         { emoji: '💻', title: 'pwn', bullets: [{ summary: 'pwn', msgId: 42 }], links: [] },
       ],
     };
-    anthropicCreate.mockResolvedValueOnce({
-      content: [
-        {
-          type: 'tool_use',
-          name: 'submit_summary',
-          input: validShapeHallucinatedId,
-        },
-      ],
-    });
     openaiCreate.mockResolvedValueOnce({
       choices: [
         {

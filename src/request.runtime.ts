@@ -28,7 +28,9 @@ export async function createRequestMatchingRuntime(
   const now = overrides.now ?? (() => new Date());
   const embeddings = overrides.embeddings ?? new OpenAiEmbeddingProvider({
     apiKey: feature.embeddingApiKey,
+    baseUrl: feature.embeddingBaseUrl,
     model: feature.embeddingModel,
+    dimensions: feature.embeddingDimensions,
   });
   const memberDirectory = new MemberDirectoryService({
     repository: persistence.members,

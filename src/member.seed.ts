@@ -80,7 +80,9 @@ async function runSeedCli(): Promise<void> {
       repository: new PgMemberRepository(pool),
       embeddings: new OpenAiEmbeddingProvider({
         apiKey: requestMatching.embeddingApiKey,
+        baseUrl: requestMatching.embeddingBaseUrl,
         model: requestMatching.embeddingModel,
+        dimensions: requestMatching.embeddingDimensions,
       }),
     });
     const result = await seedMockMembers(service, process.env);

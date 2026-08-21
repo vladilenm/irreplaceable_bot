@@ -7,6 +7,7 @@ interface EmbeddingClient {
       model: string;
       input: string[];
       encoding_format: 'float';
+      dimensions: number;
     }): Promise<{
       model: string;
       data: Array<{ index: number; embedding: number[] }>;
@@ -16,11 +17,23 @@ interface EmbeddingClient {
 
 export class OpenAiEmbeddingProvider implements EmbeddingProvider {
   readonly model: string;
+  private readonly dimensions: number;
   private readonly client: EmbeddingClient;
 
-  constructor(options: { apiKey: string; model: string; client?: EmbeddingClient }) {
+  constructor(options: {
+    apiKey: string;
+    baseUrl: string;
+    model: string;
+    dimensions: number;
+    client?: EmbeddingClient;
+  }) {
     this.model = options.model;
-    this.client = options.client ?? new OpenAI({ apiKey: options.apiKey, maxRetries: 1 });
+    this.dimensions = options.dimensions;
+    this.client = options.client ?? new OpenAI({
+      apiKey: options.apiKey,
+      baseURL: options.baseUrl,
+      maxRetries: 1,
+    });
   }
 
   async embed(texts: readonly string[]): Promise<readonly number[][]> {
@@ -30,20 +43,24 @@ export class OpenAiEmbeddingProvider implements EmbeddingProvider {
       model: this.model,
       input: [...texts],
       encoding_format: 'float',
+      dimensions: this.dimensions,
     });
     const ordered = [...response.data].sort((left, right) => left.index - right.index);
-    const dimensions = ordered[0]?.embedding.length ?? 0;
-    if (ordered.length !== texts.length || dimensions === 0) {
+    if (ordered.length !== texts.length) {
       throw new Error('OpenAI returned invalid embedding count');
     }
 
     return ordered.map((row, index) => {
       if (
         row.index !== index ||
-        row.embedding.length !== dimensions ||
         row.embedding.some((value) => !Number.isFinite(value))
       ) {
         throw new Error(`OpenAI returned invalid embedding at index=${String(index)}`);
+      }
+      if (row.embedding.length !== this.dimensions) {
+        throw new Error(
+          `OpenAI returned invalid embedding at index=${String(index)}: expected ${String(this.dimensions)} dimensions, received ${String(row.embedding.length)}`,
+        );
       }
       return row.embedding;
     });

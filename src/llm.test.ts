@@ -1,18 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { anthropicCreate, openaiCreate } = vi.hoisted(() => ({
-  anthropicCreate: vi.fn(),
+const { openaiConstructor, openaiCreate } = vi.hoisted(() => ({
+  openaiConstructor: vi.fn(),
   openaiCreate: vi.fn(),
 }));
 
-vi.mock('@anthropic-ai/sdk', () => ({
-  default: vi.fn().mockImplementation(() => ({
-    messages: { create: anthropicCreate },
-  })),
-}));
-
 vi.mock('openai', () => ({
-  default: vi.fn().mockImplementation(() => ({
+  default: openaiConstructor.mockImplementation(() => ({
     chat: { completions: { create: openaiCreate } },
   })),
 }));
@@ -20,12 +14,13 @@ vi.mock('openai', () => ({
 import { requestJson } from './llm.js';
 
 const baseConfig = {
-  apiKey: 'key',
-  baseUrl: undefined,
+  apiKey: 'gateway-token',
+  baseUrl: 'https://api.timeweb.ai/v1',
+  model: 'openai/gpt-4.1-mini',
 };
 
 beforeEach(() => {
-  anthropicCreate.mockReset();
+  openaiConstructor.mockClear();
   openaiCreate.mockReset();
 });
 
@@ -38,14 +33,13 @@ describe('LLM transport', () => {
       });
 
     const result = await requestJson<{ ok: boolean }>(
-      { ...baseConfig, model: 'deepseek-chat' },
+      baseConfig,
       {
         system: 'system',
         user: 'user',
         maxTokens: 100,
         schemaName: 'result',
         schema: { type: 'object' },
-        anthropicTool: { name: 'submit_result', description: 'Submit result' },
       },
     );
 
@@ -53,6 +47,10 @@ describe('LLM transport', () => {
     expect(openaiCreate).toHaveBeenCalledTimes(2);
     expect(openaiCreate.mock.calls[1]?.[0]?.response_format).toEqual({
       type: 'json_object',
+    });
+    expect(openaiConstructor).toHaveBeenCalledWith({
+      apiKey: 'gateway-token',
+      baseURL: 'https://api.timeweb.ai/v1',
     });
   });
 });

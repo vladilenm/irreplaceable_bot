@@ -1,15 +1,8 @@
-// Both LLM SDKs are mocked so guards can prove that no request is made.
+// The Gateway-compatible LLM SDK is mocked so guards can prove that no request is made.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { CapturedMessage } from './types.js';
 
-const anthropicCreate = vi.fn();
 const openaiCreate = vi.fn();
-
-vi.mock('@anthropic-ai/sdk', () => ({
-  default: vi.fn().mockImplementation(() => ({
-    messages: { create: anthropicCreate },
-  })),
-}));
 
 vi.mock('openai', () => ({
   default: vi.fn().mockImplementation(() => ({
@@ -39,7 +32,6 @@ const fakeMsg = (i: number, text = 'hi'): CapturedMessage => ({
 
 describe('summarizeThread gating (SUM-02 + SUM-04)', () => {
   beforeEach(() => {
-    anthropicCreate.mockReset();
     openaiCreate.mockReset();
   });
 
@@ -49,9 +41,6 @@ describe('summarizeThread gating (SUM-02 + SUM-04)', () => {
         { emoji: '💻', title: 't', bullets: [{ summary: 's', msgId: 1 }], links: [] },
       ],
     };
-    anthropicCreate.mockResolvedValueOnce({
-      content: [{ type: 'tool_use', name: 'submit_summary', input: validShape }],
-    });
     openaiCreate.mockResolvedValueOnce({
       choices: [{ message: { content: JSON.stringify(validShape) } }],
     });
@@ -63,7 +52,6 @@ describe('summarizeThread gating (SUM-02 + SUM-04)', () => {
     });
 
     expect(result).toMatchObject({ skipped: false, messageCount: 1 });
-    expect(anthropicCreate).not.toHaveBeenCalled();
     expect(openaiCreate).toHaveBeenCalledTimes(1);
   });
 
@@ -74,7 +62,6 @@ describe('summarizeThread gating (SUM-02 + SUM-04)', () => {
       messages: [],
     });
     expect(result).toMatchObject({ skipped: true, reason: 'low-volume' });
-    expect(anthropicCreate).not.toHaveBeenCalled();
     expect(openaiCreate).not.toHaveBeenCalled();
   });
 
@@ -88,7 +75,6 @@ describe('summarizeThread gating (SUM-02 + SUM-04)', () => {
       messages,
     });
     expect(result).toMatchObject({ skipped: true, reason: 'transcript-too-large' });
-    expect(anthropicCreate).not.toHaveBeenCalled();
     expect(openaiCreate).not.toHaveBeenCalled();
   });
 
@@ -99,11 +85,6 @@ describe('summarizeThread gating (SUM-02 + SUM-04)', () => {
         { emoji: '💻', title: 't', bullets: [{ summary: 's', msgId: 1 }], links: [] },
       ],
     };
-    anthropicCreate.mockResolvedValueOnce({
-      content: [
-        { type: 'tool_use', name: 'submit_summary', input: validShape },
-      ],
-    });
     openaiCreate.mockResolvedValueOnce({
       choices: [{ message: { content: JSON.stringify(validShape) } }],
     });

@@ -1,4 +1,3 @@
-import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai';
 import { logger } from './logger.js';
 
@@ -17,10 +16,6 @@ interface CompletionRequest {
 export interface JsonCompletionRequest extends CompletionRequest {
   schemaName: string;
   schema: Record<string, unknown>;
-  anthropicTool: {
-    name: string;
-    description: string;
-  };
 }
 
 export class LlmSchemaError extends Error {
@@ -28,12 +23,6 @@ export class LlmSchemaError extends Error {
     super(message, options);
     this.name = 'LlmSchemaError';
   }
-}
-
-export function providerForModel(
-  model: string,
-): 'anthropic' | 'openai-compatible' {
-  return model.startsWith('claude') ? 'anthropic' : 'openai-compatible';
 }
 
 function openAiClient(config: LlmConfig): OpenAI {
@@ -47,33 +36,6 @@ export async function requestJson<T>(
   config: LlmConfig,
   request: JsonCompletionRequest,
 ): Promise<T> {
-  if (providerForModel(config.model) === 'anthropic') {
-    const response = await new Anthropic({ apiKey: config.apiKey }).messages.create({
-      model: config.model,
-      max_tokens: request.maxTokens,
-      system: request.system,
-      tools: [
-        {
-          name: request.anthropicTool.name,
-          description: request.anthropicTool.description,
-          input_schema: request.schema as Anthropic.Tool.InputSchema,
-        },
-      ],
-      tool_choice: { type: 'tool', name: request.anthropicTool.name },
-      messages: [{ role: 'user', content: request.user }],
-    });
-    const block = response.content.find(
-      (item) =>
-        item.type === 'tool_use' && item.name === request.anthropicTool.name,
-    );
-    if (!block || block.type !== 'tool_use') {
-      throw new Error(
-        `Anthropic response missing tool_use block for ${request.anthropicTool.name}`,
-      );
-    }
-    return block.input as T;
-  }
-
   const client = openAiClient(config);
   let response: OpenAI.Chat.ChatCompletion;
   try {

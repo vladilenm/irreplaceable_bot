@@ -87,10 +87,6 @@ export class MemberMatcher {
           },
         },
       },
-      anthropicTool: {
-        name: 'submit_member_matches',
-        description: 'Submit grounded matches',
-      },
     };
     const requestFn = this.deps.requestJsonFn ?? requestJson;
     const raw = await requestFn<unknown>(this.deps.llm, request);

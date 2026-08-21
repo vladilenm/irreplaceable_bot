@@ -2,15 +2,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { CapturedMessage, Topic } from './types.js';
 
-// Mock the LLM SDKs so summarizeThread tests can exercise post-validation.
-const anthropicCreate = vi.fn();
+// Mock the Gateway-compatible LLM SDK so summarizeThread tests can exercise post-validation.
 const openaiCreate = vi.fn();
-
-vi.mock('@anthropic-ai/sdk', () => ({
-  default: vi.fn().mockImplementation(() => ({
-    messages: { create: anthropicCreate },
-  })),
-}));
 
 vi.mock('openai', () => ({
   default: vi.fn().mockImplementation(() => ({
@@ -277,7 +270,6 @@ function fiveMessages(ids: number[]): CapturedMessage[] {
 
 describe('summarizeThread post-validation', () => {
   beforeEach(() => {
-    anthropicCreate.mockReset();
     openaiCreate.mockReset();
   });
 
@@ -288,9 +280,6 @@ describe('summarizeThread post-validation', () => {
         { emoji: '💻', title: 't', bullets: [{ summary: 's', msgId: 99999 }], links: [] },
       ],
     };
-    anthropicCreate.mockResolvedValueOnce({
-      content: [{ type: 'tool_use', name: 'submit_summary', input: validShape }],
-    });
     openaiCreate.mockResolvedValueOnce({
       choices: [{ message: { content: JSON.stringify(validShape) } }],
     });
@@ -307,9 +296,6 @@ describe('summarizeThread post-validation', () => {
         { emoji: '💻', title: 't', bullets: [{ summary: 's', msgId: 1002 }], links: [] },
       ],
     };
-    anthropicCreate.mockResolvedValueOnce({
-      content: [{ type: 'tool_use', name: 'submit_summary', input: validShape }],
-    });
     openaiCreate.mockResolvedValueOnce({
       choices: [{ message: { content: JSON.stringify(validShape) } }],
     });
@@ -341,9 +327,6 @@ describe('summarizeThread post-validation', () => {
         },
       ],
     };
-    anthropicCreate.mockResolvedValueOnce({
-      content: [{ type: 'tool_use', name: 'submit_summary', input: shape }],
-    });
     openaiCreate.mockResolvedValueOnce({
       choices: [{ message: { content: JSON.stringify(shape) } }],
     });

@@ -4,10 +4,21 @@ import type { Persistence } from './persistence.js';
 import { createRequestMatchingRuntime } from './request.runtime.js';
 import type { RequestMatchingConfig } from './types.js';
 
+const { openAiConstructor } = vi.hoisted(() => ({
+  openAiConstructor: vi.fn(),
+}));
+
+vi.mock('openai', () => ({
+  default: openAiConstructor.mockImplementation(() => ({
+    embeddings: { create: vi.fn() },
+    chat: { completions: { create: vi.fn() } },
+  })),
+}));
+
 const feature: RequestMatchingConfig = {
-  embeddingApiKey: 'embedding-key',
+  embeddingApiKey: 'gateway-token',
   embeddingBaseUrl: 'https://api.timeweb.ai/v1',
-  embeddingModel: 'text-embedding-3-small',
+  embeddingModel: 'openai/text-embedding-3-large',
   embeddingDimensions: 1536,
   memberIndexCron: '*/15 * * * *',
   concurrency: 2,
@@ -52,4 +63,20 @@ it('fails stale reservations and constructs PostgreSQL-backed matching without i
   expect(runtime.memberDirectory).toBeDefined();
   expect(runtime.handlerOptions.repository).toBe(persistence.requests);
   expect(runtime.handlerOptions.matcher).toBe(runtime.matcher);
+});
+
+it('constructs the default embedding client with the Timeweb Gateway configuration', async () => {
+  openAiConstructor.mockClear();
+  const persistence = {
+    members: {},
+    requests: { failStale: vi.fn().mockResolvedValue(0) },
+  } as unknown as Persistence;
+
+  await createRequestMatchingRuntime(feature, persistence);
+
+  expect(openAiConstructor).toHaveBeenCalledWith({
+    apiKey: 'gateway-token',
+    baseURL: 'https://api.timeweb.ai/v1',
+    maxRetries: 1,
+  });
 });

@@ -89,10 +89,6 @@ export async function filterArticles(articles: RawArticle[]): Promise<DigestItem
       maxTokens: 8000,
       schemaName: 'curated_digest',
       schema: CURATED_DIGEST_JSON_SCHEMA,
-      anthropicTool: {
-        name: 'submit_digest',
-        description: 'Submit the curated digest items',
-      },
     },
   );
   const curated = CuratedDigestSchema.parse(response);

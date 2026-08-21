@@ -4,7 +4,6 @@ import { config } from './config.js';
 import { logger, errMsg } from './logger.js';
 import {
   LlmSchemaError,
-  providerForModel,
   requestJson,
 } from './llm.js';
 import type {
@@ -212,10 +211,6 @@ export async function summarizeThread(input: SummarizeThreadInput): Promise<Thre
         maxTokens: 4000,
         schemaName: 'thread_summary',
         schema: THREAD_SUMMARIZER_JSON_SCHEMA,
-        anthropicTool: {
-          name: 'submit_summary',
-          description: 'Submit the thread summary',
-        },
       },
     );
   } catch (err: unknown) {
@@ -307,7 +302,7 @@ export async function summarizeThread(input: SummarizeThreadInput): Promise<Thre
       topicCount: topics.length,
       aggregateLinkCount,
       model: config.aiModel,
-      provider: providerForModel(config.aiModel),
+      provider: 'timeweb-ai-gateway',
       latencyMs,
       estimatedTokens,
     },
