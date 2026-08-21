@@ -734,7 +734,81 @@ git commit -m "docs: document minimal Timeweb deployment"
 
 ---
 
-### Task 5: Full Local Verification and Production Gate
+### Task 5: Resolve Local Seed and Legacy-Audit Regressions
+
+**Files:**
+- Modify: `src/member.seed.ts`
+- Modify: `src/member.seed.test.ts`
+- Modify: `src/config.request-matching.test.ts`
+
+**Interfaces:**
+- Consumes: Docker-owned `NODE_ENV=production` and the already-approved local quick-start command `npm run seed:members`.
+- Produces: local seed behavior that defaults to `development` only when `NODE_ENV` is absent, and a legacy-name audit with no source/test false positives.
+
+- [ ] **Step 1: Write a failing local-seed default test**
+
+Add this test in `src/member.seed.test.ts`:
+
+```ts
+it('treats an absent NODE_ENV as development for the local seed CLI', () => {
+  expect(readMockSeedCliOptions({
+    argv: ['node', 'src/member.seed.ts'],
+  })).toEqual({ nodeEnv: 'development', allowProduction: false });
+});
+```
+
+Change the options interface used by `readMockSeedCliOptions` to accept an optional `nodeEnv?: string`.
+
+- [ ] **Step 2: Run the new test and confirm RED**
+
+```bash
+npm test -- src/member.seed.test.ts
+```
+
+Expected: FAIL because `nodeEnv` is currently required and `runSeedCli` defaults its missing value to `production`.
+
+- [ ] **Step 3: Make the CLI default local-only without weakening production safety**
+
+Implement the default inside `readMockSeedCliOptions`:
+
+```ts
+const nodeEnv = options.nodeEnv ?? 'development';
+const allowProduction = options.argv.includes('--allow-production');
+if (nodeEnv === 'production' && !allowProduction) {
+  throw new Error('--allow-production is required in production');
+}
+return { nodeEnv, allowProduction };
+```
+
+Change `runSeedCli` to pass `nodeEnv: process.env.NODE_ENV` directly. Do not change Dockerfile `ENV NODE_ENV=production`; production remains blocked before key, database, pool, or migration access unless `--allow-production` is present.
+
+- [ ] **Step 4: Remove legacy names from source tests without reducing default coverage**
+
+Delete the `ignores removed legacy overrides` test from `src/config.request-matching.test.ts`. The preceding `builds the complete runtime config from exactly seven env values` test already asserts the fixed chat model, embedding model, pool size, and matching defaults without embedding removed environment variable names in source.
+
+- [ ] **Step 5: Run focused tests and the exact legacy scan**
+
+```bash
+npm test -- src/member.seed.test.ts src/config.request-matching.test.ts
+rg -n 'AI_API_KEY|AI_MODEL|AI_BASE_URL|EMBEDDING_API_KEY|EMBEDDING_MODEL|DIGEST_CRON|THREAD_SUMMARY_CRON|RETENTION_SWEEP_CRON|MEMBER_INDEX_CRON|MESSAGE_RETENTION_DAYS|DATABASE_MIGRATION_URL|DATABASE_SSL|DATABASE_CA_CERT|DATABASE_POOL_MAX|DATABASE_STATEMENT_TIMEOUT_MS|REQUEST_MATCHING_ENABLED|REQUEST_MATCH_CONCURRENCY|REQUEST_QUEUE_LIMIT|REQUEST_PROCESSING_TIMEOUT_MINUTES|ALLOW_MOCK_MEMBER_SEED|LOG_LEVEL' src tests .env.example docker-compose.yml Dockerfile README.md docs/architecture.md docs/operations.md
+```
+
+Expected: focused tests PASS; `rg` returns exit code 1 with no output. The only permitted `NODE_ENV` references remain in Dockerfile, seed safety logic, and tests.
+
+- [ ] **Step 6: Run full regression verification and commit**
+
+```bash
+npm test
+npm run typecheck
+git add src/member.seed.ts src/member.seed.test.ts src/config.request-matching.test.ts
+git commit -m "fix: align local seed and config audit"
+```
+
+Expected: all tests pass, typecheck passes, and only the three listed source/test files are committed for this task.
+
+---
+
+### Task 6: Full Local Verification and Production Gate
 
 **Files:**
 - Verify only: all modified files
