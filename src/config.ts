@@ -1,4 +1,4 @@
-import type { BotConfig, RequestMatchingConfig } from './types.js';
+import type { BotConfig, DatabaseConfig, RequestMatchingConfig } from './types.js';
 
 function requireEnv(name: string): string {
   const value = process.env[name];
@@ -79,6 +79,33 @@ export function readRequestMatchingConfig(
   };
 }
 
+export function readDatabaseConfig(env: NodeJS.ProcessEnv): DatabaseConfig {
+  const required = (name: string): string => {
+    const value = env[name];
+    if (!value) throw new Error(`Missing required environment variable: ${name}`);
+    return value;
+  };
+  const positive = (name: string, fallback: number): number => {
+    const raw = env[name];
+    const value = raw === undefined || raw === '' ? fallback : Number(raw);
+    if (!Number.isInteger(value) || value < 1) {
+      throw new Error(`${name} must be >= 1`);
+    }
+    return value;
+  };
+  const sslRaw = env['DATABASE_SSL'] ?? 'true';
+  if (sslRaw !== 'true' && sslRaw !== 'false') {
+    throw new Error('DATABASE_SSL must be true or false');
+  }
+  return {
+    runtimeUrl: required('DATABASE_URL'),
+    migrationUrl: required('DATABASE_MIGRATION_URL'),
+    ssl: sslRaw === 'true',
+    poolMax: positive('DATABASE_POOL_MAX', 5),
+    statementTimeoutMs: positive('DATABASE_STATEMENT_TIMEOUT_MS', 10_000),
+  };
+}
+
 export const config: BotConfig = {
   botToken: requireEnv('BOT_TOKEN'),
   targetChatId: requireEnvInt('TARGET_CHAT_ID'),
@@ -93,6 +120,7 @@ export const config: BotConfig = {
   threadSummaryCron: process.env['THREAD_SUMMARY_CRON'] ?? '30 3 * * *',
   messageRetentionDays: readEnvIntWithDefault('MESSAGE_RETENTION_DAYS', 90, 7),
   retentionSweepCron: process.env['RETENTION_SWEEP_CRON'] ?? '0 1 * * *',
+  database: readDatabaseConfig(process.env),
   dbPath: process.env['DB_PATH'] ?? 'data/messages.db',
   trackedThreadIds: parseTrackedThreadIds(
     process.env['TRACKED_THREAD_IDS'] ??

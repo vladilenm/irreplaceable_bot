@@ -1,0 +1,19 @@
+services:
+  postgres-test:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: club_bot_test
+      POSTGRES_USER: club_bot
+      POSTGRES_PASSWORD: club_bot
+    ports:
+      - "55432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U club_bot -d club_bot_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - club_bot_postgres_test:/var/lib/postgresql/data
+
+volumes:
+  club_bot_postgres_test:

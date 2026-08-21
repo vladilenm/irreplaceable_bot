@@ -9,6 +9,14 @@ export interface RequestMatchingConfig {
   processingTimeoutMinutes: number;
 }
 
+export interface DatabaseConfig {
+  runtimeUrl: string;
+  migrationUrl: string;
+  ssl: boolean;
+  poolMax: number;
+  statementTimeoutMs: number;
+}
+
 export interface BotConfig {
   botToken: string;
   targetChatId: number;
@@ -23,6 +31,7 @@ export interface BotConfig {
   threadSummaryCron: string;
   messageRetentionDays: number;
   retentionSweepCron: string;
+  database: DatabaseConfig;
   dbPath: string;
   trackedThreadIds: number[];
   requestMatching: RequestMatchingConfig | null;

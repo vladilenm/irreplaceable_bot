@@ -7,3 +7,6 @@ process.env['AI_API_KEY'] ??= 'test-key';
 process.env['AI_MODEL'] ??= 'claude-sonnet-4-20250514';
 process.env['THREAD_SUMMARY_THREAD_ID'] ??= '2';
 process.env['DB_PATH'] ??= ':memory:';
+process.env['DATABASE_URL'] ??= 'postgresql://club_bot:club_bot@127.0.0.1:55432/club_bot_test';
+process.env['DATABASE_MIGRATION_URL'] ??= process.env['DATABASE_URL'];
+process.env['DATABASE_SSL'] ??= 'false';
