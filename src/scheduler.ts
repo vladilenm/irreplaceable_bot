@@ -14,6 +14,13 @@ const tasks = new Map<string, ScheduledTask>();
 
 type CronHandler = () => Promise<void>;
 
+export interface SchedulerOptions {
+  memberSync?: {
+    cron: string;
+    run: () => Promise<unknown>;
+  };
+}
+
 /**
  * Register a single named cron job. Validates the expression, wraps the handler
  * in per-job try/catch, and stores the task for graceful shutdown.
@@ -99,10 +106,15 @@ async function retentionSweepHandler(): Promise<void> {
   await runRetentionSweep();
 }
 
-export function startScheduler(api: Api): void {
+export function startScheduler(api: Api, options: SchedulerOptions = {}): void {
   registerJob('digest', config.digestCron, () => digestHandler(api));
   registerJob('thread-summary', config.threadSummaryCron, () => threadSummaryHandler(api));
   registerJob('retention-sweep', config.retentionSweepCron, retentionSweepHandler);
+  if (options.memberSync) {
+    registerJob('member-sync', options.memberSync.cron, async () => {
+      await options.memberSync?.run();
+    });
+  }
   logger.info({ jobCount: tasks.size, jobs: [...tasks.keys()] }, 'Scheduler started');
 }
 

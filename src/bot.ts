@@ -7,20 +7,23 @@ import {
 } from './radar.js';
 import { isDigestPublishedToday, readState } from './database.js';
 import { registerCaptureHandlers } from './capture.js';
+import { registerRequestHandlers } from './requests.js';
+import type { RequestMatchingRuntime } from './request.runtime.js';
 
-export const bot = new Bot(config.botToken);
+export function createBot(options: { requestMatching?: RequestMatchingRuntime } = {}): Bot {
+  const bot = new Bot(config.botToken);
 
-bot.catch((err) => {
-  logger.error({ err: err.error, update: err.ctx?.update?.update_id }, `Bot error caught: ${errMsg(err.error)}`);
-});
+  bot.catch((err) => {
+    logger.error({ err: err.error, update: err.ctx?.update?.update_id }, `Bot error caught: ${errMsg(err.error)}`);
+  });
 
-// Cache administrators briefly to avoid a Telegram API call for every command.
+  // Cache administrators briefly to avoid a Telegram API call for every command.
 // Also short-circuit in non-group chats to avoid noisy error logs from
 // getChatAdministrators failing on private DMs.
-const ADMIN_CACHE_TTL_MS = 5 * 60_000;
-const adminCache = new Map<number, { ids: Set<number>; expires: number }>();
+  const ADMIN_CACHE_TTL_MS = 5 * 60_000;
+  const adminCache = new Map<number, { ids: Set<number>; expires: number }>();
 
-async function isAdmin(ctx: Context): Promise<boolean> {
+  async function isAdmin(ctx: Context): Promise<boolean> {
   if (!ctx.chat || !ctx.from) return false;
   if (ctx.chat.type !== 'group' && ctx.chat.type !== 'supergroup') return false;
 
@@ -39,9 +42,9 @@ async function isAdmin(ctx: Context): Promise<boolean> {
     logger.error({ err }, `Failed to check admin status: ${errMsg(err)}`);
     return false;
   }
-}
+  }
 
-bot.command('start', async (ctx) => {
+  bot.command('start', async (ctx) => {
   logger.info({ userId: ctx.from?.id }, '/start command received');
   await ctx.reply(
     '👋 Привет! Я бот Клуба Незаменимых.\n\n' +
@@ -52,9 +55,9 @@ bot.command('start', async (ctx) => {
     'VentureBeat, Cursor, Tproger.\n\n' +
     'Система > Навык',
   );
-});
+  });
 
-bot.command('digest', async (ctx) => {
+  bot.command('digest', async (ctx) => {
   logger.info({ userId: ctx.from?.id }, '/digest command received');
 
   if (!(await isAdmin(ctx))) {
@@ -100,9 +103,9 @@ bot.command('digest', async (ctx) => {
         /* ignore edit failure */
       });
   }
-});
+  });
 
-bot.command('status', async (ctx) => {
+  bot.command('status', async (ctx) => {
   logger.info({ userId: ctx.from?.id }, '/status command received');
 
   if (!(await isAdmin(ctx))) {
@@ -135,19 +138,27 @@ bot.command('status', async (ctx) => {
   const uptimeText =
     uptimeHours > 0 ? `${uptimeHours}ч ${uptimeMinutes}м` : `${uptimeMinutes}м`;
 
+  const matchingSnapshot = options.requestMatching?.memberRepository.readStatus();
+  const matchingInfo = !config.requestMatching
+    ? '🧩 Подбор участников: выключен'
+    : !matchingSnapshot
+      ? '🧩 Подбор участников: индекс ещё не готов'
+      : `🧩 Подбор участников: ${String(matchingSnapshot.activeCount)} активных, ${matchingSnapshot.embeddingModel}, синхронизирован ${new Date(matchingSnapshot.lastSuccessAt).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' })} МСК`;
+
   const statusText = [
     '🤖 Статус бота',
     '',
     lastDigestInfo,
     nextRunInfo,
+    matchingInfo,
     `⏱ Аптайм: ${uptimeText}`,
   ].join('\n');
 
   await ctx.reply(statusText);
-});
+  });
 
 // Repeatable development run: publishes the real format without advancing job state.
-bot.command('dev-digest', async (ctx) => {
+  bot.command('dev-digest', async (ctx) => {
   logger.info({ userId: ctx.from?.id, devRun: true }, '/dev-digest command received');
 
   if (!(await isAdmin(ctx))) {
@@ -196,10 +207,15 @@ bot.command('dev-digest', async (ctx) => {
         /* ignore edit failure */
       });
   }
-});
+  });
 
-// Capture is terminal middleware, so commands must be registered first.
-registerCaptureHandlers(bot, {
-  targetChatId: config.targetChatId,
-  trackedThreadIds: new Set(config.trackedThreadIds),
-});
+  if (options.requestMatching) {
+    registerRequestHandlers(bot, options.requestMatching.handlerOptions);
+  }
+  // Capture is terminal middleware, so commands and member requests precede it.
+  registerCaptureHandlers(bot, {
+    targetChatId: config.targetChatId,
+    trackedThreadIds: new Set(config.trackedThreadIds),
+  });
+  return bot;
+}

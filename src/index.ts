@@ -1,8 +1,11 @@
 import 'dotenv/config';
-import { bot } from './bot.js';
+import type { Bot } from 'grammy';
+import { createBot } from './bot.js';
+import { config } from './config.js';
 import { logger, bootId, errMsg } from './logger.js';
 import { startScheduler, stopScheduler } from './scheduler.js';
 import { initDb, closeDb, importLegacyState } from './database.js';
+import { createRequestMatchingRuntime } from './request.runtime.js';
 import {
   classifyStartupError,
   POLLING_CONFLICT_BACKOFF_MS,
@@ -10,6 +13,7 @@ import {
 } from './startup.js';
 
 let mainStep = 0;
+let runningBot: Bot | null = null;
 
 async function main(): Promise<void> {
   mainStep += 1;
@@ -20,6 +24,12 @@ async function main(): Promise<void> {
   initDb();
   importLegacyState();
 
+  const requestMatching = config.requestMatching
+    ? createRequestMatchingRuntime(config.requestMatching)
+    : undefined;
+  const bot = createBot({ requestMatching });
+  runningBot = bot;
+
   // Start long-polling — fire-and-forget with explicit .catch so startup
   // errors are logged and cause a clean exit rather than an unhandled rejection.
   // startScheduler() is called inside onStart so cron jobs only tick AFTER the
@@ -29,7 +39,29 @@ async function main(): Promise<void> {
   void bot.start({
     onStart: () => {
       logger.info('Bot is running (long-polling mode)');
-      startScheduler(bot.api);
+      startScheduler(bot.api, requestMatching
+        ? {
+            memberSync: {
+              cron: config.requestMatching?.memberSyncCron ?? '*/15 * * * *',
+              run: () => requestMatching.syncService.sync(),
+            },
+          }
+        : {});
+      if (requestMatching) {
+        void requestMatching.syncService.sync()
+          .then((result) => {
+            logger.info({
+              generation: result.generation,
+              active: result.active,
+              embedded: result.embedded,
+            }, 'Initial member directory sync complete');
+          })
+          .catch((error: unknown) => {
+            logger.error({
+              errorClass: error instanceof Error ? error.name : 'unknown',
+            }, 'Initial member directory sync failed');
+          });
+      }
       void runPreflight(bot);
     },
   }).catch((err: unknown) => {
@@ -52,7 +84,7 @@ async function main(): Promise<void> {
 async function shutdown(signal: string): Promise<void> {
   logger.info({ signal }, 'Shutdown signal received, stopping gracefully...');
   stopScheduler();
-  await bot.stop();
+  await runningBot?.stop();
   // Stop Telegram first so no capture transaction starts during DB shutdown.
   closeDb();
   logger.info('Bot stopped. Goodbye.');

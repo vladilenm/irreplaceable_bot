@@ -80,3 +80,21 @@ describe('cron retention-sweep wiring', () => {
     expect(src).toContain('runRetentionSweep');
   });
 });
+
+describe('member directory sync scheduling', () => {
+  it('registers member-sync only when provided', () => {
+    startScheduler(api, {
+      memberSync: {
+        cron: '*/15 * * * *',
+        run: vi.fn().mockResolvedValue(undefined),
+      },
+    });
+    expect(new Set(_getRegisteredJobNames())).toEqual(new Set([
+      'digest',
+      'thread-summary',
+      'retention-sweep',
+      'member-sync',
+    ]));
+    stopScheduler();
+  });
+});
