@@ -7,3 +7,4 @@ data/
 .env.production
 docker-compose.override.yml
 .claude/worktrees
+.superpowers/
