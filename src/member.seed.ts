@@ -15,6 +15,17 @@ export interface MockSeedOptions {
   allowProduction: boolean;
 }
 
+export function readMockSeedCliOptions(options: {
+  nodeEnv: string;
+  argv: readonly string[];
+}): MockSeedOptions {
+  const allowProduction = options.argv.includes('--allow-production');
+  if (options.nodeEnv === 'production' && !allowProduction) {
+    throw new Error('--allow-production is required in production');
+  }
+  return { nodeEnv: options.nodeEnv, allowProduction };
+}
+
 const MOCK_UPDATED_AT = '2026-08-21T00:00:00.000Z';
 const PROFILES = [
   ['Анна Продуктова', 'Продуктовый менеджмент: запуск B2B SaaS, customer development, проверка гипотез и управление продуктовой командой.'],
@@ -67,6 +78,10 @@ export async function seedMockMembers(
 }
 
 async function runSeedCli(): Promise<void> {
+  const seedOptions = readMockSeedCliOptions({
+    nodeEnv: process.env.NODE_ENV ?? 'production',
+    argv: process.argv,
+  });
   const database = readDatabaseConfig(process.env);
   const timewebAiToken = readTimewebAiToken(process.env);
   const migrationPool = createPool(database);
@@ -87,10 +102,7 @@ async function runSeedCli(): Promise<void> {
         dimensions: RUNTIME_DEFAULTS.ai.embeddingDimensions,
       }),
     });
-    const result = await seedMockMembers(service, {
-      nodeEnv: process.env.NODE_ENV ?? 'production',
-      allowProduction: process.argv.includes('--allow-production'),
-    });
+    const result = await seedMockMembers(service, seedOptions);
     logger.info(
       { event: 'mock-member-seed', upserted: result.upserted, indexed: result.indexed },
       'Mock member seed complete',

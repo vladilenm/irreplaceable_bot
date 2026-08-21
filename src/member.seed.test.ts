@@ -1,7 +1,7 @@
 import { afterAll, beforeEach, expect, it, vi } from 'vitest';
 import { runMigrations } from './db/migrations.js';
 import { MemberDirectoryService } from './member-directory.service.js';
-import { seedMockMembers } from './member.seed.js';
+import { readMockSeedCliOptions, seedMockMembers } from './member.seed.js';
 import { PgMemberRepository } from './members.repository.js';
 import { createTestPool, resetPostgres } from './test/postgres.js';
 
@@ -26,6 +26,13 @@ beforeEach(async () => {
 
 afterAll(async () => {
   await pool.end();
+});
+
+it('rejects a production seed command before infrastructure setup without opt-in', () => {
+  expect(() => readMockSeedCliOptions({
+    nodeEnv: 'production',
+    argv: ['node', 'src/member.seed.ts'],
+  })).toThrow('--allow-production is required in production');
 });
 
 it('seeds exactly 20 deterministic mock members twice without duplicates', async () => {
