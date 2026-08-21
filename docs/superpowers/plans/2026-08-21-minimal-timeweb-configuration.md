@@ -932,6 +932,75 @@ The confirmation must include the selected PostgreSQL configuration, region, bil
 
 ---
 
+### Task 8: Redact LLM Failure Logs and Complete the Seven-Variable Contract
+
+**Root cause:** `summarizer.ts` and `summary.ts` pass raw caught errors to Pino and interpolate `errMsg(err)` into log messages. An upstream Gateway transport error can contain echoed request/profile/response text, so those calls can serialize sensitive content into normal logs.
+
+**Files:**
+- Modify: `src/logger.ts`
+- Modify: `src/summarizer.ts`
+- Modify: `src/summary.ts`
+- Modify: `src/config.ts`
+- Modify: `src/types.ts`
+- Modify: `src/config.request-matching.test.ts`
+- Modify: `src/summarizer.test.ts`
+- Modify: `src/summary.test.ts`
+
+**Interfaces:**
+- Consumes: LLM failures from the Timeweb Gateway and the seven-variable `BotConfig` contract.
+- Produces: LLM-related logs with only safe error metadata (`errorClass` and a validated numeric status when available), operational counters, thread ID, and model; no raw error object or error-message interpolation.
+
+- [ ] **Step 1: Add failing regression tests**
+
+In both LLM failure boundaries, throw an error whose message contains a unique sentinel resembling a user request/profile. Spy on the logger and assert that neither its bindings nor its message receives the raw error or sentinel; assert that safe class/status metadata remains available. Include the malformed-schema path so an `LlmSchemaError` is not serialized either.
+
+Extend the table-driven required-variable test with `TRACKED_THREAD_IDS`.
+
+- [ ] **Step 2: Confirm the privacy regression tests are red**
+
+```bash
+npm test -- src/summarizer.test.ts src/summary.test.ts src/config.request-matching.test.ts
+```
+
+Expected: tests fail because the old LLM error paths expose an `err` binding and/or an interpolated error message.
+
+- [ ] **Step 3: Replace raw error logging with a safe metadata helper**
+
+Add a helper in `src/logger.ts` that returns only the error class plus an optional finite integer `status` from an object-like error. Use it in the LLM failure and schema-invalid paths in `src/summarizer.ts` and in the per-thread isolation path in `src/summary.ts`; remove raw `err` bindings and `errMsg` interpolation from those paths.
+
+Do not suppress useful operational metadata (`threadId`, `messageCount`, `model`, `event`/reason). Do not change unrelated Telegram, scheduler, or application error paths in this task.
+
+Remove the unused `nodeEnv` member from `BotConfig`, `readConfig`, and its test fixture. `NODE_ENV` remains image-owned metadata for logger formatting and the explicit seed production guard, rather than a deployment-config parser input.
+
+- [ ] **Step 4: Verify the complete fix**
+
+```bash
+npm test -- src/summarizer.test.ts src/summary.test.ts src/config.request-matching.test.ts
+npm test
+npm run typecheck
+npm run build
+```
+
+Expected: the new privacy regression tests and all prior checks pass.
+
+- [ ] **Step 5: Commit the production-safety fix**
+
+```bash
+git add src/logger.ts src/summarizer.ts src/summary.ts src/config.ts src/types.ts src/config.request-matching.test.ts src/summarizer.test.ts src/summary.test.ts
+git commit -m "fix: redact LLM failure logs"
+```
+
+---
+
+### Task 9: Final Verification after Privacy Guard
+
+**Files:**
+- Verify only: all modified files
+
+- [ ] Re-run the complete automated suite, typecheck, production build, Docker build, Docker CA presence check, PostgreSQL migration smoke command with only `DATABASE_URL`, seven-name env audit, and legacy-name scan. Stop before any live Timeweb action; request separate action-time confirmation for paid resources, keys, or App Platform secrets.
+
+---
+
 ## Self-Review Results
 
 - Spec coverage: all seven env values, 21 removals, one Gateway token, embedding dimension gate, one database URL, verified TLS, CLI seed safety, documentation, and browser confirmation boundaries are mapped to tasks.
