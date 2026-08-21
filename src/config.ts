@@ -54,7 +54,6 @@ export function readConfig(
     aiModel: RUNTIME_DEFAULTS.ai.chatModel,
     aiBaseUrl: RUNTIME_DEFAULTS.ai.baseUrl,
     logLevel: RUNTIME_DEFAULTS.logging.level,
-    nodeEnv: env['NODE_ENV'] ?? 'production',
     threadSummaryThreadId: requireEnvInt(env, 'THREAD_SUMMARY_THREAD_ID'),
     threadSummaryCron: RUNTIME_DEFAULTS.schedules.threadSummaryCron,
     messageRetentionDays: RUNTIME_DEFAULTS.messages.retentionDays,

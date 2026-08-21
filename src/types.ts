@@ -26,7 +26,6 @@ export interface BotConfig {
   aiModel: string;
   aiBaseUrl: string;
   logLevel: string;
-  nodeEnv: string;
   threadSummaryThreadId: number;
   threadSummaryCron: string;
   messageRetentionDays: number;

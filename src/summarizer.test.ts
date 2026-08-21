@@ -1,6 +1,8 @@
 // Structured output, transcript safety, and citation validation.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { CapturedMessage, Topic } from './types.js';
+import { logger } from './logger.js';
+import { LlmSchemaError } from './llm.js';
 
 // Mock the Gateway-compatible LLM SDK so summarizeThread tests can exercise post-validation.
 const openaiCreate = vi.fn();
@@ -339,5 +341,67 @@ describe('summarizeThread post-validation', () => {
       expect(result.topics.length).toBe(1);
       expect(result.topics[0]?.bullets).toEqual([{ summary: 'keep', msgId: 1002 }]);
     }
+  });
+});
+
+describe('summarizeThread LLM failure logging', () => {
+  beforeEach(() => {
+    openaiCreate.mockReset();
+  });
+
+  it('redacts a transport error while retaining its safe class and status', async () => {
+    const sentinel = 'REQUEST_PROFILE_SENTINEL_transport_9e0cc4';
+    const err = Object.assign(new Error(sentinel), { status: 503 });
+    const errorSpy = vi.spyOn(logger, 'error');
+    openaiCreate.mockRejectedValueOnce(err);
+
+    const result = await summarizeThread({
+      threadId: 777,
+      windowHours: 24,
+      messages: [sampleMessage()],
+    });
+
+    expect(result).toMatchObject({ skipped: true, reason: 'llm-error' });
+    const call = errorSpy.mock.calls.at(-1);
+    const bindings = call?.[0] as Record<string, unknown>;
+    const message = call?.[1] as string;
+    expect(bindings).not.toHaveProperty('err');
+    expect(bindings).not.toContain(err);
+    expect(message).not.toContain(sentinel);
+    expect(bindings).toMatchObject({
+      errorClass: 'Error',
+      status: 503,
+      threadId: 777,
+      messageCount: 1,
+      model: 'openai/gpt-4.1-mini',
+    });
+  });
+
+  it('redacts LlmSchemaError without serializing the raw error', async () => {
+    const sentinel = 'REQUEST_PROFILE_SENTINEL_schema_8fb135';
+    const err = new LlmSchemaError(sentinel);
+    const warnSpy = vi.spyOn(logger, 'warn');
+    openaiCreate.mockRejectedValueOnce(err);
+
+    const result = await summarizeThread({
+      threadId: 778,
+      windowHours: 24,
+      messages: [sampleMessage()],
+    });
+
+    expect(result).toMatchObject({ skipped: true, reason: 'schema-invalid' });
+    const call = warnSpy.mock.calls.at(-1);
+    const bindings = call?.[0] as Record<string, unknown>;
+    const message = call?.[1] as string;
+    expect(bindings).not.toHaveProperty('err');
+    expect(bindings).not.toContain(err);
+    expect(message).not.toContain(sentinel);
+    expect(bindings).toMatchObject({
+      errorClass: 'LlmSchemaError',
+      threadId: 778,
+      messageCount: 1,
+      model: 'openai/gpt-4.1-mini',
+    });
+    expect(bindings).not.toHaveProperty('status');
   });
 });

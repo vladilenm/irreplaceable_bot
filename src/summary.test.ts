@@ -7,6 +7,7 @@ import type {
 } from './types.js';
 import type { JobStateRepository } from './job-state.repository.js';
 import type { MessageRepository } from './messages.repository.js';
+import { logger } from './logger.js';
 
 // Mock factories — must be hoisted via vi.hoisted so the vi.mock factories
 // (which vitest hoists above imports) can reference these without
@@ -48,7 +49,6 @@ vi.mock('./config.js', () => ({
     aiModel: 'm',
     botToken: 't',
     logLevel: 'info',
-    nodeEnv: 'test',
     threadSummaryThreadId: 0,
     threadSummaryCron: '30 3 * * *',
     messageRetentionDays: 90,
@@ -181,6 +181,28 @@ describe('runThreadSummaryPipeline', () => {
     const r = await runSummary();
     expect(r.threadsSummarised).toBe(2);
     expect(r.threadsSkippedError).toBe(1);
+  });
+
+  it('redacts a per-thread failure while retaining safe error metadata', async () => {
+    const sentinel = 'REQUEST_PROFILE_SENTINEL_pipeline_30adf0';
+    const err = Object.assign(new Error(sentinel), { status: 502 });
+    const errorSpy = vi.spyOn(logger, 'error');
+    mockSummarizeThread.mockImplementation(async (input: { threadId: number }) => {
+      if (input.threadId === 100) throw err;
+      return okSummary(input.threadId, 5);
+    });
+
+    await runSummary();
+
+    const call = errorSpy.mock.calls.find(
+      ([bindings]) => (bindings as Record<string, unknown>).threadId === 100,
+    );
+    const bindings = call?.[0] as Record<string, unknown>;
+    const message = call?.[1] as string;
+    expect(bindings).not.toHaveProperty('err');
+    expect(bindings).not.toContain(err);
+    expect(message).not.toContain(sentinel);
+    expect(bindings).toMatchObject({ errorClass: 'Error', status: 502, threadId: 100 });
   });
 
   it('O5: pipeline returns persistence intent without recording delivery itself', async () => {

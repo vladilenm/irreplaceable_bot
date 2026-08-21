@@ -50,6 +50,7 @@ describe('readConfig', () => {
     'TARGET_CHAT_ID',
     'AI_RADAR_THREAD_ID',
     'THREAD_SUMMARY_THREAD_ID',
+    'TRACKED_THREAD_IDS',
     'TIMEWEB_AI_TOKEN',
     'DATABASE_URL',
   ])('fails fast when %s is missing', (name) => {

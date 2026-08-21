@@ -1,5 +1,5 @@
 import type { Api } from 'grammy';
-import { logger, errMsg } from './logger.js';
+import { logger, safeErrorMetadata } from './logger.js';
 import { config } from './config.js';
 import { summarizeThread } from './summarizer.js';
 import { sendMessageWithRetry } from './telegram.js';
@@ -108,7 +108,10 @@ export async function runThreadSummaryPipeline(
         threadsSummarised++;
       }
     } catch (err: unknown) {
-      logger.error({ err, threadId }, `Per-thread summary failed, isolating: threadId=${threadId} err=${errMsg(err)}`);
+      logger.error(
+        { ...safeErrorMetadata(err), threadId },
+        'Per-thread summary failed, isolating',
+      );
       summaries.push({
         skipped: true,
         threadId,

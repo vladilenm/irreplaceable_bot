@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { z } from 'zod';
 import { config } from './config.js';
-import { logger, errMsg } from './logger.js';
+import { logger, safeErrorMetadata } from './logger.js';
 import {
   LlmSchemaError,
   requestJson,
@@ -217,14 +217,14 @@ export async function summarizeThread(input: SummarizeThreadInput): Promise<Thre
     // Keep malformed structured output separate from transport/auth failures.
     if (err instanceof LlmSchemaError) {
       logger.warn(
-        { err, threadId, messageCount, model: config.aiModel },
+        { ...safeErrorMetadata(err), threadId, messageCount, model: config.aiModel },
         'summarizeThread: schema-invalid (malformed JSON from provider)',
       );
       return { skipped: true, threadId, windowHours, messageCount, reason: 'schema-invalid' };
     }
     logger.error(
-      { err, threadId, messageCount, model: config.aiModel },
-      `summarizeThread: LLM call failed: threadId=${threadId} model=${config.aiModel} err=${errMsg(err)}`,
+      { ...safeErrorMetadata(err), threadId, messageCount, model: config.aiModel },
+      'summarizeThread: LLM call failed',
     );
     return { skipped: true, threadId, windowHours, messageCount, reason: 'llm-error' };
   }

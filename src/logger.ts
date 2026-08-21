@@ -17,6 +17,25 @@ export function errMsg(err: unknown): string {
   return String(err);
 }
 
+/**
+ * Redacted metadata for errors received from an LLM provider. Provider error
+ * messages can echo prompts or responses, so they must never enter logs.
+ */
+export function safeErrorMetadata(err: unknown): { errorClass: string; status?: number } {
+  const errorClass =
+    err !== null && typeof err === 'object' && err.constructor?.name
+      ? err.constructor.name
+      : typeof err;
+  const status =
+    err !== null && typeof err === 'object'
+      ? (err as { status?: unknown }).status
+      : undefined;
+
+  return typeof status === 'number' && Number.isFinite(status) && Number.isInteger(status)
+    ? { errorClass, status }
+    : { errorClass };
+}
+
 export const logger = pino({
   level: RUNTIME_DEFAULTS.logging.level,
   transport:
