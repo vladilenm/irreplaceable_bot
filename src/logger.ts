@@ -1,6 +1,6 @@
 import pino from 'pino';
 import { randomBytes } from 'node:crypto';
-import { config } from './config.js';
+import { RUNTIME_DEFAULTS } from './runtime-defaults.js';
 
 // 8-char random hex stamped into every log entry as `bootId`. Lets us tell
 // processes apart when several container instances share a log stream — see
@@ -18,9 +18,9 @@ export function errMsg(err: unknown): string {
 }
 
 export const logger = pino({
-  level: config.logLevel,
+  level: RUNTIME_DEFAULTS.logging.level,
   transport:
-    config.nodeEnv === 'development'
+    process.env['NODE_ENV'] === 'development'
       ? { target: 'pino-pretty', options: { colorize: true } }
       : undefined,
 }).child({ bootId });

@@ -1,13 +1,13 @@
 import 'dotenv/config';
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
-import { config } from '../config.js';
+import { readDatabaseConfig } from '../database-config.js';
 import { logger } from '../logger.js';
 import { createPool } from './pool.js';
 import { runMigrations } from './migrations.js';
 
-export async function migrateDatabase(): Promise<number> {
-  const pool = createPool(config.database);
+export async function migrateDatabase(env: NodeJS.ProcessEnv = process.env): Promise<number> {
+  const pool = createPool(readDatabaseConfig(env));
   try {
     return await runMigrations(pool);
   } finally {
