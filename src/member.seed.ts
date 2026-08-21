@@ -16,14 +16,15 @@ export interface MockSeedOptions {
 }
 
 export function readMockSeedCliOptions(options: {
-  nodeEnv: string;
+  nodeEnv?: string;
   argv: readonly string[];
 }): MockSeedOptions {
+  const nodeEnv = options.nodeEnv ?? 'development';
   const allowProduction = options.argv.includes('--allow-production');
-  if (options.nodeEnv === 'production' && !allowProduction) {
+  if (nodeEnv === 'production' && !allowProduction) {
     throw new Error('--allow-production is required in production');
   }
-  return { nodeEnv: options.nodeEnv, allowProduction };
+  return { nodeEnv, allowProduction };
 }
 
 const MOCK_UPDATED_AT = '2026-08-21T00:00:00.000Z';
@@ -79,7 +80,7 @@ export async function seedMockMembers(
 
 async function runSeedCli(): Promise<void> {
   const seedOptions = readMockSeedCliOptions({
-    nodeEnv: process.env.NODE_ENV ?? 'production',
+    nodeEnv: process.env.NODE_ENV,
     argv: process.argv,
   });
   const database = readDatabaseConfig(process.env);

@@ -35,6 +35,12 @@ it('rejects a production seed command before infrastructure setup without opt-in
   })).toThrow('--allow-production is required in production');
 });
 
+it('treats an absent NODE_ENV as development for the local seed CLI', () => {
+  expect(readMockSeedCliOptions({
+    argv: ['node', 'src/member.seed.ts'],
+  })).toEqual({ nodeEnv: 'development', allowProduction: false });
+});
+
 it('seeds exactly 20 deterministic mock members twice without duplicates', async () => {
   await expect(seedMockMembers(service, {
     nodeEnv: 'development',

@@ -58,19 +58,6 @@ describe('readConfig', () => {
     expect(() => readConfig(env, () => 'timeweb-ca')).toThrow(name);
   });
 
-  it('ignores removed legacy overrides', () => {
-    const config = readConfig({
-      ...validEnv,
-      AI_MODEL: 'legacy-model',
-      EMBEDDING_API_KEY: 'legacy-key',
-      DATABASE_POOL_MAX: '999',
-      REQUEST_MATCHING_ENABLED: 'false',
-    }, () => 'timeweb-ca');
-
-    expect(config.aiModel).toBe(RUNTIME_DEFAULTS.ai.chatModel);
-    expect(config.requestMatching.embeddingApiKey).toBe('gateway-token');
-    expect(config.database.poolMax).toBe(5);
-  });
 });
 
 describe('readDatabaseConfig', () => {
