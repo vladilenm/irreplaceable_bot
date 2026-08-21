@@ -1,3 +1,14 @@
+export interface RequestMatchingConfig {
+  notionToken: string;
+  notionDataSourceId: string;
+  embeddingApiKey: string;
+  embeddingModel: string;
+  memberSyncCron: string;
+  concurrency: number;
+  queueLimit: number;
+  processingTimeoutMinutes: number;
+}
+
 export interface BotConfig {
   botToken: string;
   targetChatId: number;
@@ -14,6 +25,7 @@ export interface BotConfig {
   retentionSweepCron: string;
   dbPath: string;
   trackedThreadIds: number[];
+  requestMatching: RequestMatchingConfig | null;
 }
 
 export interface DigestItem {

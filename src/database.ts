@@ -99,6 +99,59 @@ const MIGRATIONS: ReadonlyArray<Migration> = [
       DROP TABLE IF EXISTS tracked_threads;
     `,
   },
+  {
+    version: 6,
+    description: 'Add member matching snapshots and request idempotency',
+    sql: `
+      CREATE TABLE members (
+        member_id TEXT PRIMARY KEY,
+        source TEXT NOT NULL,
+        external_id TEXT NOT NULL,
+        display_name TEXT NOT NULL,
+        telegram_username TEXT NOT NULL,
+        profile_text TEXT NOT NULL,
+        content_hash TEXT NOT NULL,
+        source_updated_at TEXT NOT NULL,
+        active INTEGER NOT NULL CHECK (active IN (0, 1)),
+        sync_generation INTEGER NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE(source, external_id)
+      );
+      CREATE INDEX idx_members_active ON members(active);
+      CREATE TABLE member_embeddings (
+        member_id TEXT PRIMARY KEY REFERENCES members(member_id) ON DELETE CASCADE,
+        model TEXT NOT NULL,
+        dimensions INTEGER NOT NULL CHECK (dimensions > 0),
+        content_hash TEXT NOT NULL,
+        vector BLOB NOT NULL
+      );
+      CREATE TABLE member_sync_state (
+        provider TEXT PRIMARY KEY,
+        generation INTEGER NOT NULL,
+        last_success_at TEXT NOT NULL,
+        embedding_model TEXT NOT NULL,
+        dimensions INTEGER NOT NULL,
+        active_count INTEGER NOT NULL
+      );
+      CREATE TABLE member_requests (
+        chat_id INTEGER NOT NULL,
+        tg_message_id INTEGER NOT NULL,
+        thread_id INTEGER NOT NULL,
+        author_id INTEGER,
+        author_username TEXT,
+        query_hash TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('processing', 'completed', 'no_match', 'failed')),
+        match_count INTEGER NOT NULL DEFAULT 0,
+        response_message_id INTEGER,
+        error_code TEXT,
+        started_at TEXT NOT NULL,
+        completed_at TEXT,
+        PRIMARY KEY(chat_id, tg_message_id)
+      );
+      CREATE INDEX idx_member_requests_status_started
+        ON member_requests(status, started_at);
+    `,
+  },
 ];
 
 let _db: Database.Database | null = null;

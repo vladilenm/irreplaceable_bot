@@ -1,4 +1,4 @@
-import type { BotConfig } from './types.js';
+import type { BotConfig, RequestMatchingConfig } from './types.js';
 
 function requireEnv(name: string): string {
   const value = process.env[name];
@@ -44,6 +44,41 @@ function parseTrackedThreadIds(raw: string): number[] {
     });
 }
 
+export function readRequestMatchingConfig(
+  env: NodeJS.ProcessEnv,
+): RequestMatchingConfig | null {
+  const flag = env['REQUEST_MATCHING_ENABLED'] ?? 'false';
+  if (flag !== 'true' && flag !== 'false') {
+    throw new Error('REQUEST_MATCHING_ENABLED must be true or false');
+  }
+  if (flag === 'false') return null;
+
+  const required = (name: string): string => {
+    const value = env[name];
+    if (!value) throw new Error(`Missing required environment variable: ${name}`);
+    return value;
+  };
+  const positive = (name: string, fallback: number): number => {
+    const raw = env[name];
+    const value = raw === undefined || raw === '' ? fallback : Number(raw);
+    if (!Number.isInteger(value) || value < 1) {
+      throw new Error(`${name} must be >= 1`);
+    }
+    return value;
+  };
+
+  return {
+    notionToken: required('NOTION_TOKEN'),
+    notionDataSourceId: required('NOTION_DATA_SOURCE_ID'),
+    embeddingApiKey: required('EMBEDDING_API_KEY'),
+    embeddingModel: required('EMBEDDING_MODEL'),
+    memberSyncCron: env['MEMBER_SYNC_CRON'] ?? '*/15 * * * *',
+    concurrency: positive('REQUEST_MATCH_CONCURRENCY', 2),
+    queueLimit: positive('REQUEST_QUEUE_LIMIT', 50),
+    processingTimeoutMinutes: positive('REQUEST_PROCESSING_TIMEOUT_MINUTES', 10),
+  };
+}
+
 export const config: BotConfig = {
   botToken: requireEnv('BOT_TOKEN'),
   targetChatId: requireEnvInt('TARGET_CHAT_ID'),
@@ -64,4 +99,5 @@ export const config: BotConfig = {
       process.env['INITIAL_TRACKED_THREAD_IDS'] ??
       '',
   ),
+  requestMatching: readRequestMatchingConfig(process.env),
 };

@@ -73,4 +73,23 @@ describe('database migrations', () => {
     expect(row).toBeDefined();
     expect(row?.version).toBe(3);
   });
+
+  it('creates member matching tables in migration v6', () => {
+    const migrationRows = getDb()
+      .prepare('SELECT version FROM schema_migrations ORDER BY version')
+      .all() as Array<{ version: number }>;
+    const versions = migrationRows.map((row) => row.version);
+    expect(versions).toContain(6);
+    const names = (
+      getDb().prepare(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'member%' ORDER BY name",
+      ).all() as Array<{ name: string }>
+    ).map((row) => row.name);
+    expect(names).toEqual([
+      'member_embeddings',
+      'member_requests',
+      'member_sync_state',
+      'members',
+    ]);
+  });
 });
