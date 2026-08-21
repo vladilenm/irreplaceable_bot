@@ -11,6 +11,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "seed:members": "tsx src/member.seed.ts",
+    "migrate:sqlite": "tsx src/migrate-sqlite.ts",
     "eval:member-matching": "tsx src/evaluate-member-matching.ts"
   },
   "keywords": [],
