@@ -169,7 +169,7 @@ Embeddings используют отдельную конфигурацию:
 - `EMBEDDING_API_KEY` — OpenAI API key;
 - `EMBEDDING_MODEL` — обязательное имя embedding-модели;
 - `MEMBER_SYNC_CRON` — расписание синхронизации;
-- `NOTION_TOKEN` и `NOTION_DATABASE_ID` — доступ к базе карточек.
+- `NOTION_TOKEN` и `NOTION_DATA_SOURCE_ID` — read-only доступ к data source карточек через Notion API version `2026-03-11`.
 - `REQUEST_MATCHING_ENABLED` — feature flag, по умолчанию выключен;
 - `REQUEST_MATCH_CONCURRENCY` — параллелизм pipeline, по умолчанию `2`;
 - `REQUEST_QUEUE_LIMIT` — предел ожидающих запросов, по умолчанию `50`;
