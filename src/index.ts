@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import type { Bot } from 'grammy';
+import type { Pool } from 'pg';
 import { createBot } from './bot.js';
 import { config } from './config.js';
 import { logger, bootId, errMsg } from './logger.js';
@@ -11,9 +12,13 @@ import {
   POLLING_CONFLICT_BACKOFF_MS,
   runPreflight,
 } from './startup.js';
+import { createPool, assertDatabaseReady } from './db/pool.js';
+import { runMigrations } from './db/migrations.js';
+import { createCorePersistence } from './persistence.js';
 
 let mainStep = 0;
 let runningBot: Bot | null = null;
+let postgresPool: Pool | null = null;
 
 async function main(): Promise<void> {
   mainStep += 1;
@@ -21,13 +26,24 @@ async function main(): Promise<void> {
 
   // Database readiness is a startup requirement; scheduled jobs and capture
   // handlers must never run against a partially migrated schema.
+  const migrationPool = createPool(config.database, config.database.migrationUrl);
+  try {
+    await runMigrations(migrationPool);
+  } finally {
+    await migrationPool.end();
+  }
+  postgresPool = createPool(config.database);
+  await assertDatabaseReady(postgresPool);
+  const persistence = createCorePersistence(postgresPool);
+
+  // Transitional until member matching is moved in the next migration slices.
   initDb();
   importLegacyState();
 
   const requestMatching = config.requestMatching
     ? createRequestMatchingRuntime(config.requestMatching)
     : undefined;
-  const bot = createBot({ requestMatching });
+  const bot = createBot({ persistence, requestMatching });
   runningBot = bot;
 
   // Start long-polling — fire-and-forget with explicit .catch so startup
@@ -39,7 +55,7 @@ async function main(): Promise<void> {
   void bot.start({
     onStart: () => {
       logger.info('Bot is running (long-polling mode)');
-      startScheduler(bot.api, requestMatching
+      startScheduler(bot.api, persistence, requestMatching
         ? {
             memberSync: {
               cron: config.requestMatching?.memberSyncCron ?? '*/15 * * * *',
@@ -87,6 +103,8 @@ async function shutdown(signal: string): Promise<void> {
   await runningBot?.stop();
   // Stop Telegram first so no capture transaction starts during DB shutdown.
   closeDb();
+  await postgresPool?.end();
+  postgresPool = null;
   logger.info('Bot stopped. Goodbye.');
   process.exit(0);
 }

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { DigestResult } from './radar.js';
 import type { DigestItem } from './types.js';
 import type { Api } from 'grammy';
+import type { JobStateRepository } from './job-state.repository.js';
 
 const {
   mockSendMessageWithRetry,
@@ -16,15 +17,14 @@ const {
 vi.mock('./telegram.js', () => ({
   sendMessageWithRetry: mockSendMessageWithRetry,
 }));
-vi.mock('./database.js', () => ({
-  readState: vi.fn(),
-  isDigestPublishedTodayWithState: vi.fn(),
-  recordDigestCompletion: mockRecordDigestCompletion,
-}));
-
 import { sendDigest } from './radar.js';
 
 const api = {} as Api;
+const jobs: JobStateRepository = {
+  read: vi.fn(),
+  recordDigest: mockRecordDigestCompletion,
+  recordThreadSummary: vi.fn(),
+};
 
 const item: DigestItem = {
   title: 'Новость',
@@ -51,7 +51,7 @@ describe('sendDigest delivery state', () => {
 
   it('A1: records completion only after Telegram accepts the message', async () => {
     mockSendMessageWithRetry.mockResolvedValue(undefined);
-    await sendDigest(api, okResult());
+    await sendDigest(api, okResult(), jobs);
     expect(mockSendMessageWithRetry).toHaveBeenCalledTimes(1);
     expect(mockRecordDigestCompletion).toHaveBeenCalledTimes(1);
     const sendOrder = mockSendMessageWithRetry.mock.invocationCallOrder[0] ?? 0;
@@ -61,25 +61,25 @@ describe('sendDigest delivery state', () => {
 
   it('A2: records the delivered item count', async () => {
     mockSendMessageWithRetry.mockResolvedValue(undefined);
-    await sendDigest(api, okResult({ itemCount: 3 }));
+    await sendDigest(api, okResult({ itemCount: 3 }), jobs);
     expect(mockRecordDigestCompletion).toHaveBeenCalledWith(expect.any(Date), false, 3);
   });
 
   it('A3: failed delivery leaves job state untouched', async () => {
     mockSendMessageWithRetry.mockRejectedValue(new Error('Telegram down'));
-    await expect(sendDigest(api, okResult())).rejects.toThrow('Telegram down');
+    await expect(sendDigest(api, okResult(), jobs)).rejects.toThrow('Telegram down');
     expect(mockRecordDigestCompletion).not.toHaveBeenCalled();
   });
 
   it('A4: persistState:false does not record a successful development run', async () => {
     mockSendMessageWithRetry.mockResolvedValue(undefined);
-    await sendDigest(api, okResult({ persistState: false }));
+    await sendDigest(api, okResult({ persistState: false }), jobs);
     expect(mockSendMessageWithRetry).toHaveBeenCalledTimes(1);
     expect(mockRecordDigestCompletion).not.toHaveBeenCalled();
   });
 
   it('A5: skipped result is neither sent nor recorded by the sender', async () => {
-    await sendDigest(api, okResult({ skipped: true, items: [] }));
+    await sendDigest(api, okResult({ skipped: true, items: [] }), jobs);
     expect(mockSendMessageWithRetry).not.toHaveBeenCalled();
     expect(mockRecordDigestCompletion).not.toHaveBeenCalled();
   });

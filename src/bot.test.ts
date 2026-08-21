@@ -1,4 +1,6 @@
 import { expect, it, vi } from 'vitest';
+import type { JobStateRepository } from './job-state.repository.js';
+import type { MessageRepository } from './messages.repository.js';
 import type { RequestMatchingRuntime } from './request.runtime.js';
 
 const mocks = vi.hoisted(() => {
@@ -15,10 +17,33 @@ vi.mock('./requests.js', () => ({ registerRequestHandlers: mocks.registerRequest
 
 import { createBot } from './bot.js';
 
+const jobs: JobStateRepository = {
+  read: vi.fn(async () => ({
+    lastDigestDate: null,
+    lastSkipped: false,
+    lastItemCount: 0,
+    lastThreadSummaryDate: null,
+  })),
+  recordDigest: vi.fn(async () => undefined),
+  recordThreadSummary: vi.fn(async () => undefined),
+};
+const messages: MessageRepository = {
+  upsert: vi.fn(async () => undefined),
+  selectWindow: vi.fn(async () => []),
+  runRetention: vi.fn(async () => ({ rowsDeleted: 0, durationMs: 0 })),
+};
+
 it('registers member requests before terminal capture middleware', () => {
   mocks.order.length = 0;
 
-  createBot({ requestMatching: { handlerOptions: {} } as RequestMatchingRuntime });
+  createBot({
+    persistence: { jobs, messages },
+    requestMatching: { handlerOptions: {} } as RequestMatchingRuntime,
+  });
 
   expect(mocks.order).toEqual(['request', 'capture']);
+  expect(mocks.registerCaptureHandlers).toHaveBeenCalledWith(
+    expect.anything(),
+    expect.objectContaining({ messages }),
+  );
 });

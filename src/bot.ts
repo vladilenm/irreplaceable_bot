@@ -5,12 +5,18 @@ import {
   runDigestPipeline,
   sendDigest,
 } from './radar.js';
-import { isDigestPublishedToday, readState } from './database.js';
+import { isDigestPublishedTodayWithState } from './job-state.repository.js';
 import { registerCaptureHandlers } from './capture.js';
 import { registerRequestHandlers } from './requests.js';
 import type { RequestMatchingRuntime } from './request.runtime.js';
+import type { CorePersistence } from './persistence.js';
 
-export function createBot(options: { requestMatching?: RequestMatchingRuntime } = {}): Bot {
+export interface CreateBotOptions {
+  persistence: CorePersistence;
+  requestMatching?: RequestMatchingRuntime;
+}
+
+export function createBot(options: CreateBotOptions): Bot {
   const bot = new Bot(config.botToken);
 
   bot.catch((err) => {
@@ -65,7 +71,8 @@ export function createBot(options: { requestMatching?: RequestMatchingRuntime } 
     return;
   }
 
-  if (isDigestPublishedToday()) {
+  const state = await options.persistence.jobs.read();
+  if (isDigestPublishedTodayWithState(state)) {
     await ctx.reply('Дайджест уже опубликован сегодня.');
     return;
   }
@@ -73,7 +80,7 @@ export function createBot(options: { requestMatching?: RequestMatchingRuntime } 
   const statusMsg = await ctx.reply('Запускаю сборку дайджеста...');
 
   try {
-    const result = await runDigestPipeline();
+    const result = await runDigestPipeline(options.persistence.jobs);
 
     if (result.skipped) {
       await ctx.api.editMessageText(
@@ -84,7 +91,7 @@ export function createBot(options: { requestMatching?: RequestMatchingRuntime } 
       return;
     }
 
-    await sendDigest(bot.api, result);
+    await sendDigest(bot.api, result, options.persistence.jobs);
 
     await ctx.api.editMessageText(
       statusMsg.chat.id,
@@ -113,7 +120,7 @@ export function createBot(options: { requestMatching?: RequestMatchingRuntime } 
     return;
   }
 
-  const state = readState();
+  const state = await options.persistence.jobs.read();
 
   let lastDigestInfo: string;
   if (state.lastDigestDate) {
@@ -169,7 +176,7 @@ export function createBot(options: { requestMatching?: RequestMatchingRuntime } 
   const statusMsg = await ctx.reply('Dev-run: запускаю сборку дайджеста...');
 
   try {
-    const result = await runDigestPipeline({
+    const result = await runDigestPipeline(options.persistence.jobs, {
       skipIdempotency: true,
       persistState: false,
     });
@@ -183,7 +190,7 @@ export function createBot(options: { requestMatching?: RequestMatchingRuntime } 
       return;
     }
 
-    await sendDigest(bot.api, result);
+    await sendDigest(bot.api, result, options.persistence.jobs);
 
     logger.info(
       { itemCount: result.itemCount, devRun: true },
@@ -216,6 +223,7 @@ export function createBot(options: { requestMatching?: RequestMatchingRuntime } 
   registerCaptureHandlers(bot, {
     targetChatId: config.targetChatId,
     trackedThreadIds: new Set(config.trackedThreadIds),
+    messages: options.persistence.messages,
   });
   return bot;
 }

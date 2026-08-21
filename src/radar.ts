@@ -6,10 +6,9 @@ import { logger } from './logger.js';
 import { sendMessageWithRetry } from './telegram.js';
 import type { DigestCategory, DigestItem } from './types.js';
 import {
-  readState,
-  recordDigestCompletion,
   isDigestPublishedTodayWithState,
-} from './database.js';
+  type JobStateRepository,
+} from './job-state.repository.js';
 
 export interface DigestResult {
   items: DigestItem[];
@@ -37,12 +36,13 @@ function emptyResult(
 }
 
 export async function runDigestPipeline(
+  jobs: JobStateRepository,
   opts: RunPipelineOptions = {},
 ): Promise<DigestResult> {
   const skipIdempotency = opts.skipIdempotency ?? false;
   const persistState = opts.persistState ?? true;
 
-  const state = readState();
+  const state = await jobs.read();
 
   // Manual development runs can bypass the Moscow-day idempotency guard.
   if (!skipIdempotency && isDigestPublishedTodayWithState(state)) {
@@ -71,7 +71,7 @@ export async function runDigestPipeline(
   if (articles.length === 0) {
     logger.warn({ hoursBack }, 'No articles found in time window');
     if (persistState) {
-      recordDigestCompletion(new Date(), true, 0);
+      await jobs.recordDigest(new Date(), true, 0);
     }
     return {
       items: [],
@@ -104,7 +104,7 @@ export async function runDigestPipeline(
   // A skipped run has nothing to deliver, so it can be recorded immediately.
   // A successful run is recorded by sendDigest only after Telegram accepts it.
   if (skipped && persistState) {
-    recordDigestCompletion(new Date(), true, itemCount);
+    await jobs.recordDigest(new Date(), true, itemCount);
   }
 
   return {
@@ -151,7 +151,11 @@ export function formatDigestHtml(items: DigestItem[], date: Date): string {
   return [header, ...blocks, '———\nДайджест Клуба Незаменимых'].join('\n\n');
 }
 
-export async function sendDigest(api: Api, result: DigestResult): Promise<void> {
+export async function sendDigest(
+  api: Api,
+  result: DigestResult,
+  jobs: JobStateRepository,
+): Promise<void> {
   if (result.skipped || result.items.length === 0) {
     logger.warn({ itemCount: result.itemCount }, 'Digest skipped, not sending');
     return;
@@ -166,7 +170,7 @@ export async function sendDigest(api: Api, result: DigestResult): Promise<void> 
   });
 
   if (result.persistState) {
-    recordDigestCompletion(new Date(), false, result.itemCount);
+    await jobs.recordDigest(new Date(), false, result.itemCount);
   }
 
   logger.info(

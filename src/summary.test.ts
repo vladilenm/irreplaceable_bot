@@ -1,5 +1,12 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import type { ThreadSummary, PipelineState, CapturedMessage } from './types.js';
+import type {
+  ThreadSummary,
+  PipelineState,
+  CapturedMessage,
+  RunThreadSummaryOptions,
+} from './types.js';
+import type { JobStateRepository } from './job-state.repository.js';
+import type { MessageRepository } from './messages.repository.js';
 
 // Mock factories — must be hoisted via vi.hoisted so the vi.mock factories
 // (which vitest hoists above imports) can reference these without
@@ -7,7 +14,6 @@ import type { ThreadSummary, PipelineState, CapturedMessage } from './types.js';
 const {
   mockState,
   mockReadState,
-  mockIsThreadSummaryPublishedTodayWithState,
   mockSelectMessagesInWindow,
   mockSummarizeThread,
 } = vi.hoisted(() => {
@@ -21,20 +27,14 @@ const {
   };
   return {
     mockState: state,
-    mockReadState: vi.fn(() => state.current),
-    mockIsThreadSummaryPublishedTodayWithState: vi.fn(() => false),
+    mockReadState: vi.fn(async () => state.current),
     mockSelectMessagesInWindow: vi.fn(
-      (_chatId: number, _threadId: number, _sinceIso: string) => [] as CapturedMessage[],
+      async (_chatId: number, _threadId: number, _sinceIso: string) => [] as CapturedMessage[],
     ),
     mockSummarizeThread: vi.fn(),
   };
 });
 
-vi.mock('./database.js', () => ({
-  readState: mockReadState,
-  isThreadSummaryPublishedTodayWithState: mockIsThreadSummaryPublishedTodayWithState,
-  selectMessagesInWindow: mockSelectMessagesInWindow,
-}));
 vi.mock('./summarizer.js', () => ({
   summarizeThread: mockSummarizeThread,
 }));
@@ -59,6 +59,19 @@ vi.mock('./config.js', () => ({
 }));
 
 import { runThreadSummaryPipeline } from './summary.js';
+
+const jobs: JobStateRepository = {
+  read: mockReadState,
+  recordDigest: vi.fn(),
+  recordThreadSummary: vi.fn(),
+};
+const messages: MessageRepository = {
+  upsert: vi.fn(async () => undefined),
+  selectWindow: mockSelectMessagesInWindow,
+  runRetention: vi.fn(async () => ({ rowsDeleted: 0, durationMs: 0 })),
+};
+const runSummary = (options: RunThreadSummaryOptions = {}) =>
+  runThreadSummaryPipeline(messages, jobs, options);
 
 // Single- and multi-topic fixtures used across the orchestration tests.
 const okSummary = (
@@ -124,45 +137,39 @@ beforeEach(() => {
     lastThreadSummaryDate: null,
   };
   mockReadState.mockClear();
-  mockReadState.mockImplementation(() => mockState.current);
-  mockIsThreadSummaryPublishedTodayWithState.mockClear();
-  mockIsThreadSummaryPublishedTodayWithState.mockReturnValue(false);
-  mockSelectMessagesInWindow.mockReturnValue([]);
+  mockReadState.mockImplementation(async () => mockState.current);
+  mockSelectMessagesInWindow.mockResolvedValue([]);
   mockSummarizeThread.mockReset();
 });
 
 describe('runThreadSummaryPipeline', () => {
   it('O1: idempotency — already-published-today returns alreadyPublished:true and skips work', async () => {
-    mockIsThreadSummaryPublishedTodayWithState.mockReturnValue(true);
     mockState.current = { ...mockState.current, lastThreadSummaryDate: new Date().toISOString() };
-    const r = await runThreadSummaryPipeline();
+    const r = await runSummary();
     expect(r.alreadyPublished).toBe(true);
     expect(r.threadsSummarised).toBe(0);
     expect(mockSummarizeThread).not.toHaveBeenCalled();
   });
 
   it('O1b: idempotency uses the state snapshot already loaded for this cycle', async () => {
-    mockIsThreadSummaryPublishedTodayWithState.mockReturnValue(true);
     mockState.current = { ...mockState.current, lastThreadSummaryDate: new Date().toISOString() };
-    await runThreadSummaryPipeline();
+    await runSummary();
     expect(mockReadState).toHaveBeenCalledTimes(1);
-    expect(mockIsThreadSummaryPublishedTodayWithState).toHaveBeenCalledTimes(1);
-    expect(mockIsThreadSummaryPublishedTodayWithState).toHaveBeenCalledWith(mockState.current);
   });
 
   it('O2: skipIdempotency:true bypasses idempotency gate', async () => {
-    mockIsThreadSummaryPublishedTodayWithState.mockReturnValue(true);
+    mockState.current = { ...mockState.current, lastThreadSummaryDate: new Date().toISOString() };
     mockSummarizeThread.mockImplementation((input: { threadId: number }) =>
       Promise.resolve(okSummary(input.threadId, 5)),
     );
-    mockSelectMessagesInWindow.mockReturnValue(Array.from({ length: 5 }, (_, i) => msg(i + 1)));
-    const r = await runThreadSummaryPipeline({ skipIdempotency: true });
+    mockSelectMessagesInWindow.mockResolvedValue(Array.from({ length: 5 }, (_, i) => msg(i + 1)));
+    const r = await runSummary({ skipIdempotency: true });
     expect(r.alreadyPublished).toBe(false);
     expect(mockSummarizeThread).toHaveBeenCalledTimes(3);
   });
 
   it('O3: zero tracked threads → returns 0 counts and no Telegram chunks', async () => {
-    const r = await runThreadSummaryPipeline({ trackedThreadIds: [] });
+    const r = await runSummary({ trackedThreadIds: [] });
     expect(r.threadsSummarised).toBe(0);
     expect(r.chunks).toEqual([]);
   });
@@ -172,43 +179,43 @@ describe('runThreadSummaryPipeline', () => {
       if (input.threadId === 100) throw new Error('LLM down');
       return okSummary(input.threadId, 5);
     });
-    const r = await runThreadSummaryPipeline();
+    const r = await runSummary();
     expect(r.threadsSummarised).toBe(2);
     expect(r.threadsSkippedError).toBe(1);
   });
 
   it('O5: pipeline returns persistence intent without recording delivery itself', async () => {
     mockSummarizeThread.mockResolvedValue(okSummary(100, 5));
-    const r = await runThreadSummaryPipeline();
+    const r = await runSummary();
     expect(r.persistState).toBe(true);
   });
 
   it('O5b: persistState:false propagates to the caller', async () => {
     mockSummarizeThread.mockResolvedValue(okSummary(100, 5));
-    const r = await runThreadSummaryPipeline({ persistState: false });
+    const r = await runSummary({ persistState: false });
     expect(r.persistState).toBe(false);
   });
 
   it('O5c: idempotency short-circuit preserves persistence intent', async () => {
-    mockIsThreadSummaryPublishedTodayWithState.mockReturnValue(true);
+    mockState.current = { ...mockState.current, lastThreadSummaryDate: new Date().toISOString() };
     mockState.current = {
       ...mockState.current,
       lastThreadSummaryDate: new Date().toISOString(),
     };
-    const r = await runThreadSummaryPipeline();
+    const r = await runSummary();
     expect(r.alreadyPublished).toBe(true);
     expect(r.persistState).toBe(true);
   });
 
   it('O6: windowHours override propagates to summarizeThread input', async () => {
     mockSummarizeThread.mockResolvedValue(okSummary(100, 1));
-    await runThreadSummaryPipeline({ windowHours: 48 });
+    await runSummary({ windowHours: 48 });
     const call = mockSummarizeThread.mock.calls[0]?.[0];
     expect(call?.windowHours).toBe(48);
   });
 
   it('O7-CONTRACT: passes captured messages without preselecting a citation', async () => {
-    mockSelectMessagesInWindow.mockReturnValue([
+    mockSelectMessagesInWindow.mockResolvedValue([
       msg(7475),
       msg(7460),
       msg(7471),
@@ -218,7 +225,7 @@ describe('runThreadSummaryPipeline', () => {
     mockSummarizeThread.mockImplementation(async (input: { threadId: number }) =>
       okSummary(input.threadId, 5),
     );
-    await runThreadSummaryPipeline({ trackedThreadIds: [100] });
+    await runSummary({ trackedThreadIds: [100] });
     expect(mockSummarizeThread).toHaveBeenCalled();
     const call = mockSummarizeThread.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(call).toBeDefined();
@@ -229,7 +236,7 @@ describe('runThreadSummaryPipeline', () => {
   });
 
   it('O7-MULTI: renders two topics with independent deep links', async () => {
-    mockSelectMessagesInWindow.mockReturnValue(
+    mockSelectMessagesInWindow.mockResolvedValue(
       Array.from({ length: 8 }, (_, i) => msg(7000 + i)),
     );
     mockSummarizeThread.mockResolvedValue(
@@ -238,7 +245,7 @@ describe('runThreadSummaryPipeline', () => {
         { msgId: 7005, title: 'multi-topic-B', summary: 'итог-B' },
       ]),
     );
-    const r = await runThreadSummaryPipeline({ trackedThreadIds: [100] });
+    const r = await runSummary({ trackedThreadIds: [100] });
     const text = r.chunks.join('\n');
     // Both topic headers present.
     expect(text).toContain('<b>multi-topic-A</b>');
@@ -251,7 +258,7 @@ describe('runThreadSummaryPipeline', () => {
   });
 
   it('O8-AGG: aggregated links deduped case-insensitively across non-skipped summaries', async () => {
-    mockSelectMessagesInWindow.mockReturnValue(
+    mockSelectMessagesInWindow.mockResolvedValue(
       Array.from({ length: 5 }, (_, i) => msg(i + 1)),
     );
     mockSummarizeThread.mockImplementation(async (input: { threadId: number }) => {
@@ -266,7 +273,7 @@ describe('runThreadSummaryPipeline', () => {
         { url: 'https://example.com/c', description: 'c-ru' },
       ]);
     });
-    const r = await runThreadSummaryPipeline({ trackedThreadIds: [100, 200] });
+    const r = await runSummary({ trackedThreadIds: [100, 200] });
     const text = r.chunks.join('\n');
     // Original "a-ru" description is preserved (first occurrence wins).
     expect(text).toContain('a-ru');
@@ -283,7 +290,7 @@ describe('runThreadSummaryPipeline', () => {
     mockReadState.mockImplementation(() => {
       throw new Error('State file corrupted at /x: bad');
     });
-    const r = await runThreadSummaryPipeline();
+    const r = await runSummary();
     expect(r.alreadyPublished).toBe(false);
     expect(r.threadsSummarised).toBe(0);
     expect(r.chunks.length).toBe(0);
@@ -302,7 +309,7 @@ describe('runThreadSummaryPipeline LLM-outage detection', () => {
         reason: 'llm-error' as const,
       }),
     );
-    const r = await runThreadSummaryPipeline();
+    const r = await runSummary();
     expect(r.llmOutage).toBe(true);
     expect(r.chunks).toEqual([]);
     expect(r.threadsSkippedError).toBe(3);
@@ -312,7 +319,7 @@ describe('runThreadSummaryPipeline LLM-outage detection', () => {
     mockSummarizeThread.mockImplementation(async () => {
       throw new Error('LLM transport down');
     });
-    const r = await runThreadSummaryPipeline();
+    const r = await runSummary();
     expect(r.llmOutage).toBe(true);
     expect(r.chunks).toEqual([]);
     expect(r.threadsSkippedError).toBe(3);
@@ -337,13 +344,13 @@ describe('runThreadSummaryPipeline LLM-outage detection', () => {
         reason: 'llm-error' as const,
       });
     });
-    const r = await runThreadSummaryPipeline();
+    const r = await runSummary();
     expect(r.llmOutage).toBe(false);
     expect(r.chunks).toEqual([]);
   });
 
   it('B4: all skipped → no chunks, while totalMessageCount reflects rows selected from the DB', async () => {
-    mockSelectMessagesInWindow.mockImplementation((_chatId: number, threadId: number) => {
+    mockSelectMessagesInWindow.mockImplementation(async (_chatId: number, threadId: number) => {
       if (threadId === 100) return [msg(1), msg(2)];
       if (threadId === 200) return [msg(3)];
       return [];
@@ -357,14 +364,14 @@ describe('runThreadSummaryPipeline LLM-outage detection', () => {
         reason: 'low-volume' as const,
       }),
     );
-    const r = await runThreadSummaryPipeline();
+    const r = await runSummary();
     expect(r.llmOutage).toBe(false);
     expect(r.totalMessageCount).toBe(3);
     expect(r.chunks).toEqual([]);
   });
 
   it('B5: zero tracked threads → llmOutage:false (vacuously not an outage)', async () => {
-    const r = await runThreadSummaryPipeline({ trackedThreadIds: [] });
+    const r = await runSummary({ trackedThreadIds: [] });
     expect(r.llmOutage).toBe(false);
     expect(r.chunks).toEqual([]);
   });
@@ -380,7 +387,7 @@ describe('runThreadSummaryPipeline LLM-outage detection', () => {
         reason: 'llm-error' as const,
       });
     });
-    const r = await runThreadSummaryPipeline();
+    const r = await runSummary();
     expect(r.llmOutage).toBe(false);
     expect(r.threadsSummarised).toBe(1);
     expect(r.chunks.length).toBeGreaterThan(0);

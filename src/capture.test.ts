@@ -10,10 +10,13 @@ const { mockUpsertMessage, mockMapMessage } = vi.hoisted(() => ({
 vi.mock('./logger.js', () => ({
   logger: { debug: vi.fn(), error: vi.fn() },
 }));
-vi.mock('./database.js', () => ({
-  upsertMessage: mockUpsertMessage,
-}));
 import { registerCaptureHandlers } from './capture.js';
+
+const messages = {
+  upsert: mockUpsertMessage,
+  selectWindow: vi.fn(),
+  runRetention: vi.fn(),
+};
 
 const captured: CapturedMessage = {
   chatId: -2002,
@@ -45,6 +48,7 @@ describe('capture chat boundary', () => {
     registerCaptureHandlers(bot, {
       targetChatId: -1001,
       trackedThreadIds: new Set([10]),
+      messages,
       mapMessage: mockMapMessage,
     });
     await handler?.({
@@ -70,6 +74,7 @@ describe('capture chat boundary', () => {
     registerCaptureHandlers(bot, {
       targetChatId: -2002,
       trackedThreadIds: new Set([10]),
+      messages,
       mapMessage: mockMapMessage,
     });
     const context = (threadId: number) => ({

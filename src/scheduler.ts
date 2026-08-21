@@ -8,7 +8,7 @@ import {
   runThreadSummaryPipeline,
   sendThreadSummary,
 } from './summary.js';
-import { recordThreadSummaryCompletion, runRetentionSweep } from './database.js';
+import type { CorePersistence } from './persistence.js';
 
 const tasks = new Map<string, ScheduledTask>();
 
@@ -48,21 +48,27 @@ function registerJob(name: string, cronExpr: string, handler: CronHandler): bool
   return true;
 }
 
-async function digestHandler(api: Api): Promise<void> {
-  const result = await runDigestPipeline();
+async function digestHandler(api: Api, persistence: CorePersistence): Promise<void> {
+  const result = await runDigestPipeline(persistence.jobs);
   if (result.alreadyPublished) {
     logger.warn('Cron: digest already published today, skipping send');
     return;
   }
-  await sendDigest(api, result);
+  await sendDigest(api, result, persistence.jobs);
   logger.info(
     { itemCount: result.itemCount, skipped: result.skipped },
     'Cron: digest cycle complete',
   );
 }
 
-async function threadSummaryHandler(api: Api): Promise<void> {
-  const result = await runThreadSummaryPipeline();
+async function threadSummaryHandler(
+  api: Api,
+  persistence: CorePersistence,
+): Promise<void> {
+  const result = await runThreadSummaryPipeline(
+    persistence.messages,
+    persistence.jobs,
+  );
   if (result.alreadyPublished) {
     logger.warn(
       { date: result.date.toISOString() },
@@ -87,7 +93,7 @@ async function threadSummaryHandler(api: Api): Promise<void> {
   await sendThreadSummary(api, result.chunks);
   // Delivery state advances only after every Telegram chunk succeeds.
   if (result.persistState) {
-    recordThreadSummaryCompletion(result.date);
+    await persistence.jobs.recordThreadSummary(result.date);
   }
   logger.info(
     {
@@ -102,14 +108,20 @@ async function threadSummaryHandler(api: Api): Promise<void> {
   );
 }
 
-async function retentionSweepHandler(): Promise<void> {
-  await runRetentionSweep();
+async function retentionSweepHandler(persistence: CorePersistence): Promise<void> {
+  await persistence.messages.runRetention(config.messageRetentionDays);
 }
 
-export function startScheduler(api: Api, options: SchedulerOptions = {}): void {
-  registerJob('digest', config.digestCron, () => digestHandler(api));
-  registerJob('thread-summary', config.threadSummaryCron, () => threadSummaryHandler(api));
-  registerJob('retention-sweep', config.retentionSweepCron, retentionSweepHandler);
+export function startScheduler(
+  api: Api,
+  persistence: CorePersistence,
+  options: SchedulerOptions = {},
+): void {
+  registerJob('digest', config.digestCron, () => digestHandler(api, persistence));
+  registerJob('thread-summary', config.threadSummaryCron, () =>
+    threadSummaryHandler(api, persistence));
+  registerJob('retention-sweep', config.retentionSweepCron, () =>
+    retentionSweepHandler(persistence));
   if (options.memberSync) {
     registerJob('member-sync', options.memberSync.cron, async () => {
       await options.memberSync?.run();

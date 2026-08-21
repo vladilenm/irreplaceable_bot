@@ -7,6 +7,24 @@ export interface JobStateRepository {
   recordThreadSummary(completedAt: Date): Promise<void>;
 }
 
+function sameMskDay(iso: string): boolean {
+  const options = { timeZone: 'Europe/Moscow' } as const;
+  return (
+    new Date().toLocaleDateString('en-CA', options) ===
+    new Date(iso).toLocaleDateString('en-CA', options)
+  );
+}
+
+export function isDigestPublishedTodayWithState(state: PipelineState): boolean {
+  return Boolean(
+    state.lastDigestDate && !state.lastSkipped && sameMskDay(state.lastDigestDate),
+  );
+}
+
+export function isThreadSummaryPublishedTodayWithState(state: PipelineState): boolean {
+  return Boolean(state.lastThreadSummaryDate && sameMskDay(state.lastThreadSummaryDate));
+}
+
 interface JobStateRow {
   job_name: 'digest' | 'thread-summary';
   last_completed_at: Date | null;

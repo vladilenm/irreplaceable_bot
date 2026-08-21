@@ -4,10 +4,10 @@ import { config } from './config.js';
 import { summarizeThread } from './summarizer.js';
 import { sendMessageWithRetry } from './telegram.js';
 import {
-  readState,
   isThreadSummaryPublishedTodayWithState,
-  selectMessagesInWindow,
-} from './database.js';
+  type JobStateRepository,
+} from './job-state.repository.js';
+import type { MessageRepository } from './messages.repository.js';
 import type {
   RunThreadSummaryOptions,
   ThreadSummary,
@@ -39,15 +39,17 @@ function emptyResult(
 }
 
 export async function runThreadSummaryPipeline(
+  messages: MessageRepository,
+  jobs: JobStateRepository,
   opts: RunThreadSummaryOptions = {},
 ): Promise<ThreadSummaryResult> {
   const skipIdempotency = opts.skipIdempotency ?? false;
   const persistState = opts.persistState ?? true;
   const windowHours = opts.windowHours ?? DEFAULT_WINDOW_HOURS;
 
-  let state: ReturnType<typeof readState>;
+  let state: Awaited<ReturnType<JobStateRepository['read']>>;
   try {
-    state = readState();
+    state = await jobs.read();
   } catch (err: unknown) {
     logger.error(
       { err },
@@ -80,12 +82,20 @@ export async function runThreadSummaryPipeline(
   for (const threadId of threadIds) {
     // One broken thread must not abort summaries for the others.
     try {
-      const messages = selectMessagesInWindow(config.targetChatId, threadId, sinceIso);
+      const capturedMessages = await messages.selectWindow(
+        config.targetChatId,
+        threadId,
+        sinceIso,
+      );
       // Count captured rows, not only summaries the LLM managed to interpret.
       // This keeps result metadata (and the rendered total on partial success)
       // truthful even when a sibling thread is skipped.
-      totalMessageCount += messages.length;
-      const summary = await summarizeThread({ threadId, windowHours, messages });
+      totalMessageCount += capturedMessages.length;
+      const summary = await summarizeThread({
+        threadId,
+        windowHours,
+        messages: capturedMessages,
+      });
       summaries.push(summary);
 
       if (summary.skipped) {

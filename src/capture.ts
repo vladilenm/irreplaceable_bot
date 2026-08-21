@@ -1,6 +1,6 @@
 import type { Bot, Context } from 'grammy';
 import { logger } from './logger.js';
-import { upsertMessage } from './database.js';
+import type { MessageRepository } from './messages.repository.js';
 import type { CapturedMessage } from './types.js';
 
 /**
@@ -21,6 +21,7 @@ import type { CapturedMessage } from './types.js';
 export interface CaptureOptions {
   targetChatId: number;
   trackedThreadIds: ReadonlySet<number>;
+  messages: MessageRepository;
   mapMessage?: (ctx: Context) => CapturedMessage | null;
 }
 
@@ -57,7 +58,7 @@ async function captureHandler(ctx: Context, options: CaptureOptions): Promise<vo
     const captured = (options.mapMessage ?? mapTelegramMessageToCaptured)(ctx);
     if (captured === null) return;
 
-    upsertMessage(captured);
+    await options.messages.upsert(captured);
 
     // Message text is never written to logs.
     logger.debug(
