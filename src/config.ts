@@ -1,7 +1,9 @@
-import type { BotConfig, DatabaseConfig, RequestMatchingConfig } from './types.js';
+import { readFileSync } from 'node:fs';
+import { RUNTIME_DEFAULTS } from './runtime-defaults.js';
+import type { BotConfig, DatabaseConfig } from './types.js';
 
-function requireEnv(name: string): string {
-  const value = process.env[name];
+function requireEnv(env: NodeJS.ProcessEnv, name: string): string {
+  const value = env[name];
   if (!value) {
     throw new Error(`Missing required environment variable: ${name}`);
   }
@@ -9,24 +11,12 @@ function requireEnv(name: string): string {
 }
 
 // Fail at startup rather than at the first scheduled Telegram API call.
-function requireEnvInt(name: string): number {
-  const value = requireEnv(name);
+function requireEnvInt(env: NodeJS.ProcessEnv, name: string): number {
+  const value = requireEnv(env, name);
   if (!/^-?\d+$/.test(value)) {
     throw new Error(`Environment variable ${name} must be an integer, got "${value}"`);
   }
   return Number(value);
-}
-
-function readEnvIntWithDefault(name: string, defaultValue: number, min?: number): number {
-  const raw = process.env[name];
-  const value = raw === undefined || raw === '' ? defaultValue : Number(raw);
-  if (!Number.isInteger(value)) {
-    throw new Error(`Environment variable ${name} must be an integer, got "${String(raw)}"`);
-  }
-  if (min !== undefined && value < min) {
-    throw new Error(`Environment variable ${name} must be >= ${String(min)}, got ${String(value)}`);
-  }
-  return value;
 }
 
 function parseTrackedThreadIds(raw: string): number[] {
@@ -44,88 +34,75 @@ function parseTrackedThreadIds(raw: string): number[] {
     });
 }
 
-export function readRequestMatchingConfig(
+export function readTimewebAiToken(env: NodeJS.ProcessEnv): string {
+  return requireEnv(env, 'TIMEWEB_AI_TOKEN');
+}
+
+function loadBundledTimewebCa(): string {
+  return readFileSync(new URL('../config/timeweb-cloud-ca.crt', import.meta.url), 'utf8');
+}
+
+function isLoopbackHost(hostname: string): boolean {
+  return hostname === 'localhost' || hostname === '127.0.0.1' ||
+    hostname === '[::1]' || hostname === '::1';
+}
+
+export function readDatabaseConfig(
   env: NodeJS.ProcessEnv,
-): RequestMatchingConfig | null {
-  const flag = env['REQUEST_MATCHING_ENABLED'] ?? 'false';
-  if (flag !== 'true' && flag !== 'false') {
-    throw new Error('REQUEST_MATCHING_ENABLED must be true or false');
+  loadCa: () => string = loadBundledTimewebCa,
+): DatabaseConfig {
+  const url = requireEnv(env, 'DATABASE_URL');
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error('DATABASE_URL must be a valid PostgreSQL URL');
   }
-  if (flag === 'false') return null;
-
-  const required = (name: string): string => {
-    const value = env[name];
-    if (!value) throw new Error(`Missing required environment variable: ${name}`);
-    return value;
-  };
-  const positive = (name: string, fallback: number): number => {
-    const raw = env[name];
-    const value = raw === undefined || raw === '' ? fallback : Number(raw);
-    if (!Number.isInteger(value) || value < 1) {
-      throw new Error(`${name} must be >= 1`);
-    }
-    return value;
-  };
-
+  if (parsed.protocol !== 'postgresql:' && parsed.protocol !== 'postgres:') {
+    throw new Error('DATABASE_URL must use postgresql: or postgres:');
+  }
+  const ssl = !isLoopbackHost(parsed.hostname);
   return {
-    embeddingApiKey: required('EMBEDDING_API_KEY'),
-    embeddingModel: required('EMBEDDING_MODEL'),
-    memberIndexCron: env['MEMBER_INDEX_CRON'] ?? '*/15 * * * *',
-    concurrency: positive('REQUEST_MATCH_CONCURRENCY', 2),
-    queueLimit: positive('REQUEST_QUEUE_LIMIT', 50),
-    processingTimeoutMinutes: positive('REQUEST_PROCESSING_TIMEOUT_MINUTES', 10),
+    url,
+    ssl,
+    ...(ssl ? { caCert: loadCa() } : {}),
+    poolMax: RUNTIME_DEFAULTS.database.poolMax,
+    statementTimeoutMs: RUNTIME_DEFAULTS.database.statementTimeoutMs,
   };
 }
 
-export function readDatabaseConfig(env: NodeJS.ProcessEnv): DatabaseConfig {
-  const required = (name: string): string => {
-    const value = env[name];
-    if (!value) throw new Error(`Missing required environment variable: ${name}`);
-    return value;
-  };
-  const positive = (name: string, fallback: number): number => {
-    const raw = env[name];
-    const value = raw === undefined || raw === '' ? fallback : Number(raw);
-    if (!Number.isInteger(value) || value < 1) {
-      throw new Error(`${name} must be >= 1`);
-    }
-    return value;
-  };
-  const sslRaw = env['DATABASE_SSL'] ?? 'true';
-  if (sslRaw !== 'true' && sslRaw !== 'false') {
-    throw new Error('DATABASE_SSL must be true or false');
-  }
+export function readConfig(
+  env: NodeJS.ProcessEnv,
+  loadCa?: () => string,
+): BotConfig {
+  const timewebAiToken = readTimewebAiToken(env);
   return {
-    runtimeUrl: required('DATABASE_URL'),
-    migrationUrl: required('DATABASE_MIGRATION_URL'),
-    ssl: sslRaw === 'true',
-    ...(env['DATABASE_CA_CERT']
-      ? { caCert: env['DATABASE_CA_CERT'].replace(/\\n/g, '\n') }
-      : {}),
-    poolMax: positive('DATABASE_POOL_MAX', 5),
-    statementTimeoutMs: positive('DATABASE_STATEMENT_TIMEOUT_MS', 10_000),
+    botToken: requireEnv(env, 'BOT_TOKEN'),
+    targetChatId: requireEnvInt(env, 'TARGET_CHAT_ID'),
+    aiRadarThreadId: requireEnvInt(env, 'AI_RADAR_THREAD_ID'),
+    digestCron: RUNTIME_DEFAULTS.schedules.digestCron,
+    aiApiKey: timewebAiToken,
+    aiModel: RUNTIME_DEFAULTS.ai.chatModel,
+    aiBaseUrl: RUNTIME_DEFAULTS.ai.baseUrl,
+    logLevel: RUNTIME_DEFAULTS.logging.level,
+    nodeEnv: env['NODE_ENV'] ?? 'production',
+    threadSummaryThreadId: requireEnvInt(env, 'THREAD_SUMMARY_THREAD_ID'),
+    threadSummaryCron: RUNTIME_DEFAULTS.schedules.threadSummaryCron,
+    messageRetentionDays: RUNTIME_DEFAULTS.messages.retentionDays,
+    retentionSweepCron: RUNTIME_DEFAULTS.schedules.retentionSweepCron,
+    database: readDatabaseConfig(env, loadCa),
+    trackedThreadIds: parseTrackedThreadIds(requireEnv(env, 'TRACKED_THREAD_IDS')),
+    requestMatching: {
+      embeddingApiKey: timewebAiToken,
+      embeddingBaseUrl: RUNTIME_DEFAULTS.ai.baseUrl,
+      embeddingModel: RUNTIME_DEFAULTS.ai.embeddingModel,
+      embeddingDimensions: RUNTIME_DEFAULTS.ai.embeddingDimensions,
+      memberIndexCron: RUNTIME_DEFAULTS.schedules.memberIndexCron,
+      concurrency: RUNTIME_DEFAULTS.matching.concurrency,
+      queueLimit: RUNTIME_DEFAULTS.matching.queueLimit,
+      processingTimeoutMinutes: RUNTIME_DEFAULTS.matching.processingTimeoutMinutes,
+    },
   };
 }
 
-export const config: BotConfig = {
-  botToken: requireEnv('BOT_TOKEN'),
-  targetChatId: requireEnvInt('TARGET_CHAT_ID'),
-  aiRadarThreadId: requireEnvInt('AI_RADAR_THREAD_ID'),
-  digestCron: process.env['DIGEST_CRON'] ?? '0 6 * * *',
-  aiApiKey: requireEnv('AI_API_KEY'),
-  aiModel: process.env['AI_MODEL'] ?? 'claude-sonnet-4-20250514',
-  aiBaseUrl: process.env['AI_BASE_URL'],
-  logLevel: process.env['LOG_LEVEL'] ?? 'info',
-  nodeEnv: process.env['NODE_ENV'] ?? 'production',
-  threadSummaryThreadId: requireEnvInt('THREAD_SUMMARY_THREAD_ID'),
-  threadSummaryCron: process.env['THREAD_SUMMARY_CRON'] ?? '30 3 * * *',
-  messageRetentionDays: readEnvIntWithDefault('MESSAGE_RETENTION_DAYS', 90, 7),
-  retentionSweepCron: process.env['RETENTION_SWEEP_CRON'] ?? '0 1 * * *',
-  database: readDatabaseConfig(process.env),
-  trackedThreadIds: parseTrackedThreadIds(
-    process.env['TRACKED_THREAD_IDS'] ??
-      process.env['INITIAL_TRACKED_THREAD_IDS'] ??
-      '',
-  ),
-  requestMatching: readRequestMatchingConfig(process.env),
-};
+export const config = readConfig(process.env);

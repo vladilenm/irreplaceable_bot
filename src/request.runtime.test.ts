@@ -6,7 +6,9 @@ import type { RequestMatchingConfig } from './types.js';
 
 const feature: RequestMatchingConfig = {
   embeddingApiKey: 'embedding-key',
+  embeddingBaseUrl: 'https://api.timeweb.ai/v1',
   embeddingModel: 'text-embedding-3-small',
+  embeddingDimensions: 1536,
   memberIndexCron: '*/15 * * * *',
   concurrency: 2,
   queueLimit: 50,

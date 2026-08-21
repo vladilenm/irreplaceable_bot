@@ -4,8 +4,7 @@ import { assertDatabaseReady, createPool, withTransaction } from './pool.js';
 import type { DatabaseConfig } from '../types.js';
 
 const databaseConfig: DatabaseConfig = {
-  runtimeUrl: TEST_DATABASE_URL,
-  migrationUrl: TEST_DATABASE_URL,
+  url: TEST_DATABASE_URL,
   ssl: false,
   poolMax: 3,
   statementTimeoutMs: 2500,
@@ -26,11 +25,30 @@ describe('PostgreSQL pool', () => {
     const pool = createPool(databaseConfig);
     try {
       expect(pool.options.max).toBe(3);
+      expect(pool.options.connectionString).toBe(databaseConfig.url);
       expect(pool.options.options).toBe('-c statement_timeout=2500');
       expect(pool.options.ssl).toBe(false);
       await assertDatabaseReady(pool);
     } finally {
       await pool.end();
+    }
+  });
+
+  it('uses verified TLS only for remote database configs', () => {
+    const remotePool = createPool({
+      url: 'postgresql://club:secret@managed.example/club',
+      ssl: true,
+      caCert: 'timeweb-ca',
+      poolMax: 5,
+      statementTimeoutMs: 10_000,
+    });
+    try {
+      expect(remotePool.options.ssl).toEqual({
+        rejectUnauthorized: true,
+        ca: 'timeweb-ca',
+      });
+    } finally {
+      void remotePool.end();
     }
   });
 

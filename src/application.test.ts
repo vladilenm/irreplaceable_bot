@@ -6,6 +6,7 @@ import {
   type ApplicationDependencies,
 } from './application.js';
 import type { Persistence } from './persistence.js';
+import type { RequestMatchingRuntime } from './request.runtime.js';
 
 function dependencies(events: string[], options: { migrationFailure?: boolean } = {}) {
   const migrationPool = {
@@ -19,6 +20,11 @@ function dependencies(events: string[], options: { migrationFailure?: boolean } 
     }),
   } as unknown as Pool;
   const persistence = {} as Persistence;
+  const requestMatching = {
+    memberDirectory: {
+      indexPending: vi.fn(async () => ({ indexed: 0, failed: 0 })),
+    },
+  } as unknown as RequestMatchingRuntime;
   const bot = {
     api: {},
     stop: vi.fn(async () => {
@@ -28,13 +34,21 @@ function dependencies(events: string[], options: { migrationFailure?: boolean } 
   let poolCall = 0;
   const deps = {
     database: {
-      runtimeUrl: 'postgresql://runtime',
-      migrationUrl: 'postgresql://migration',
+      url: 'postgresql://runtime',
       ssl: false,
       poolMax: 5,
       statementTimeoutMs: 10_000,
     },
-    requestMatching: null,
+    requestMatching: {
+      embeddingApiKey: 'gateway-token',
+      embeddingBaseUrl: 'https://api.timeweb.ai/v1',
+      embeddingModel: 'openai/text-embedding-3-large',
+      embeddingDimensions: 1536,
+      memberIndexCron: '*/15 * * * *',
+      concurrency: 2,
+      queueLimit: 50,
+      processingTimeoutMinutes: 10,
+    },
     createPool: vi.fn(() => poolCall++ === 0 ? migrationPool : runtimePool),
     migrate: vi.fn(async () => {
       events.push('migrate');
@@ -47,7 +61,7 @@ function dependencies(events: string[], options: { migrationFailure?: boolean } 
       events.push('create-persistence');
       return persistence;
     }),
-    createRequestMatching: vi.fn(),
+    createRequestMatching: vi.fn(async () => requestMatching),
     createBot: vi.fn(() => {
       events.push('create-bot');
       return bot;
@@ -75,6 +89,9 @@ it('does not construct or start the bot before migrations and PostgreSQL readine
   const { deps } = dependencies(events);
 
   const running = await startApplication(deps);
+
+  expect(deps.createPool).toHaveBeenNthCalledWith(1, deps.database);
+  expect(deps.createPool).toHaveBeenNthCalledWith(2, deps.database);
 
   expect(events).toEqual([
     'migrate',

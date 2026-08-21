@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { pathToFileURL } from 'node:url';
-import { readDatabaseConfig } from './config.js';
+import { config } from './config.js';
 import { runMigrations } from './db/migrations.js';
 import { assertDatabaseReady, createPool } from './db/pool.js';
 import { OpenAiEmbeddingProvider } from './embeddings.js';
@@ -66,11 +66,8 @@ export async function seedMockMembers(
 }
 
 async function runSeedCli(): Promise<void> {
-  const database = readDatabaseConfig(process.env);
-  const apiKey = process.env['EMBEDDING_API_KEY'];
-  if (!apiKey) throw new Error('Missing required environment variable: EMBEDDING_API_KEY');
-  const model = process.env['EMBEDDING_MODEL'] ?? 'text-embedding-3-small';
-  const migrationPool = createPool(database, database.migrationUrl);
+  const { database, requestMatching } = config;
+  const migrationPool = createPool(database);
   try {
     await runMigrations(migrationPool);
   } finally {
@@ -81,7 +78,10 @@ async function runSeedCli(): Promise<void> {
     await assertDatabaseReady(pool);
     const service = new MemberDirectoryService({
       repository: new PgMemberRepository(pool),
-      embeddings: new OpenAiEmbeddingProvider({ apiKey, model }),
+      embeddings: new OpenAiEmbeddingProvider({
+        apiKey: requestMatching.embeddingApiKey,
+        model: requestMatching.embeddingModel,
+      }),
     });
     const result = await seedMockMembers(service, process.env);
     logger.info(

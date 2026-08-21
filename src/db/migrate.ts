@@ -7,7 +7,7 @@ import { createPool } from './pool.js';
 import { runMigrations } from './migrations.js';
 
 export async function migrateDatabase(): Promise<number> {
-  const pool = createPool(config.database, config.database.migrationUrl);
+  const pool = createPool(config.database);
   try {
     return await runMigrations(pool);
   } finally {

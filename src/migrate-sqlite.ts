@@ -408,7 +408,7 @@ async function runImportCli(): Promise<void> {
     throw new Error('Pass an absolute SQLite file path');
   }
   const database = readDatabaseConfig(process.env);
-  const migrationPool = createPool(database, database.migrationUrl);
+  const migrationPool = createPool(database);
   try {
     await runMigrations(migrationPool);
   } finally {

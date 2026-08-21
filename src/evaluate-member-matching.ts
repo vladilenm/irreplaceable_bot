@@ -37,10 +37,6 @@ function evaluationPath(): string {
 
 export async function runMemberMatchingEvaluation(path = evaluationPath()): Promise<number> {
   const cases = parseEvaluationCases(JSON.parse(readFileSync(path, 'utf8')));
-  if (!config.requestMatching) {
-    throw new Error('REQUEST_MATCHING_ENABLED must be true for evaluation');
-  }
-
   const pool = createPool(config.database);
   try {
     await assertDatabaseReady(pool);

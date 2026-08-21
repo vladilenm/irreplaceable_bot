@@ -1,12 +1,12 @@
 import { Pool, type PoolClient } from 'pg';
 import type { DatabaseConfig } from '../types.js';
 
-export function createPool(config: DatabaseConfig, url = config.runtimeUrl): Pool {
+export function createPool(config: DatabaseConfig): Pool {
   return new Pool({
-    connectionString: url,
+    connectionString: config.url,
     max: config.poolMax,
     ssl: config.ssl
-      ? { rejectUnauthorized: true, ...(config.caCert ? { ca: config.caCert } : {}) }
+      ? { rejectUnauthorized: true, ca: config.caCert }
       : false,
     options: `-c statement_timeout=${String(config.statementTimeoutMs)}`,
   });

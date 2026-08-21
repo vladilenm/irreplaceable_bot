@@ -63,8 +63,8 @@ describe('summarizeThread gating (SUM-02 + SUM-04)', () => {
     });
 
     expect(result).toMatchObject({ skipped: false, messageCount: 1 });
-    expect(anthropicCreate).toHaveBeenCalledTimes(1);
-    expect(openaiCreate).not.toHaveBeenCalled();
+    expect(anthropicCreate).not.toHaveBeenCalled();
+    expect(openaiCreate).toHaveBeenCalledTimes(1);
   });
 
   it('L2: 0 messages returns low-volume skip', async () => {

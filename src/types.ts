@@ -1,6 +1,8 @@
 export interface RequestMatchingConfig {
   embeddingApiKey: string;
+  embeddingBaseUrl: string;
   embeddingModel: string;
+  embeddingDimensions: number;
   memberIndexCron: string;
   concurrency: number;
   queueLimit: number;
@@ -8,8 +10,7 @@ export interface RequestMatchingConfig {
 }
 
 export interface DatabaseConfig {
-  runtimeUrl: string;
-  migrationUrl: string;
+  url: string;
   ssl: boolean;
   caCert?: string;
   poolMax: number;
@@ -23,7 +24,7 @@ export interface BotConfig {
   digestCron: string;
   aiApiKey: string;
   aiModel: string;
-  aiBaseUrl?: string;
+  aiBaseUrl: string;
   logLevel: string;
   nodeEnv: string;
   threadSummaryThreadId: number;
@@ -32,7 +33,7 @@ export interface BotConfig {
   retentionSweepCron: string;
   database: DatabaseConfig;
   trackedThreadIds: number[];
-  requestMatching: RequestMatchingConfig | null;
+  requestMatching: RequestMatchingConfig;
 }
 
 export interface DigestItem {

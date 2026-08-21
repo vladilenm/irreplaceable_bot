@@ -14,8 +14,8 @@ export interface PollingHandle {
 
 export interface ApplicationDependencies {
   database: DatabaseConfig;
-  requestMatching: RequestMatchingConfig | null;
-  createPool(config: DatabaseConfig, url?: string): Pool;
+  requestMatching: RequestMatchingConfig;
+  createPool(config: DatabaseConfig): Pool;
   migrate(pool: Pool): Promise<number | void>;
   assertReady(pool: Pool): Promise<void>;
   createPersistence(pool: Pool): Persistence;
@@ -42,7 +42,7 @@ export interface RunningApplication {
 export async function startApplication(
   deps: ApplicationDependencies,
 ): Promise<RunningApplication> {
-  const migrationPool = deps.createPool(deps.database, deps.database.migrationUrl);
+  const migrationPool = deps.createPool(deps.database);
   try {
     await deps.migrate(migrationPool);
   } finally {
@@ -55,9 +55,7 @@ export async function startApplication(
   try {
     await deps.assertReady(pool);
     const persistence = deps.createPersistence(pool);
-    const requestMatching = deps.requestMatching
-      ? await deps.createRequestMatching(deps.requestMatching, persistence)
-      : undefined;
+    const requestMatching = await deps.createRequestMatching(deps.requestMatching, persistence);
     bot = deps.createBot({ persistence, requestMatching });
     const polling = deps.startPolling(bot);
     await polling.started;
@@ -65,32 +63,28 @@ export async function startApplication(
     deps.startScheduler(
       bot.api,
       persistence,
-      requestMatching && deps.requestMatching
-        ? {
-            memberIndex: {
-              cron: deps.requestMatching.memberIndexCron,
-              run: () => requestMatching.memberDirectory.indexPending(),
-            },
-          }
-        : {},
+      {
+        memberIndex: {
+          cron: deps.requestMatching.memberIndexCron,
+          run: () => requestMatching.memberDirectory.indexPending(),
+        },
+      },
     );
     schedulerStarted = true;
 
-    if (requestMatching) {
-      void requestMatching.memberDirectory.indexPending()
-        .then((result) => {
-          logger.info(
-            { indexed: result.indexed, failed: result.failed },
-            'Initial member directory indexing complete',
-          );
-        })
-        .catch((error: unknown) => {
-          logger.error(
-            { errorClass: error instanceof Error ? error.name : 'unknown' },
-            'Initial member directory indexing failed',
-          );
-        });
-    }
+    void requestMatching.memberDirectory.indexPending()
+      .then((result) => {
+        logger.info(
+          { indexed: result.indexed, failed: result.failed },
+          'Initial member directory indexing complete',
+        );
+      })
+      .catch((error: unknown) => {
+        logger.error(
+          { errorClass: error instanceof Error ? error.name : 'unknown' },
+          'Initial member directory indexing failed',
+        );
+      });
     void deps.runPreflight(bot).catch((error: unknown) => {
       logger.error(
         { errorClass: error instanceof Error ? error.name : 'unknown' },
