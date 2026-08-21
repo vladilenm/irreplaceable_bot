@@ -992,7 +992,46 @@ git commit -m "fix: redact LLM failure logs"
 
 ---
 
-### Task 9: Final Verification after Privacy Guard
+### Task 9: Assert Redaction in Emitted Pino JSON
+
+**Root cause:** the Task 8 tests inspect shallow logger call arguments. Pino has special `Error` serialization (including non-enumerable `message` and `stack`), so the tests must inspect the canonical JSON record Pino would emit rather than relying on object enumeration or mock-call shape alone.
+
+**Files:**
+- Modify: `src/summarizer.test.ts`
+- Modify: `src/summary.test.ts`
+
+**Interfaces:**
+- Consumes: the real singleton Pino logger and its exported serializer symbols.
+- Produces: regression tests that render the actual Pino JSON record for each LLM error boundary and prove the sentinel cannot be present.
+
+- [ ] **Step 1: Establish serializer sensitivity without changing production behavior**
+
+Add a small test helper that invokes the same Pino JSON serializer used by the singleton logger for captured bindings/message. Add a positive control with `{ err: new Error(sentinel) }` and assert the rendered JSON contains the sentinel; this proves the test catches the old unsafe path even though the production redaction code is already correct.
+
+- [ ] **Step 2: Assert emitted records for each real LLM boundary**
+
+Replace/extend the Task 8 spy assertions so the transport failure, schema failure, and per-thread isolation tests serialize their actual logger call and assert the JSON record contains safe `errorClass`/numeric `status` where applicable but neither `err` nor the sentinel.
+
+- [ ] **Step 3: Run focused and full verification**
+
+```bash
+npm test -- src/summarizer.test.ts src/summary.test.ts
+npm test
+npm run typecheck
+```
+
+Expected: all tests pass; the positive control demonstrates that raw Pino error serialization would have failed the redaction assertion.
+
+- [ ] **Step 4: Commit the proof-strengthening test change**
+
+```bash
+git add src/summarizer.test.ts src/summary.test.ts
+git commit -m "test: assert Pino log redaction"
+```
+
+---
+
+### Task 10: Final Verification after Privacy Guard
 
 **Files:**
 - Verify only: all modified files
