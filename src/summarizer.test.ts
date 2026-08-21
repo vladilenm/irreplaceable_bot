@@ -1,5 +1,6 @@
 // Structured output, transcript safety, and citation validation.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import pino from 'pino';
 import type { CapturedMessage, Topic } from './types.js';
 import { logger } from './logger.js';
 import { LlmSchemaError } from './llm.js';
@@ -27,6 +28,17 @@ const topic = (over: Partial<Topic> = {}): Topic => ({
   links: [],
   ...over,
 });
+
+type CapturedLogCall = [Record<string, unknown>, string | undefined];
+type PinoSerializer = (obj: Record<string, unknown>, msg: string | undefined, level: number, time: number) => string;
+
+function renderPinoJson(call: CapturedLogCall | undefined, level: 'error' | 'warn'): string {
+  if (!call) throw new Error('Expected logger call');
+  const serializer = (logger as unknown as { [pino.symbols.asJsonSym]: PinoSerializer })[
+    pino.symbols.asJsonSym
+  ];
+  return serializer.call(logger, call[0], call[1], logger.levels.values[level]!, 0);
+}
 
 describe('ThreadSummarySchema', () => {
   it('Test 1: minimum valid shape parses (1 topic, 1 bullet, empty links)', () => {
@@ -349,6 +361,14 @@ describe('summarizeThread LLM failure logging', () => {
     openaiCreate.mockReset();
   });
 
+  it('proves Pino serializes a raw err with its non-enumerable message', () => {
+    const sentinel = 'REQUEST_PROFILE_SENTINEL_positive_control_2a4dc8';
+    const rendered = renderPinoJson([{ err: new Error(sentinel) }, 'positive control'], 'error');
+
+    expect(rendered).toContain(sentinel);
+    expect(JSON.parse(rendered)).toMatchObject({ err: { message: sentinel } });
+  });
+
   it('redacts a transport error while retaining its safe class and status', async () => {
     const sentinel = 'REQUEST_PROFILE_SENTINEL_transport_9e0cc4';
     const err = Object.assign(new Error(sentinel), { status: 503 });
@@ -362,13 +382,11 @@ describe('summarizeThread LLM failure logging', () => {
     });
 
     expect(result).toMatchObject({ skipped: true, reason: 'llm-error' });
-    const call = errorSpy.mock.calls.at(-1);
-    const bindings = call?.[0] as Record<string, unknown>;
-    const message = call?.[1] as string;
-    expect(bindings).not.toHaveProperty('err');
-    expect(bindings).not.toContain(err);
-    expect(message).not.toContain(sentinel);
-    expect(bindings).toMatchObject({
+    const rendered = renderPinoJson(errorSpy.mock.calls.at(-1) as CapturedLogCall | undefined, 'error');
+    const record = JSON.parse(rendered) as Record<string, unknown>;
+    expect(rendered).not.toContain(sentinel);
+    expect(record).not.toHaveProperty('err');
+    expect(record).toMatchObject({
       errorClass: 'Error',
       status: 503,
       threadId: 777,
@@ -390,18 +408,16 @@ describe('summarizeThread LLM failure logging', () => {
     });
 
     expect(result).toMatchObject({ skipped: true, reason: 'schema-invalid' });
-    const call = warnSpy.mock.calls.at(-1);
-    const bindings = call?.[0] as Record<string, unknown>;
-    const message = call?.[1] as string;
-    expect(bindings).not.toHaveProperty('err');
-    expect(bindings).not.toContain(err);
-    expect(message).not.toContain(sentinel);
-    expect(bindings).toMatchObject({
+    const rendered = renderPinoJson(warnSpy.mock.calls.at(-1) as CapturedLogCall | undefined, 'warn');
+    const record = JSON.parse(rendered) as Record<string, unknown>;
+    expect(rendered).not.toContain(sentinel);
+    expect(record).not.toHaveProperty('err');
+    expect(record).toMatchObject({
       errorClass: 'LlmSchemaError',
       threadId: 778,
       messageCount: 1,
       model: 'openai/gpt-4.1-mini',
     });
-    expect(bindings).not.toHaveProperty('status');
+    expect(record).not.toHaveProperty('status');
   });
 });

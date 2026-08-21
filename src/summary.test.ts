@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import pino from 'pino';
 import type {
   ThreadSummary,
   PipelineState,
@@ -71,6 +72,17 @@ const messages: MessageRepository = {
 };
 const runSummary = (options: RunThreadSummaryOptions = {}) =>
   runThreadSummaryPipeline(messages, jobs, options);
+
+type CapturedLogCall = [Record<string, unknown>, string | undefined];
+type PinoSerializer = (obj: Record<string, unknown>, msg: string | undefined, level: number, time: number) => string;
+
+function renderPinoJson(call: CapturedLogCall | undefined): string {
+  if (!call) throw new Error('Expected logger call');
+  const serializer = (logger as unknown as { [pino.symbols.asJsonSym]: PinoSerializer })[
+    pino.symbols.asJsonSym
+  ];
+  return serializer.call(logger, call[0], call[1], logger.levels.values.error!, 0);
+}
 
 // Single- and multi-topic fixtures used across the orchestration tests.
 const okSummary = (
@@ -197,12 +209,11 @@ describe('runThreadSummaryPipeline', () => {
     const call = errorSpy.mock.calls.find(
       ([bindings]) => (bindings as Record<string, unknown>).threadId === 100,
     );
-    const bindings = call?.[0] as Record<string, unknown>;
-    const message = call?.[1] as string;
-    expect(bindings).not.toHaveProperty('err');
-    expect(bindings).not.toContain(err);
-    expect(message).not.toContain(sentinel);
-    expect(bindings).toMatchObject({ errorClass: 'Error', status: 502, threadId: 100 });
+    const rendered = renderPinoJson(call as CapturedLogCall | undefined);
+    const record = JSON.parse(rendered) as Record<string, unknown>;
+    expect(rendered).not.toContain(sentinel);
+    expect(record).not.toHaveProperty('err');
+    expect(record).toMatchObject({ errorClass: 'Error', status: 502, threadId: 100 });
   });
 
   it('O5: pipeline returns persistence intent without recording delivery itself', async () => {
