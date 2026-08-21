@@ -24,12 +24,12 @@ it('hydrates the local index and fails stale reservations without a network sync
     readStatus: vi.fn(() => null),
   };
   const requestRepository: RequestRepository = {
-    reserve: vi.fn(() => true),
-    complete: vi.fn(),
-    noMatch: vi.fn(),
-    fail: vi.fn(),
-    failStale: vi.fn(() => 0),
-    read: vi.fn(() => null),
+    reserve: vi.fn(async () => true),
+    complete: vi.fn(async () => undefined),
+    noMatch: vi.fn(async () => undefined),
+    fail: vi.fn(async () => undefined),
+    failStale: vi.fn(async () => 0),
+    read: vi.fn(async () => null),
   };
   const directory: MemberDirectoryProvider = { listMembers: vi.fn() };
   const embeddings: EmbeddingProvider = { model: 'model', embed: vi.fn() };

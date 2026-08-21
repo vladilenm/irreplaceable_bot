@@ -159,7 +159,12 @@ async function failRequest(
       errorClass: error instanceof Error ? error.name : 'unknown',
     }, 'Member request failure reply was not delivered');
   }
-  options.repository.fail(request.chatId, request.messageId, errorCode, nowIso(options));
+  await options.repository.fail(
+    request.chatId,
+    request.messageId,
+    errorCode,
+    nowIso(options),
+  );
 }
 
 async function processRequest(
@@ -170,7 +175,7 @@ async function processRequest(
   try {
     if (request.query === '') {
       const sent = await sendReply(api, request, emptyRequestText, options);
-      options.repository.noMatch(request.chatId, request.messageId, {
+      await options.repository.noMatch(request.chatId, request.messageId, {
         responseMessageId: sent.message_id,
         completedAt: nowIso(options),
       });
@@ -180,7 +185,7 @@ async function processRequest(
     const matches = await options.matcher.match(request.query, request.authorUsername ?? undefined);
     if (matches.length < 3) {
       const sent = await sendReply(api, request, noMatchText, options);
-      options.repository.noMatch(request.chatId, request.messageId, {
+      await options.repository.noMatch(request.chatId, request.messageId, {
         responseMessageId: sent.message_id,
         completedAt: nowIso(options),
       });
@@ -188,9 +193,9 @@ async function processRequest(
     }
 
     const sent = await sendReply(api, request, formatMemberMatches(matches.slice(0, 5)), options);
-    options.repository.complete(request.chatId, request.messageId, {
+    await options.repository.complete(request.chatId, request.messageId, {
       responseMessageId: sent.message_id,
-      matchCount: matches.length,
+      matchCount: Math.min(matches.length, 5),
       completedAt: nowIso(options),
     });
   } catch (error: unknown) {
@@ -204,13 +209,13 @@ async function processRequest(
   }
 }
 
-function reserveAndQueue(
+async function reserveAndQueue(
   api: Api,
   request: IncomingMemberRequest,
   queue: BoundedTaskQueue,
   options: RequestHandlerOptions,
-): void {
-  const reserved = options.repository.reserve({
+): Promise<void> {
+  const reserved = await options.repository.reserve({
     chatId: request.chatId,
     messageId: request.messageId,
     threadId: request.threadId,
@@ -227,7 +232,7 @@ function reserveAndQueue(
       threadId: request.threadId,
       messageId: request.messageId,
     }, 'Member request queue is full');
-    void failRequest(api, request, options, 'queue-full');
+    await failRequest(api, request, options, 'queue-full');
   }
 }
 
@@ -237,7 +242,7 @@ export function registerRequestHandlers(bot: Bot, options: RequestHandlerOptions
     ['message:text', 'message:caption', 'edited_message:text', 'edited_message:caption'],
     async (ctx, next) => {
       const request = extractMemberRequest(ctx, options.targetChatId);
-      if (request) reserveAndQueue(ctx.api, request, queue, options);
+      if (request) await reserveAndQueue(ctx.api, request, queue, options);
       await next();
     },
   );

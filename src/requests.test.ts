@@ -42,12 +42,12 @@ const matches: PublicMemberMatch[] = [
 
 function requestRepository(reserve = true) {
   return {
-    reserve: vi.fn(() => reserve),
-    complete: vi.fn(),
-    noMatch: vi.fn(),
-    fail: vi.fn(),
-    failStale: vi.fn(() => 0),
-    read: vi.fn(() => null),
+    reserve: vi.fn(async () => reserve),
+    complete: vi.fn(async () => undefined),
+    noMatch: vi.fn(async () => undefined),
+    fail: vi.fn(async () => undefined),
+    failStale: vi.fn(async () => 0),
+    read: vi.fn(async () => null),
   };
 }
 
@@ -183,6 +183,30 @@ it('sends three matches in the source topic and records completion', async () =>
     responseMessageId: 88,
     matchCount: 3,
   }));
+});
+
+it('publishes and persists at most five matches', async () => {
+  const repository = requestRepository();
+  const sixMatches = [...matches, ...matches.map((match, index) => ({
+    ...match,
+    memberId: `${match.memberId}-${String(index)}`,
+    telegramUsername: `${match.telegramUsername}_${String(index)}`,
+  }))];
+  const matcher = { match: vi.fn().mockResolvedValue(sixMatches) } as Pick<MemberMatcher, 'match'>;
+  const send = vi.fn().mockResolvedValue({ message_id: 88 }) as unknown as typeof sendMessageWithRetry;
+  const handler = register({ repository, matcher, send });
+
+  await handler(context({
+    text: '#запрос Ищу эксперта',
+    entities: [{ type: 'hashtag', offset: 0, length: 7 }],
+  }), vi.fn().mockResolvedValue(undefined));
+
+  await vi.waitFor(() => expect(repository.complete).toHaveBeenCalledTimes(1));
+  expect(repository.complete).toHaveBeenCalledWith(-1001, 77, expect.objectContaining({
+    matchCount: 5,
+  }));
+  const params = (send as unknown as ReturnType<typeof vi.fn>).mock.calls[0]?.[1] as SendMessageParams;
+  expect((params.text.match(/^\d+\./gm) ?? [])).toHaveLength(5);
 });
 
 it('returns a no-match reply without mentions for fewer than three matches', async () => {

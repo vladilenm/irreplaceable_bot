@@ -55,7 +55,7 @@ export function createRequestMatchingRuntime(
   const staleCutoff = new Date(
     now().getTime() - feature.processingTimeoutMinutes * 60_000,
   ).toISOString();
-  requestRepository.failStale(staleCutoff);
+  void requestRepository.failStale(staleCutoff);
 
   const matcher = new MemberMatcher({
     embeddings,
