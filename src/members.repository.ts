@@ -1,6 +1,14 @@
 import type Database from 'better-sqlite3';
+import type { Pool } from 'pg';
+import { registerTypes, toSql } from 'pgvector/pg';
+import { withTransaction } from './db/pool.js';
+import { logger } from './logger.js';
 import { buildMemberId, memberContentHash } from './members.js';
-import type { IndexedMember, MemberSourceRecord } from './members.js';
+import type {
+  IndexedMember,
+  MemberSourceRecord,
+  SimilarMember,
+} from './members.js';
 
 export interface MemberVersion {
   memberId: string;
@@ -26,7 +34,7 @@ export interface MemberSnapshotCommit {
   changedEmbeddings: ReadonlyMap<string, readonly number[]>;
 }
 
-export interface MemberRepository {
+export interface LegacyMemberRepository {
   readVersions(): Map<string, MemberVersion>;
   commitSnapshot(input: MemberSnapshotCommit): MemberSyncStatus;
   readActiveIndex(expectedModel: string): IndexedMember[];
@@ -98,7 +106,7 @@ function toStatus(row: SyncStateRow): MemberSyncStatus {
   };
 }
 
-export class SqliteMemberRepository implements MemberRepository {
+export class SqliteMemberRepository implements LegacyMemberRepository {
   constructor(private readonly db: Database.Database) {}
 
   readVersions(): Map<string, MemberVersion> {
@@ -283,5 +291,317 @@ export class SqliteMemberRepository implements MemberRepository {
       LIMIT 1
     `).get() as SyncStateRow | undefined;
     return row ? toStatus(row) : null;
+  }
+}
+
+export interface MemberIndexStatus {
+  provider: string;
+  generation: number;
+  lastSuccessAt: string;
+  embeddingModel: string;
+  dimensions: 1536;
+  activeCount: number;
+  pendingCount: number;
+}
+
+export interface MemberRepository {
+  upsertCards(records: readonly MemberSourceRecord[]): Promise<number>;
+  readPending(model: string, limit: number): Promise<MemberSourceRecord[]>;
+  upsertEmbedding(
+    memberId: string,
+    model: string,
+    contentHash: string,
+    vector: readonly number[],
+  ): Promise<void>;
+  search(
+    vector: readonly number[],
+    model: string,
+    limit: number,
+    requesterUsername?: string,
+  ): Promise<SimilarMember[]>;
+  recordIndexStatus(
+    provider: string,
+    model: string,
+    completedAt: Date,
+  ): Promise<MemberIndexStatus>;
+  readIndexStatus(provider: string): Promise<MemberIndexStatus | null>;
+  countBySource(source: MemberSourceRecord['source']): Promise<number>;
+}
+
+interface PendingMemberRow {
+  source: MemberSourceRecord['source'];
+  external_id: string;
+  display_name: string;
+  telegram_username: string;
+  profile_text: string;
+  source_updated_at: Date;
+  active: boolean;
+}
+
+interface SimilarMemberRow {
+  member_id: string;
+  display_name: string;
+  telegram_username: string;
+  profile_text: string;
+  similarity: number | string;
+}
+
+interface IndexStatusRow {
+  provider: string;
+  generation: string;
+  last_success_at: Date;
+  embedding_model: string;
+  dimensions: number;
+  active_count: number;
+  pending_count: number;
+}
+
+const VECTOR_DIMENSIONS = 1536;
+const registeredPools = new WeakSet<Pool>();
+
+function validateVector(values: readonly number[]): number[] {
+  if (
+    values.length !== VECTOR_DIMENSIONS ||
+    values.some((value) => !Number.isFinite(value))
+  ) {
+    throw new Error('embedding must contain exactly 1536 finite values');
+  }
+  return [...values];
+}
+
+function validateLimit(limit: number): void {
+  if (!Number.isInteger(limit) || limit < 1 || limit > 1000) {
+    throw new Error('limit must be an integer between 1 and 1000');
+  }
+}
+
+function mapIndexStatus(row: IndexStatusRow): MemberIndexStatus {
+  if (row.dimensions !== VECTOR_DIMENSIONS) {
+    throw new Error('Stored embedding dimensions mismatch');
+  }
+  return {
+    provider: row.provider,
+    generation: Number(row.generation),
+    lastSuccessAt: row.last_success_at.toISOString(),
+    embeddingModel: row.embedding_model,
+    dimensions: VECTOR_DIMENSIONS,
+    activeCount: row.active_count,
+    pendingCount: row.pending_count,
+  };
+}
+
+export class PgMemberRepository implements MemberRepository {
+  constructor(private readonly pool: Pool) {
+    if (!registeredPools.has(pool)) {
+      registeredPools.add(pool);
+      pool.on('connect', (client) => {
+        void registerTypes(client).catch((error: unknown) => {
+          logger.error(
+            { errorClass: error instanceof Error ? error.name : 'unknown' },
+            'Failed to register pgvector types',
+          );
+        });
+      });
+    }
+  }
+
+  async upsertCards(records: readonly MemberSourceRecord[]): Promise<number> {
+    const ids = new Set<string>();
+    for (const record of records) {
+      const memberId = buildMemberId(record.source, record.externalId);
+      if (ids.has(memberId)) throw new Error('duplicate member card');
+      ids.add(memberId);
+    }
+    return withTransaction(this.pool, async (client) => {
+      let upserted = 0;
+      for (const record of records) {
+        const result = await client.query(`
+          INSERT INTO members (
+            member_id, source, external_id, display_name, telegram_username,
+            profile_text, content_hash, source_updated_at, active, updated_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())
+          ON CONFLICT(member_id) DO UPDATE SET
+            source = EXCLUDED.source,
+            external_id = EXCLUDED.external_id,
+            display_name = EXCLUDED.display_name,
+            telegram_username = EXCLUDED.telegram_username,
+            profile_text = EXCLUDED.profile_text,
+            content_hash = EXCLUDED.content_hash,
+            source_updated_at = EXCLUDED.source_updated_at,
+            active = EXCLUDED.active,
+            updated_at = now()
+        `, [
+          buildMemberId(record.source, record.externalId),
+          record.source,
+          record.externalId,
+          record.displayName,
+          record.telegramUsername,
+          record.profileText,
+          memberContentHash(record),
+          record.sourceUpdatedAt,
+          record.active,
+        ]);
+        upserted += result.rowCount ?? 0;
+      }
+      return upserted;
+    });
+  }
+
+  async readPending(model: string, limit: number): Promise<MemberSourceRecord[]> {
+    validateLimit(limit);
+    const result = await this.pool.query<PendingMemberRow>(`
+      SELECT m.source, m.external_id, m.display_name, m.telegram_username,
+        m.profile_text, m.source_updated_at, m.active
+      FROM members AS m
+      LEFT JOIN member_embeddings AS e ON e.member_id = m.member_id
+      WHERE m.active = true AND (
+        e.member_id IS NULL OR
+        e.model <> $1 OR
+        e.content_hash <> m.content_hash OR
+        e.dimensions <> $2
+      )
+      ORDER BY m.member_id
+      LIMIT $3
+    `, [model, VECTOR_DIMENSIONS, limit]);
+    return result.rows.map((row) => ({
+      source: row.source,
+      externalId: row.external_id,
+      displayName: row.display_name,
+      telegramUsername: row.telegram_username,
+      profileText: row.profile_text,
+      sourceUpdatedAt: row.source_updated_at.toISOString(),
+      active: row.active,
+    }));
+  }
+
+  async upsertEmbedding(
+    memberId: string,
+    model: string,
+    contentHash: string,
+    values: readonly number[],
+  ): Promise<void> {
+    const vector = validateVector(values);
+    await this.pool.query(`
+      INSERT INTO member_embeddings (
+        member_id, model, dimensions, content_hash, embedding, updated_at
+      ) VALUES ($1, $2, $3, $4, $5::vector, now())
+      ON CONFLICT(member_id) DO UPDATE SET
+        model = EXCLUDED.model,
+        dimensions = EXCLUDED.dimensions,
+        content_hash = EXCLUDED.content_hash,
+        embedding = EXCLUDED.embedding,
+        updated_at = EXCLUDED.updated_at
+    `, [memberId, model, VECTOR_DIMENSIONS, contentHash, toSql(vector)]);
+  }
+
+  async search(
+    values: readonly number[],
+    model: string,
+    limit: number,
+    requesterUsername?: string,
+  ): Promise<SimilarMember[]> {
+    const vector = validateVector(values);
+    validateLimit(limit);
+    const excluded = requesterUsername?.replace(/^@/, '').toLowerCase() ?? null;
+    const result = await this.pool.query<SimilarMemberRow>(`
+      SELECT m.member_id, m.display_name, m.telegram_username, m.profile_text,
+        1 - (e.embedding <=> $1::vector) AS similarity
+      FROM members AS m
+      INNER JOIN member_embeddings AS e
+        ON e.member_id = m.member_id
+       AND e.content_hash = m.content_hash
+       AND e.model = $2
+       AND e.dimensions = $3
+      WHERE m.active = true
+        AND ($4::text IS NULL OR lower(m.telegram_username) <> $4)
+      ORDER BY e.embedding <=> $1::vector, m.member_id
+      LIMIT $5
+    `, [toSql(vector), model, VECTOR_DIMENSIONS, excluded, limit]);
+    return result.rows.map((row) => ({
+      member: {
+        memberId: row.member_id,
+        displayName: row.display_name,
+        telegramUsername: row.telegram_username,
+        profileText: row.profile_text,
+      },
+      similarity: Number(row.similarity),
+    }));
+  }
+
+  async recordIndexStatus(
+    provider: string,
+    model: string,
+    completedAt: Date,
+  ): Promise<MemberIndexStatus> {
+    return withTransaction(this.pool, async (client) => {
+      await client.query('SELECT pg_advisory_xact_lock($1)', [620260822]);
+      const counts = await client.query<{
+        active_count: number;
+        pending_count: number;
+      }>(`
+        SELECT
+          COUNT(*) FILTER (WHERE m.active)::integer AS active_count,
+          COUNT(*) FILTER (WHERE m.active AND (
+            e.member_id IS NULL OR e.model <> $1 OR
+            e.content_hash <> m.content_hash OR e.dimensions <> $2
+          ))::integer AS pending_count
+        FROM members AS m
+        LEFT JOIN member_embeddings AS e ON e.member_id = m.member_id
+      `, [model, VECTOR_DIMENSIONS]);
+      const previous = await client.query<{ generation: string }>(`
+        SELECT generation FROM member_index_state WHERE provider = $1
+      `, [provider]);
+      const generation = Number(previous.rows[0]?.generation ?? 0) + 1;
+      const activeCount = counts.rows[0]?.active_count ?? 0;
+      const pendingCount = counts.rows[0]?.pending_count ?? 0;
+      await client.query(`
+        INSERT INTO member_index_state (
+          provider, generation, last_success_at, embedding_model,
+          dimensions, active_count, pending_count
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+        ON CONFLICT(provider) DO UPDATE SET
+          generation = EXCLUDED.generation,
+          last_success_at = EXCLUDED.last_success_at,
+          embedding_model = EXCLUDED.embedding_model,
+          dimensions = EXCLUDED.dimensions,
+          active_count = EXCLUDED.active_count,
+          pending_count = EXCLUDED.pending_count
+      `, [
+        provider,
+        generation,
+        completedAt,
+        model,
+        VECTOR_DIMENSIONS,
+        activeCount,
+        pendingCount,
+      ]);
+      return {
+        provider,
+        generation,
+        lastSuccessAt: completedAt.toISOString(),
+        embeddingModel: model,
+        dimensions: VECTOR_DIMENSIONS,
+        activeCount,
+        pendingCount,
+      };
+    });
+  }
+
+  async readIndexStatus(provider: string): Promise<MemberIndexStatus | null> {
+    const result = await this.pool.query<IndexStatusRow>(`
+      SELECT provider, generation, last_success_at, embedding_model,
+        dimensions, active_count, pending_count
+      FROM member_index_state
+      WHERE provider = $1
+    `, [provider]);
+    const row = result.rows[0];
+    return row ? mapIndexStatus(row) : null;
+  }
+
+  async countBySource(source: MemberSourceRecord['source']): Promise<number> {
+    const result = await this.pool.query<{ count: string }>(`
+      SELECT COUNT(*)::text AS count FROM members WHERE source = $1
+    `, [source]);
+    return Number(result.rows[0]?.count ?? 0);
   }
 }

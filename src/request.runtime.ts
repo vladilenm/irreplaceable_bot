@@ -5,7 +5,7 @@ import { MemberIndex, MemberSyncService } from './members.js';
 import { NotionMemberDirectoryProvider } from './members.notion.js';
 import { SqliteMemberRepository } from './members.repository.js';
 import type { MemberDirectoryProvider, EmbeddingProvider } from './members.js';
-import type { MemberRepository } from './members.repository.js';
+import type { LegacyMemberRepository } from './members.repository.js';
 import { MemberMatcher } from './request.matcher.js';
 import { SqliteRequestRepository } from './request.repository.js';
 import type { RequestRepository } from './request.repository.js';
@@ -16,7 +16,7 @@ export interface RequestMatchingRuntime {
   index: MemberIndex;
   syncService: MemberSyncService;
   matcher: MemberMatcher;
-  memberRepository: MemberRepository;
+  memberRepository: LegacyMemberRepository;
   requestRepository: RequestRepository;
   handlerOptions: RequestHandlerOptions;
 }
@@ -24,7 +24,7 @@ export interface RequestMatchingRuntime {
 export function createRequestMatchingRuntime(
   feature: RequestMatchingConfig,
   overrides: Partial<{
-    memberRepository: MemberRepository;
+    memberRepository: LegacyMemberRepository;
     requestRepository: RequestRepository;
     directory: MemberDirectoryProvider;
     embeddings: EmbeddingProvider;

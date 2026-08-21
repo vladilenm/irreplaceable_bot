@@ -8,7 +8,7 @@ import {
 } from './members.js';
 import type { IndexedMember, MemberSourceRecord } from './members.js';
 import type {
-  MemberRepository,
+  LegacyMemberRepository,
   MemberSnapshotCommit,
   MemberSyncStatus,
 } from './members.repository.js';
@@ -64,7 +64,7 @@ function repository(options: {
   versions?: Map<string, { memberId: string; contentHash: string; embeddingModel: string | null; dimensions: number | null }>;
   index?: IndexedMember[];
   onCommit?: (input: MemberSnapshotCommit) => void;
-} = {}): MemberRepository {
+} = {}): LegacyMemberRepository {
   return {
     readVersions: vi.fn(() => options.versions ?? new Map()),
     commitSnapshot: vi.fn((input: MemberSnapshotCommit) => {

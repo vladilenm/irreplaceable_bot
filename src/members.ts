@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto';
-import type { MemberRepository } from './members.repository.js';
+import type { LegacyMemberRepository } from './members.repository.js';
 
 export interface MemberSourceRecord {
-  source: 'notion';
+  source: 'mock' | 'web' | 'notion';
   externalId: string;
   displayName: string;
   telegramUsername: string;
@@ -19,6 +19,13 @@ export interface IndexedMember {
   embedding: Float32Array;
   embeddingModel: string;
   generation: number;
+}
+
+export interface MemberCandidate {
+  memberId: string;
+  displayName: string;
+  telegramUsername: string;
+  profileText: string;
 }
 
 export interface MemberDirectoryProvider {
@@ -45,6 +52,11 @@ export function memberContentHash(record: MemberSourceRecord): string {
 }
 
 export interface SimilarMember {
+  member: MemberCandidate;
+  similarity: number;
+}
+
+export interface IndexedSimilarMember {
   member: IndexedMember;
   similarity: number;
 }
@@ -85,7 +97,7 @@ export class MemberIndex {
     query: readonly number[],
     limit: number,
     excludedUsername?: string,
-  ): SimilarMember[] {
+  ): IndexedSimilarMember[] {
     const excluded = excludedUsername?.toLowerCase();
     return this.members
       .filter((member) => member.telegramUsername.toLowerCase() !== excluded)
@@ -141,7 +153,7 @@ export class MemberSyncService {
   constructor(private readonly deps: {
     provider: MemberDirectoryProvider;
     embeddings: EmbeddingProvider;
-    repository: MemberRepository;
+    repository: LegacyMemberRepository;
     index: MemberIndex;
     now?: () => Date;
   }) {}

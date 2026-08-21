@@ -1,7 +1,7 @@
 import { expect, it, vi } from 'vitest';
 import type { RequestMatchingConfig } from './types.js';
 import type { MemberDirectoryProvider, EmbeddingProvider } from './members.js';
-import type { MemberRepository } from './members.repository.js';
+import type { LegacyMemberRepository } from './members.repository.js';
 import type { RequestRepository } from './request.repository.js';
 import { createRequestMatchingRuntime } from './request.runtime.js';
 
@@ -17,7 +17,7 @@ const feature: RequestMatchingConfig = {
 };
 
 it('hydrates the local index and fails stale reservations without a network sync', () => {
-  const memberRepository: MemberRepository = {
+  const memberRepository: LegacyMemberRepository = {
     readVersions: vi.fn(() => new Map()),
     commitSnapshot: vi.fn(),
     readActiveIndex: vi.fn(() => []),
