@@ -5,5 +5,7 @@ export default defineConfig({
     include: ['src/**/*.test.ts', 'tests/**/*.test.ts'],
     environment: 'node',
     setupFiles: ['./tests/setup.ts'],
+    // PostgreSQL contract tests intentionally share and reset one local schema.
+    fileParallelism: false,
   },
 });
