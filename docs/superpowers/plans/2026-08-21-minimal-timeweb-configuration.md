@@ -808,7 +808,59 @@ Expected: all tests pass, typecheck passes, and only the three listed source/tes
 
 ---
 
-### Task 6: Full Local Verification and Production Gate
+### Task 6: Make the Migration CLI Database-Only
+
+**Files:**
+- Create: `src/database-config.ts`
+- Create: `src/db/migrate.test.ts`
+- Modify: `src/config.ts`
+- Modify: `src/logger.ts`
+- Modify: `src/db/migrate.ts`
+- Test: `src/config.request-matching.test.ts`
+
+**Interfaces:**
+- Consumes: the one-URL `DatabaseConfig` contract from Task 1.
+- Produces: a migration command that needs only `DATABASE_URL`, so the documented local smoke test does not require a Telegram or AI credential.
+
+- [ ] **Step 1: Write a failing database-only migration test**
+
+Add an integration test for `migrateDatabase` that passes an environment object containing only the local test `DATABASE_URL`. Reset the test schema first, then assert that migrations complete without requiring any bot or AI environment variable.
+
+- [ ] **Step 2: Confirm the test is red**
+
+```bash
+npm test -- src/db/migrate.test.ts
+```
+
+Expected: the test fails because importing the migration path evaluates the complete application configuration and asks for `TIMEWEB_AI_TOKEN`.
+
+- [ ] **Step 3: Separate database parsing from application bootstrap**
+
+Move `readDatabaseConfig` and its CA/loopback helpers into `src/database-config.ts`; have `src/config.ts` import and re-export it so its existing public test interface remains stable. Make `src/db/migrate.ts` import the independent parser and accept `env: NodeJS.ProcessEnv = process.env`.
+
+`src/logger.ts` must no longer import global application configuration: use `RUNTIME_DEFAULTS.logging.level` and `process.env.NODE_ENV` for its development transport. This prevents a logging import from reintroducing the seven-variable application-config requirement into a database-only CLI.
+
+- [ ] **Step 4: Prove the documented command works exactly as written**
+
+```bash
+npm test -- src/db/migrate.test.ts src/config.request-matching.test.ts
+npm run typecheck
+npm run build
+DATABASE_URL=postgresql://club_bot:club_bot@127.0.0.1:55432/club_bot_test node dist/db/migrate.js
+```
+
+Expected: all tests/typecheck/build pass and the final command exits 0 without `TIMEWEB_AI_TOKEN`.
+
+- [ ] **Step 5: Commit the isolated bootstrap change**
+
+```bash
+git add src/database-config.ts src/db/migrate.test.ts src/config.ts src/logger.ts src/db/migrate.ts src/config.request-matching.test.ts
+git commit -m "fix: make migration CLI database-only"
+```
+
+---
+
+### Task 7: Full Local Verification and Production Gate
 
 **Files:**
 - Verify only: all modified files
