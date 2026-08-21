@@ -53,7 +53,6 @@ vi.mock('./config.js', () => ({
     threadSummaryCron: '30 3 * * *',
     messageRetentionDays: 90,
     retentionSweepCron: '0 1 * * *',
-    dbPath: 'data/messages.db',
     trackedThreadIds: [100, 200, 300],
   },
 }));

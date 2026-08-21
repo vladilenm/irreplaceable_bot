@@ -119,7 +119,6 @@ export const config: BotConfig = {
   messageRetentionDays: readEnvIntWithDefault('MESSAGE_RETENTION_DAYS', 90, 7),
   retentionSweepCron: process.env['RETENTION_SWEEP_CRON'] ?? '0 1 * * *',
   database: readDatabaseConfig(process.env),
-  dbPath: process.env['DB_PATH'] ?? 'data/messages.db',
   trackedThreadIds: parseTrackedThreadIds(
     process.env['TRACKED_THREAD_IDS'] ??
       process.env['INITIAL_TRACKED_THREAD_IDS'] ??

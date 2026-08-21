@@ -30,7 +30,6 @@ export interface BotConfig {
   messageRetentionDays: number;
   retentionSweepCron: string;
   database: DatabaseConfig;
-  dbPath: string;
   trackedThreadIds: number[];
   requestMatching: RequestMatchingConfig | null;
 }
