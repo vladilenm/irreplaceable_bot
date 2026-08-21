@@ -2,8 +2,8 @@ import { readFileSync } from 'node:fs';
 import { z } from 'zod';
 import { requestJson } from './llm.js';
 import type { JsonCompletionRequest, LlmConfig } from './llm.js';
-import { MemberIndex } from './members.js';
 import type { EmbeddingProvider } from './members.js';
+import type { MemberRepository } from './members.repository.js';
 
 const promptUrl = new URL('../prompts/member-matcher.md', import.meta.url);
 const PROMPT = readFileSync(promptUrl, 'utf8');
@@ -35,7 +35,7 @@ const normalized = (value: string): string => value
 export class MemberMatcher {
   constructor(private readonly deps: {
     embeddings: EmbeddingProvider;
-    index: MemberIndex;
+    members: Pick<MemberRepository, 'search'>;
     llm: LlmConfig;
     requestJsonFn?: RequestJsonFn;
   }) {}
@@ -46,7 +46,12 @@ export class MemberMatcher {
     if (!vector || vector.length === 0 || vector.some((value) => !Number.isFinite(value))) {
       throw new Error('Query embedding missing');
     }
-    const shortlist = this.deps.index.search(vector, 20, requesterUsername);
+    const shortlist = await this.deps.members.search(
+      vector,
+      this.deps.embeddings.model,
+      20,
+      requesterUsername,
+    );
     if (shortlist.length < 3) return [];
 
     const request: JsonCompletionRequest = {

@@ -145,12 +145,14 @@ export function createBot(options: CreateBotOptions): Bot {
   const uptimeText =
     uptimeHours > 0 ? `${uptimeHours}ч ${uptimeMinutes}м` : `${uptimeMinutes}м`;
 
-  const matchingSnapshot = options.requestMatching?.memberRepository.readStatus();
+  const matchingSnapshot = options.requestMatching
+    ? await options.requestMatching.memberRepository.readIndexStatus('postgres')
+    : null;
   const matchingInfo = !config.requestMatching
     ? '🧩 Подбор участников: выключен'
     : !matchingSnapshot
       ? '🧩 Подбор участников: индекс ещё не готов'
-      : `🧩 Подбор участников: ${String(matchingSnapshot.activeCount)} активных, ${matchingSnapshot.embeddingModel}, синхронизирован ${new Date(matchingSnapshot.lastSuccessAt).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' })} МСК`;
+      : `🧩 Подбор участников: ${String(matchingSnapshot.activeCount)} активных, ${String(matchingSnapshot.pendingCount)} ожидают индексации, ${matchingSnapshot.embeddingModel}, индекс обновлён ${new Date(matchingSnapshot.lastSuccessAt).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' })} МСК`;
 
   const statusText = [
     '🤖 Статус бота',

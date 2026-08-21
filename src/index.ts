@@ -14,7 +14,7 @@ import {
 } from './startup.js';
 import { createPool, assertDatabaseReady } from './db/pool.js';
 import { runMigrations } from './db/migrations.js';
-import { createCorePersistence } from './persistence.js';
+import { createPersistence } from './persistence.js';
 
 let mainStep = 0;
 let runningBot: Bot | null = null;
@@ -34,14 +34,14 @@ async function main(): Promise<void> {
   }
   postgresPool = createPool(config.database);
   await assertDatabaseReady(postgresPool);
-  const persistence = createCorePersistence(postgresPool);
+  const persistence = createPersistence(postgresPool);
 
   // Transitional until member matching is moved in the next migration slices.
   initDb();
   importLegacyState();
 
   const requestMatching = config.requestMatching
-    ? createRequestMatchingRuntime(config.requestMatching)
+    ? await createRequestMatchingRuntime(config.requestMatching, persistence)
     : undefined;
   const bot = createBot({ persistence, requestMatching });
   runningBot = bot;
@@ -57,25 +57,24 @@ async function main(): Promise<void> {
       logger.info('Bot is running (long-polling mode)');
       startScheduler(bot.api, persistence, requestMatching
         ? {
-            memberSync: {
-              cron: config.requestMatching?.memberSyncCron ?? '*/15 * * * *',
-              run: () => requestMatching.syncService.sync(),
+            memberIndex: {
+              cron: config.requestMatching?.memberIndexCron ?? '*/15 * * * *',
+              run: () => requestMatching.memberDirectory.indexPending(),
             },
           }
         : {});
       if (requestMatching) {
-        void requestMatching.syncService.sync()
+        void requestMatching.memberDirectory.indexPending()
           .then((result) => {
             logger.info({
-              generation: result.generation,
-              active: result.active,
-              embedded: result.embedded,
-            }, 'Initial member directory sync complete');
+              indexed: result.indexed,
+              failed: result.failed,
+            }, 'Initial member directory indexing complete');
           })
           .catch((error: unknown) => {
             logger.error({
               errorClass: error instanceof Error ? error.name : 'unknown',
-            }, 'Initial member directory sync failed');
+            }, 'Initial member directory indexing failed');
           });
       }
       void runPreflight(bot);

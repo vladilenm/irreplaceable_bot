@@ -15,7 +15,7 @@ const tasks = new Map<string, ScheduledTask>();
 type CronHandler = () => Promise<void>;
 
 export interface SchedulerOptions {
-  memberSync?: {
+  memberIndex?: {
     cron: string;
     run: () => Promise<unknown>;
   };
@@ -122,9 +122,9 @@ export function startScheduler(
     threadSummaryHandler(api, persistence));
   registerJob('retention-sweep', config.retentionSweepCron, () =>
     retentionSweepHandler(persistence));
-  if (options.memberSync) {
-    registerJob('member-sync', options.memberSync.cron, async () => {
-      await options.memberSync?.run();
+  if (options.memberIndex) {
+    registerJob('member-index', options.memberIndex.cron, async () => {
+      await options.memberIndex?.run();
     });
   }
   logger.info({ jobCount: tasks.size, jobs: [...tasks.keys()] }, 'Scheduler started');

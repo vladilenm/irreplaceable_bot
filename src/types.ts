@@ -1,9 +1,7 @@
 export interface RequestMatchingConfig {
-  notionToken: string;
-  notionDataSourceId: string;
   embeddingApiKey: string;
   embeddingModel: string;
-  memberSyncCron: string;
+  memberIndexCron: string;
   concurrency: number;
   queueLimit: number;
   processingTimeoutMinutes: number;

@@ -4,7 +4,8 @@ import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 import { z } from 'zod';
 import { config } from './config.js';
-import { closeDb, initDb } from './database.js';
+import { assertDatabaseReady, createPool } from './db/pool.js';
+import { createPersistence } from './persistence.js';
 import { createRequestMatchingRuntime } from './request.runtime.js';
 
 const EvalSchema = z.array(z.object({
@@ -40,10 +41,15 @@ export async function runMemberMatchingEvaluation(path = evaluationPath()): Prom
     throw new Error('REQUEST_MATCHING_ENABLED must be true for evaluation');
   }
 
-  initDb();
+  const pool = createPool(config.database);
   try {
-    const runtime = createRequestMatchingRuntime(config.requestMatching);
-    await runtime.syncService.sync();
+    await assertDatabaseReady(pool);
+    const persistence = createPersistence(pool);
+    const runtime = await createRequestMatchingRuntime(
+      config.requestMatching,
+      persistence,
+    );
+    await runtime.memberDirectory.indexPending(1000);
     let succeeded = 0;
 
     for (const [index, evaluationCase] of cases.entries()) {
@@ -57,7 +63,7 @@ export async function runMemberMatchingEvaluation(path = evaluationPath()): Prom
     console.info(`success_rate=${percentage.toFixed(1)}%`);
     return percentage >= 80 ? 0 : 1;
   } finally {
-    closeDb();
+    await pool.end();
   }
 }
 

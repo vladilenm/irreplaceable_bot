@@ -68,11 +68,9 @@ export function readRequestMatchingConfig(
   };
 
   return {
-    notionToken: required('NOTION_TOKEN'),
-    notionDataSourceId: required('NOTION_DATA_SOURCE_ID'),
     embeddingApiKey: required('EMBEDDING_API_KEY'),
     embeddingModel: required('EMBEDDING_MODEL'),
-    memberSyncCron: env['MEMBER_SYNC_CRON'] ?? '*/15 * * * *',
+    memberIndexCron: env['MEMBER_INDEX_CRON'] ?? '*/15 * * * *',
     concurrency: positive('REQUEST_MATCH_CONCURRENCY', 2),
     queueLimit: positive('REQUEST_QUEUE_LIMIT', 50),
     processingTimeoutMinutes: positive('REQUEST_PROCESSING_TIMEOUT_MINUTES', 10),
