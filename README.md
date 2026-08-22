@@ -37,7 +37,7 @@ docker compose -f docker-compose.test.yml down
 | `THREAD_SUMMARY_THREAD_ID` | ID топика ежедневной сводки |
 | `TRACKED_THREAD_IDS` | ID отслеживаемых топиков через запятую |
 | `TIMEWEB_AI_TOKEN` | единый ключ Timeweb AI Gateway для чата и embeddings |
-| `DATABASE_URL` | URL Managed PostgreSQL; TLS включается автоматически для не-локального домена |
+| `DATABASE_URL` | URL Managed PostgreSQL; для RFC1918 private IP TLS выключен, для домена или публичного IP используется строгий TLS с CA Timeweb |
 
 Операционные значения моделей, расписаний, лимитов и логирования зафиксированы в `src/runtime-defaults.ts`; они не настраиваются через App Platform. Полный пример локального окружения находится в [.env.example](./.env.example).
 

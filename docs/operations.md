@@ -36,13 +36,13 @@ docker compose -f docker-compose.test.yml exec postgres-test \
 
 1. Создайте один ключ AI Gateway и сохраните его как `TIMEWEB_AI_TOKEN`.
 2. Подтвердите `openai/gpt-4.1-mini` через `/models` и убедитесь, что `openai/text-embedding-3-large` возвращает 1536 значений при передаче `dimensions: 1536`.
-3. Создайте Managed PostgreSQL с pgvector и используйте его TLS-домен в `DATABASE_URL`.
+3. Создайте Managed PostgreSQL с pgvector. Для подключения по private IP добавьте App Platform и базу в одну приватную сеть и используйте RFC1918-адрес в `DATABASE_URL`; для подключения по домену или публичному IP используйте защищённый URL.
 4. Настройте семь переменных в существующем приложении App Platform: `BOT_TOKEN`, `TARGET_CHAT_ID`, `AI_RADAR_THREAD_ID`, `THREAD_SUMMARY_THREAD_ID`, `TRACKED_THREAD_IDS`, `TIMEWEB_AI_TOKEN`, `DATABASE_URL`.
 5. Разверните один экземпляр бота и проверьте `/status`.
 6. Один раз запустите `npm run seed:members -- --allow-production`, чтобы добавить 20 временных карточек.
 7. Проверьте `#запрос` на трёх репрезентативных запросах и убедитесь, что каждый ответ содержит 3–5 упоминаний.
 
-Для Managed PostgreSQL используйте TLS-домен: приложение автоматически включает TLS для не-локального хоста и проверяет цепочку по включённому публичному сертификату `config/timeweb-cloud-ca.crt`.
+Для Managed PostgreSQL приложение отключает TLS только для loopback и RFC1918 private IPv4 (`10/8`, `172.16/12`, `192.168/16`). Такое подключение допустимо только внутри общей приватной сети Timeweb. Для доменов, публичных IP и остальных адресов приложение включает строгий TLS и проверяет цепочку по сертификату `config/timeweb-cloud-ca.crt`.
 
 В App Platform должен работать ровно один экземпляр для одного `BOT_TOKEN`, поскольку Telegram long polling не допускает конкурентные процессы. Контейнеры App Platform заменяемы; данные остаются в Managed PostgreSQL.
 
