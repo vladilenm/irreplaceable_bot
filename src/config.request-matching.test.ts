@@ -75,6 +75,30 @@ describe('readDatabaseConfig', () => {
     expect(loadCa).not.toHaveBeenCalled();
   });
 
+  it.each([
+    '10.0.0.1',
+    '10.255.255.254',
+    '172.16.0.1',
+    '172.31.255.254',
+    '192.168.0.4',
+  ])('disables TLS for private PostgreSQL host %s without reading the CA', (host) => {
+    const loadCa = vi.fn(() => 'timeweb-ca');
+    expect(readDatabaseConfig({
+      DATABASE_URL: `postgresql://club:secret@${host}:5432/club`,
+    }, loadCa)).toMatchObject({ ssl: false });
+    expect(loadCa).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    '172.15.255.255',
+    '172.32.0.1',
+    '8.8.8.8',
+  ])('keeps verified TLS for non-private IPv4 host %s', (host) => {
+    expect(readDatabaseConfig({
+      DATABASE_URL: `postgresql://club:secret@${host}:5432/club`,
+    }, () => 'timeweb-ca')).toMatchObject({ ssl: true, caCert: 'timeweb-ca' });
+  });
+
   it('requires the bundled CA for a remote hostname', () => {
     expect(readDatabaseConfig({
       DATABASE_URL: 'postgresql://club:secret@managed.example/club',

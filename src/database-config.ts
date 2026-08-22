@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { isIP } from 'node:net';
 import { RUNTIME_DEFAULTS } from './runtime-defaults.js';
 import type { DatabaseConfig } from './types.js';
 
@@ -19,6 +20,14 @@ function isLoopbackHost(hostname: string): boolean {
     hostname === '[::1]' || hostname === '::1';
 }
 
+function isPrivateIpv4(hostname: string): boolean {
+  if (isIP(hostname) !== 4) return false;
+  const [first, second] = hostname.split('.').map(Number);
+  return first === 10 ||
+    (first === 172 && second !== undefined && second >= 16 && second <= 31) ||
+    (first === 192 && second === 168);
+}
+
 export function readDatabaseConfig(
   env: NodeJS.ProcessEnv,
   loadCa: () => string = loadBundledTimewebCa,
@@ -33,7 +42,7 @@ export function readDatabaseConfig(
   if (parsed.protocol !== 'postgresql:' && parsed.protocol !== 'postgres:') {
     throw new Error('DATABASE_URL must use postgresql: or postgres:');
   }
-  const ssl = !isLoopbackHost(parsed.hostname);
+  const ssl = !isLoopbackHost(parsed.hostname) && !isPrivateIpv4(parsed.hostname);
   return {
     url,
     ssl,
