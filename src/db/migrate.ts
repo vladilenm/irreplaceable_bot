@@ -2,7 +2,7 @@ import 'dotenv/config';
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 import { readDatabaseConfig } from '../database-config.js';
-import { logger } from '../logger.js';
+import { logger, safeErrorMetadata } from '../logger.js';
 import { createPool } from './pool.js';
 import { runMigrations } from './migrations.js';
 
@@ -24,7 +24,7 @@ if (invokedFile === currentFile) {
     })
     .catch((error: unknown) => {
       logger.fatal(
-        { errorClass: error instanceof Error ? error.name : 'unknown' },
+        safeErrorMetadata(error),
         'PostgreSQL migrations failed',
       );
       process.exitCode = 1;

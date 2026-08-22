@@ -18,22 +18,34 @@ export function errMsg(err: unknown): string {
 }
 
 /**
- * Redacted metadata for errors received from an LLM provider. Provider error
- * messages can echo prompts or responses, so they must never enter logs.
+ * Redacted metadata for errors received from external systems. Error messages
+ * can echo prompts, responses, SQL, or connection strings, so they must never
+ * enter logs. Standard PostgreSQL SQLSTATE and Node system error codes are safe
+ * enough to retain for operational diagnosis.
  */
-export function safeErrorMetadata(err: unknown): { errorClass: string; status?: number } {
+export function safeErrorMetadata(err: unknown): {
+  errorClass: string;
+  status?: number;
+  code?: string;
+} {
   const errorClass =
     err !== null && typeof err === 'object' && err.constructor?.name
       ? err.constructor.name
       : typeof err;
-  const status =
-    err !== null && typeof err === 'object'
-      ? (err as { status?: unknown }).status
-      : undefined;
+  const record = err !== null && typeof err === 'object'
+    ? err as { status?: unknown; code?: unknown }
+    : undefined;
+  const metadata: { errorClass: string; status?: number; code?: string } = { errorClass };
 
-  return typeof status === 'number' && Number.isFinite(status) && Number.isInteger(status)
-    ? { errorClass, status }
-    : { errorClass };
+  if (typeof record?.status === 'number' && Number.isFinite(record.status) &&
+      Number.isInteger(record.status)) {
+    metadata.status = record.status;
+  }
+  if (typeof record?.code === 'string' &&
+      /^(?:[0-9A-Z]{5}|E[A-Z0-9_]+)$/.test(record.code)) {
+    metadata.code = record.code;
+  }
+  return metadata;
 }
 
 export const logger = pino({
