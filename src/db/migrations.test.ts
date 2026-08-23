@@ -33,6 +33,8 @@ describe('runMigrations', () => {
       'member_requests',
       'members',
       'messages',
+      'scheduled_publication_chunks',
+      'scheduled_publications',
       'schema_migrations',
     ]);
 

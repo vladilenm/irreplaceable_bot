@@ -38,6 +38,15 @@ function delay(ms: number): Promise<void> {
 
 type SentMessage = Awaited<ReturnType<Api['sendMessage']>>;
 
+export type SendMessageOnceResult =
+  | { ok: true; message: SentMessage }
+  | {
+      ok: false;
+      errorCode: string;
+      retryable: boolean;
+      retryAfterMs: number | null;
+    };
+
 async function attemptSend(api: Api, params: SendMessageParams): Promise<SentMessage> {
   return api.sendMessage(params.chatId, params.text, {
     message_thread_id: params.threadId,
@@ -52,32 +61,77 @@ async function attemptSend(api: Api, params: SendMessageParams): Promise<SentMes
   });
 }
 
+function classifySendError(err: unknown): Omit<Extract<SendMessageOnceResult, { ok: false }>, 'ok'> {
+  if (err instanceof GrammyError) {
+    const errorCode = err.error_code;
+    const retryAfter = err.parameters?.retry_after;
+    if (errorCode === 429) {
+      return {
+        errorCode: 'telegram-429',
+        retryable: true,
+        retryAfterMs: typeof retryAfter === 'number' ? retryAfter * 1000 : null,
+      };
+    }
+    if (errorCode >= 400 && errorCode < 500) {
+      return { errorCode: `telegram-${String(errorCode)}`, retryable: false, retryAfterMs: null };
+    }
+    return { errorCode: `telegram-${String(errorCode)}`, retryable: true, retryAfterMs: null };
+  }
+  return { errorCode: 'telegram-network', retryable: true, retryAfterMs: null };
+}
+
+/**
+ * Sends one Telegram request without an in-memory retry. Durable publication
+ * delivery persists this result before deciding whether to retry.
+ */
+export async function sendMessageOnce(api: Api, params: SendMessageParams): Promise<SendMessageOnceResult> {
+  return (await sendMessageOnceWithCause(api, params)).result;
+}
+
+async function sendMessageOnceWithCause(
+  api: Api,
+  params: SendMessageParams,
+): Promise<{ result: SendMessageOnceResult; cause: unknown | null }> {
+  try {
+    return { result: { ok: true, message: await attemptSend(api, params) }, cause: null };
+  } catch (cause: unknown) {
+    return { result: { ok: false, ...classifySendError(cause) }, cause };
+  }
+}
+
 export async function sendMessageWithRetry(api: Api, params: SendMessageParams): Promise<SentMessage> {
   const logBinding = {
     chatId: params.chatId,
     threadId: params.threadId,
     pipeline: params.pipeline,
   };
-  try {
-    const sent = await attemptSend(api, params);
+  const firstAttempt = await sendMessageOnceWithCause(api, params);
+  const first = firstAttempt.result;
+  if (first.ok) {
     logger.info(logBinding, 'Telegram sendMessage ok');
-    return sent;
-  } catch (err: unknown) {
-    logger.error(
-      { ...logBinding, err },
-      `Telegram sendMessage failed, retrying in 3s: ${describeSendError(err, params.chatId, params.threadId)}`,
-    );
-    await delay(RETRY_DELAY_MS);
-    try {
-      const sent = await attemptSend(api, params);
-      logger.info(logBinding, 'Telegram sendMessage ok (after retry)');
-      return sent;
-    } catch (retryErr: unknown) {
-      logger.fatal(
-        { ...logBinding, err: retryErr },
-        `Telegram sendMessage failed after retry: ${describeSendError(retryErr, params.chatId, params.threadId)}`,
-      );
-      throw retryErr;
-    }
+    return first.message;
   }
+  if (!first.retryable) {
+    logger.fatal(
+      { ...logBinding, err: firstAttempt.cause },
+      `Telegram sendMessage failed without retry: ${describeSendError(firstAttempt.cause, params.chatId, params.threadId)}`,
+    );
+    throw firstAttempt.cause;
+  }
+  logger.error(
+    { ...logBinding, err: firstAttempt.cause },
+    `Telegram sendMessage failed, retrying in 3s: ${describeSendError(firstAttempt.cause, params.chatId, params.threadId)}`,
+  );
+  await delay(RETRY_DELAY_MS);
+  const secondAttempt = await sendMessageOnceWithCause(api, params);
+  const second = secondAttempt.result;
+  if (second.ok) {
+    logger.info(logBinding, 'Telegram sendMessage ok (after retry)');
+    return second.message;
+  }
+  logger.fatal(
+    { ...logBinding, err: secondAttempt.cause },
+    `Telegram sendMessage failed after retry: ${describeSendError(secondAttempt.cause, params.chatId, params.threadId)}`,
+  );
+  throw secondAttempt.cause;
 }

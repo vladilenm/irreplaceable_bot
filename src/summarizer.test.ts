@@ -294,7 +294,7 @@ describe('summarizeThread post-validation', () => {
         { emoji: '💻', title: 't', bullets: [{ summary: 's', msgId: 99999 }], links: [] },
       ],
     };
-    openaiCreate.mockResolvedValueOnce({
+    openaiCreate.mockResolvedValue({
       choices: [{ message: { content: JSON.stringify(validShape) } }],
     });
 
@@ -354,6 +354,29 @@ describe('summarizeThread post-validation', () => {
       expect(result.topics[0]?.bullets).toEqual([{ summary: 'keep', msgId: 1002 }]);
     }
   });
+
+  it('regenerates once when every citation in the first answer is hallucinated', async () => {
+    openaiCreate
+      .mockResolvedValueOnce({
+        choices: [{ message: { content: JSON.stringify({
+          topics: [{ emoji: '💻', title: 'bad', bullets: [{ summary: 'bad', msgId: 99999 }], links: [] }],
+        }) } }],
+      })
+      .mockResolvedValueOnce({
+        choices: [{ message: { content: JSON.stringify({
+          topics: [{ emoji: '💻', title: 'good', bullets: [{ summary: 'good', msgId: 1001 }], links: [] }],
+        }) } }],
+      });
+
+    const result = await summarizeThread({
+      threadId: 100,
+      windowHours: 24,
+      messages: fiveMessages([1000, 1001, 1002, 1003, 1004]),
+    });
+
+    expect(result).toMatchObject({ skipped: false });
+    expect(openaiCreate).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe('summarizeThread LLM failure logging', () => {
@@ -373,7 +396,7 @@ describe('summarizeThread LLM failure logging', () => {
     const sentinel = 'REQUEST_PROFILE_SENTINEL_transport_9e0cc4';
     const err = Object.assign(new Error(sentinel), { status: 503 });
     const errorSpy = vi.spyOn(logger, 'error');
-    openaiCreate.mockRejectedValueOnce(err);
+    openaiCreate.mockRejectedValue(err);
 
     const result = await summarizeThread({
       threadId: 777,
@@ -391,7 +414,7 @@ describe('summarizeThread LLM failure logging', () => {
       status: 503,
       threadId: 777,
       messageCount: 1,
-      model: 'openai/gpt-4.1-mini',
+      model: 'openai/gpt-5.6-luna',
     });
   });
 
@@ -399,7 +422,7 @@ describe('summarizeThread LLM failure logging', () => {
     const sentinel = 'REQUEST_PROFILE_SENTINEL_schema_8fb135';
     const err = new LlmSchemaError(sentinel);
     const warnSpy = vi.spyOn(logger, 'warn');
-    openaiCreate.mockRejectedValueOnce(err);
+    openaiCreate.mockRejectedValue(err);
 
     const result = await summarizeThread({
       threadId: 778,
@@ -416,7 +439,7 @@ describe('summarizeThread LLM failure logging', () => {
       errorClass: 'LlmSchemaError',
       threadId: 778,
       messageCount: 1,
-      model: 'openai/gpt-4.1-mini',
+      model: 'openai/gpt-5.6-luna',
     });
     expect(record).not.toHaveProperty('status');
   });

@@ -196,10 +196,8 @@ export async function summarizeThread(input: SummarizeThreadInput): Promise<Thre
     return { skipped: true, threadId, windowHours, messageCount, reason: 'transcript-too-large' };
   }
 
-  let llmOutput: LLMSummaryOutput;
   const startedAt = Date.now();
-  try {
-    llmOutput = await requestJson<LLMSummaryOutput>(
+  const requestSummary = (retryInstruction?: string) => requestJson<LLMSummaryOutput>(
       {
         apiKey: config.aiApiKey,
         model: config.aiModel,
@@ -211,109 +209,92 @@ export async function summarizeThread(input: SummarizeThreadInput): Promise<Thre
         maxTokens: 4000,
         schemaName: 'thread_summary',
         schema: THREAD_SUMMARIZER_JSON_SCHEMA,
+        ...(retryInstruction ? { retryInstruction } : {}),
       },
     );
-  } catch (err: unknown) {
-    // Keep malformed structured output separate from transport/auth failures.
-    if (err instanceof LlmSchemaError) {
-      logger.warn(
-        { ...safeErrorMetadata(err), threadId, messageCount, model: config.aiModel },
-        'summarizeThread: schema-invalid (malformed JSON from provider)',
+
+  const inputIds = new Set<number>(messages.map((m) => m.tgMessageId));
+  for (let attempt = 0; attempt < 2; attempt++) {
+    let llmOutput: LLMSummaryOutput;
+    try {
+      llmOutput = await requestSummary(
+        attempt === 0
+          ? undefined
+          : 'The previous response failed validation. Output only valid JSON and cite only message IDs present in the transcript.',
       );
+    } catch (err: unknown) {
+      if (err instanceof LlmSchemaError && attempt === 0) continue;
+      if (err instanceof LlmSchemaError) {
+        logger.warn(
+          { ...safeErrorMetadata(err), threadId, messageCount, model: config.aiModel },
+          'summarizeThread: schema-invalid (malformed JSON from provider)',
+        );
+        return { skipped: true, threadId, windowHours, messageCount, reason: 'schema-invalid' };
+      }
+      logger.error(
+        { ...safeErrorMetadata(err), threadId, messageCount, model: config.aiModel },
+        'summarizeThread: LLM call failed',
+      );
+      return { skipped: true, threadId, windowHours, messageCount, reason: 'llm-error' };
+    }
+
+    const parsed = ThreadSummarySchema.safeParse(llmOutput);
+    if (!parsed.success) {
+      logger.warn(
+        { threadId, messageCount, zodErrors: parsed.error.issues.slice(0, 5), model: config.aiModel },
+        'summarizeThread: schema-invalid LLM output',
+      );
+      if (attempt === 0) continue;
       return { skipped: true, threadId, windowHours, messageCount, reason: 'schema-invalid' };
     }
-    logger.error(
-      { ...safeErrorMetadata(err), threadId, messageCount, model: config.aiModel },
-      'summarizeThread: LLM call failed',
-    );
-    return { skipped: true, threadId, windowHours, messageCount, reason: 'llm-error' };
-  }
-  const latencyMs = Date.now() - startedAt;
 
-  const parsed = ThreadSummarySchema.safeParse(llmOutput);
-  if (!parsed.success) {
-    logger.warn(
-      {
-        threadId,
-        messageCount,
-        zodErrors: parsed.error.issues.slice(0, 5),
-        model: config.aiModel,
-      },
-      'summarizeThread: schema-invalid LLM output',
-    );
-    return { skipped: true, threadId, windowHours, messageCount, reason: 'schema-invalid' };
-  }
-
-  const validated = parsed.data;
-
-  // Drop individual hallucinated citations. If none remain, classify the whole
-  // response as schema-invalid rather than as a provider outage.
-  const inputIds = new Set<number>(messages.map((m) => m.tgMessageId));
-  let droppedBullets = 0;
-  const topics = validated.topics
-    .map((t) => {
-      const bullets = t.bullets.filter((b) => {
-        if (inputIds.has(b.msgId)) return true;
-        droppedBullets++;
-        return false;
-      });
-      return {
-        emoji: t.emoji,
-        // Defensive truncation in case provider-native validation is bypassed.
-        title: t.title.length > 100 ? `${t.title.slice(0, 99)}…` : t.title,
-        bullets: bullets.map((b) => ({
-          summary:
-            b.summary.length > SUMMARY_MAX_LEN
+    let droppedBullets = 0;
+    const topics = parsed.data.topics
+      .map((t) => {
+        const bullets = t.bullets.filter((b) => {
+          if (inputIds.has(b.msgId)) return true;
+          droppedBullets++;
+          return false;
+        });
+        return {
+          emoji: t.emoji,
+          title: t.title.length > 100 ? `${t.title.slice(0, 99)}…` : t.title,
+          bullets: bullets.map((b) => ({
+            summary: b.summary.length > SUMMARY_MAX_LEN
               ? `${b.summary.slice(0, SUMMARY_MAX_LEN - 1)}…`
               : b.summary,
-          msgId: b.msgId,
-        })),
-        links: t.links,
-      };
-    })
-    .filter((t) => t.bullets.length > 0);
+            msgId: b.msgId,
+          })),
+          links: t.links,
+        };
+      })
+      .filter((t) => t.bullets.length > 0);
 
-  if (droppedBullets > 0) {
-    logger.warn(
+    if (droppedBullets > 0) {
+      logger.warn(
+        { event: 'schema-invalid-hallucinated-id', threadId, droppedBullets, inputIdsSize: inputIds.size, model: config.aiModel },
+        'summarizeThread: dropped bullet(s) citing msgId not in input set (LLM hallucination)',
+      );
+    }
+    if (topics.length === 0) {
+      logger.warn(
+        { event: 'schema-invalid-all-bullets-dropped', threadId, model: config.aiModel },
+        'summarizeThread: schema-invalid (every bullet cited a hallucinated msgId)',
+      );
+      if (attempt === 0) continue;
+      return { skipped: true, threadId, windowHours, messageCount, reason: 'schema-invalid' };
+    }
+
+    const aggregateLinkCount = topics.reduce((acc, t) => acc + t.links.length, 0);
+    logger.info(
       {
-        event: 'schema-invalid-hallucinated-id',
-        threadId,
-        droppedBullets,
-        inputIdsSize: inputIds.size,
-        model: config.aiModel,
+        threadId, messageCount, topicCount: topics.length, aggregateLinkCount,
+        model: config.aiModel, provider: 'timeweb-ai-gateway',
+        latencyMs: Date.now() - startedAt, estimatedTokens,
       },
-      'summarizeThread: dropped bullet(s) citing msgId not in input set (LLM hallucination)',
+      'summarizeThread: success',
     );
+    return { skipped: false, threadId, windowHours, messageCount, topics };
   }
-
-  if (topics.length === 0) {
-    logger.warn(
-      { event: 'schema-invalid-all-bullets-dropped', threadId, model: config.aiModel },
-      'summarizeThread: schema-invalid (every bullet cited a hallucinated msgId)',
-    );
-    return { skipped: true, threadId, windowHours, messageCount, reason: 'schema-invalid' };
-  }
-
-  const aggregateLinkCount = topics.reduce((acc, t) => acc + t.links.length, 0);
-  logger.info(
-    {
-      threadId,
-      messageCount,
-      topicCount: topics.length,
-      aggregateLinkCount,
-      model: config.aiModel,
-      provider: 'timeweb-ai-gateway',
-      latencyMs,
-      estimatedTokens,
-    },
-    'summarizeThread: success',
-  );
-
-  return {
-    skipped: false,
-    threadId,
-    windowHours,
-    messageCount,
-    topics,
-  };
+  throw new Error('unreachable summary validation loop');
 }

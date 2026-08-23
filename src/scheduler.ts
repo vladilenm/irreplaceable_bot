@@ -3,18 +3,21 @@ import type { ScheduledTask } from 'node-cron';
 import type { Api } from 'grammy';
 import { config } from './config.js';
 import { logger, errMsg } from './logger.js';
-import { runDigestPipeline, sendDigest } from './radar.js';
-import {
-  runThreadSummaryPipeline,
-  sendThreadSummary,
-} from './summary.js';
+import { runDigestPipeline } from './radar.js';
+import { runThreadSummaryPipeline } from './summary.js';
 import type { CorePersistence } from './persistence.js';
+import type { PublicationDispatcher } from './publication-dispatcher.js';
+import {
+  enqueueDigestPublication,
+  enqueueThreadSummaryPublication,
+} from './scheduled-publication.service.js';
 
 const tasks = new Map<string, ScheduledTask>();
 
 type CronHandler = () => Promise<void>;
 
 export interface SchedulerOptions {
+  dispatcher: PublicationDispatcher;
   memberIndex?: {
     cron: string;
     run: () => Promise<unknown>;
@@ -48,13 +51,19 @@ function registerJob(name: string, cronExpr: string, handler: CronHandler): bool
   return true;
 }
 
-async function digestHandler(api: Api, persistence: CorePersistence): Promise<void> {
-  const result = await runDigestPipeline(persistence.jobs);
+async function digestHandler(
+  persistence: CorePersistence,
+  dispatcher: PublicationDispatcher,
+): Promise<void> {
+  const result = await runDigestPipeline(persistence.jobs, { persistState: false });
   if (result.alreadyPublished) {
     logger.warn('Cron: digest already published today, skipping send');
     return;
   }
-  await sendDigest(api, result, persistence.jobs);
+  await enqueueDigestPublication(result, persistence, dispatcher, {
+    targetChatId: config.targetChatId,
+    threadId: config.aiRadarThreadId,
+  });
   logger.info(
     { itemCount: result.itemCount, skipped: result.skipped },
     'Cron: digest cycle complete',
@@ -62,12 +71,13 @@ async function digestHandler(api: Api, persistence: CorePersistence): Promise<vo
 }
 
 async function threadSummaryHandler(
-  api: Api,
   persistence: CorePersistence,
+  dispatcher: PublicationDispatcher,
 ): Promise<void> {
   const result = await runThreadSummaryPipeline(
     persistence.messages,
     persistence.jobs,
+    { persistState: false },
   );
   if (result.alreadyPublished) {
     logger.warn(
@@ -90,11 +100,10 @@ async function threadSummaryHandler(
     logger.warn('Cron: thread-summary returned 0 chunks, nothing to send');
     return;
   }
-  await sendThreadSummary(api, result.chunks);
-  // Delivery state advances only after every Telegram chunk succeeds.
-  if (result.persistState) {
-    await persistence.jobs.recordThreadSummary(result.date);
-  }
+  await enqueueThreadSummaryPublication(result, persistence, dispatcher, {
+    targetChatId: config.targetChatId,
+    threadId: config.threadSummaryThreadId,
+  });
   logger.info(
     {
       event: 'thread-summary-published',
@@ -110,16 +119,18 @@ async function threadSummaryHandler(
 
 async function retentionSweepHandler(persistence: CorePersistence): Promise<void> {
   await persistence.messages.runRetention(config.messageRetentionDays);
+  const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  await persistence.publications.deleteExpiredPublications(cutoff);
 }
 
 export function startScheduler(
   api: Api,
   persistence: CorePersistence,
-  options: SchedulerOptions = {},
+  options: SchedulerOptions,
 ): void {
-  registerJob('digest', config.digestCron, () => digestHandler(api, persistence));
+  registerJob('digest', config.digestCron, () => digestHandler(persistence, options.dispatcher));
   registerJob('thread-summary', config.threadSummaryCron, () =>
-    threadSummaryHandler(api, persistence));
+    threadSummaryHandler(persistence, options.dispatcher));
   registerJob('retention-sweep', config.retentionSweepCron, () =>
     retentionSweepHandler(persistence));
   if (options.memberIndex) {

@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { z } from 'zod';
 import { config } from './config.js';
 import { logger } from './logger.js';
-import { requestJson } from './llm.js';
+import { LlmSchemaError, requestJson } from './llm.js';
 import type { DigestItem, RawArticle } from './types.js';
 
 const curatorPrompt = readFileSync(
@@ -77,7 +77,7 @@ function formatArticlesForLlm(articles: RawArticle[]): string {
 }
 
 export async function filterArticles(articles: RawArticle[]): Promise<DigestItem[]> {
-  const response = await requestJson<unknown>(
+  const requestCurated = (retryInstruction?: string) => requestJson<unknown>(
     {
       apiKey: config.aiApiKey,
       model: config.aiModel,
@@ -89,18 +89,46 @@ export async function filterArticles(articles: RawArticle[]): Promise<DigestItem
       maxTokens: 8000,
       schemaName: 'curated_digest',
       schema: CURATED_DIGEST_JSON_SCHEMA,
+      ...(retryInstruction ? { retryInstruction } : {}),
     },
   );
-  const curated = CuratedDigestSchema.parse(response);
+  const validate = (response: unknown) => CuratedDigestSchema.safeParse(response);
+  let parsed = validate(await requestCurated());
+  if (!parsed.success) {
+    parsed = validate(await requestCurated(
+      'The previous response was invalid. Output only valid JSON with an items array using URLs from the supplied articles.',
+    ));
+  }
+  if (!parsed.success) {
+    throw new LlmSchemaError('Curated digest response failed schema validation twice');
+  }
   const articleByUrl = new Map(articles.map((article) => [article.link, article]));
-  const seen = new Set<string>();
-  const result: DigestItem[] = [];
+  const selectItems = (items: z.infer<typeof CuratedDigestSchema>['items']) => {
+    const seen = new Set<string>();
+    const result: DigestItem[] = [];
+    for (const item of items) {
+      const source = articleByUrl.get(item.url);
+      if (!source || seen.has(item.url)) continue;
+      seen.add(item.url);
+      result.push(item);
+    }
+    return result;
+  };
+  let curated = parsed.data;
+  let result = selectItems(curated.items);
 
-  for (const item of curated.items) {
-    const source = articleByUrl.get(item.url);
-    if (!source || seen.has(item.url)) continue;
-    seen.add(item.url);
-    result.push(item);
+  if (curated.items.length > 0 && result.length === 0) {
+    const retry = validate(await requestCurated(
+      'The previous response used no valid source URL. Output only valid JSON and cite only URLs from the supplied articles.',
+    ));
+    if (!retry.success) {
+      throw new LlmSchemaError('Curated digest retry failed schema validation');
+    }
+    curated = retry.data;
+    result = selectItems(curated.items);
+    if (curated.items.length > 0 && result.length === 0) {
+      throw new LlmSchemaError('Curated digest retry cited no input article URL');
+    }
   }
 
   logger.info(

@@ -7,6 +7,7 @@ import {
 } from './application.js';
 import type { Persistence } from './persistence.js';
 import type { RequestMatchingRuntime } from './request.runtime.js';
+import type { PublicationDispatcher } from './publication-dispatcher.js';
 
 function dependencies(events: string[], options: { migrationFailure?: boolean } = {}) {
   const migrationPool = {
@@ -25,6 +26,15 @@ function dependencies(events: string[], options: { migrationFailure?: boolean } 
       indexPending: vi.fn(async () => ({ indexed: 0, failed: 0 })),
     },
   } as unknown as RequestMatchingRuntime;
+  const dispatcher: PublicationDispatcher = {
+    dispatchDue: vi.fn(),
+    start: vi.fn(() => {
+      events.push('start-dispatcher');
+    }),
+    stop: vi.fn(() => {
+      events.push('stop-dispatcher');
+    }),
+  };
   const bot = {
     api: {},
     stop: vi.fn(async () => {
@@ -62,6 +72,7 @@ function dependencies(events: string[], options: { migrationFailure?: boolean } 
       return persistence;
     }),
     createRequestMatching: vi.fn(async () => requestMatching),
+    createPublicationDispatcher: vi.fn(() => dispatcher),
     createBot: vi.fn(() => {
       events.push('create-bot');
       return bot;
@@ -100,6 +111,7 @@ it('does not construct or start the bot before migrations and PostgreSQL readine
     'create-persistence',
     'create-bot',
     'start-bot',
+    'start-dispatcher',
     'start-scheduler',
   ]);
   await running.stop();
@@ -123,5 +135,5 @@ it('shuts down scheduler, Telegram, then the runtime pool exactly once', async (
   await running.stop();
   await running.stop();
 
-  expect(events).toEqual(['stop-scheduler', 'stop-bot', 'close-runtime-pool']);
+  expect(events).toEqual(['stop-dispatcher', 'stop-scheduler', 'stop-bot', 'close-runtime-pool']);
 });

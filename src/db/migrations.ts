@@ -97,6 +97,56 @@ export const POSTGRES_MIGRATIONS: readonly PostgresMigration[] = [
         ON member_requests(status, started_at);
     `,
   },
+  {
+    version: 2,
+    description: 'Add durable outbox for scheduled Telegram publications',
+    sql: `
+      CREATE TABLE scheduled_publications (
+        id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        pipeline text NOT NULL CHECK (pipeline IN ('digest', 'thread-summary')),
+        publication_date date NOT NULL,
+        target_chat_id bigint NOT NULL,
+        thread_id bigint NOT NULL,
+        item_count integer NOT NULL DEFAULT 0 CHECK (item_count >= 0),
+        status text NOT NULL CHECK (
+          status IN ('ready', 'delivering', 'retrying', 'delivered', 'expired', 'failed')
+        ),
+        next_attempt_at timestamptz NOT NULL,
+        expires_at timestamptz NOT NULL,
+        attempt_count integer NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
+        lease_until timestamptz,
+        last_error_code text,
+        created_at timestamptz NOT NULL DEFAULT now(),
+        updated_at timestamptz NOT NULL DEFAULT now(),
+        delivered_at timestamptz,
+        UNIQUE(pipeline, publication_date),
+        CHECK (expires_at > created_at),
+        CHECK (status <> 'delivered' OR delivered_at IS NOT NULL)
+      );
+      CREATE INDEX idx_scheduled_publications_due
+        ON scheduled_publications(next_attempt_at)
+        WHERE status IN ('ready', 'retrying');
+      CREATE INDEX idx_scheduled_publications_leases
+        ON scheduled_publications(lease_until)
+        WHERE status = 'delivering';
+
+      CREATE TABLE scheduled_publication_chunks (
+        publication_id bigint NOT NULL REFERENCES scheduled_publications(id) ON DELETE CASCADE,
+        chunk_index integer NOT NULL CHECK (chunk_index >= 0),
+        text text NOT NULL CHECK (length(text) > 0),
+        telegram_message_id bigint,
+        delivered_at timestamptz,
+        PRIMARY KEY(publication_id, chunk_index),
+        CHECK (
+          (telegram_message_id IS NULL AND delivered_at IS NULL)
+          OR (telegram_message_id IS NOT NULL AND delivered_at IS NOT NULL)
+        )
+      );
+      CREATE INDEX idx_scheduled_publication_chunks_pending
+        ON scheduled_publication_chunks(publication_id, chunk_index)
+        WHERE delivered_at IS NULL;
+    `,
+  },
 ];
 
 const CREATE_MIGRATION_TABLE_SQL = `

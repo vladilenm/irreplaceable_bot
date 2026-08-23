@@ -6,6 +6,10 @@ import type { Persistence } from './persistence.js';
 import type { RequestMatchingRuntime } from './request.runtime.js';
 import type { SchedulerOptions } from './scheduler.js';
 import type { DatabaseConfig, RequestMatchingConfig } from './types.js';
+import type {
+  PublicationDispatcher,
+  PublicationDispatcherOptions,
+} from './publication-dispatcher.js';
 
 export interface PollingHandle {
   started: Promise<void>;
@@ -27,6 +31,7 @@ export interface ApplicationDependencies {
   startPolling(bot: Bot): PollingHandle;
   startScheduler(api: Api, persistence: Persistence, options?: SchedulerOptions): void;
   stopScheduler(): void;
+  createPublicationDispatcher(options: PublicationDispatcherOptions): PublicationDispatcher;
   runPreflight(bot: Bot): Promise<unknown>;
 }
 
@@ -51,19 +56,31 @@ export async function startApplication(
 
   const pool = deps.createPool(deps.database);
   let bot: Bot | null = null;
+  let dispatcher: PublicationDispatcher | null = null;
   let schedulerStarted = false;
   try {
     await deps.assertReady(pool);
     const persistence = deps.createPersistence(pool);
     const requestMatching = await deps.createRequestMatching(deps.requestMatching, persistence);
-    bot = deps.createBot({ persistence, requestMatching });
+    dispatcher = deps.createPublicationDispatcher({
+      publications: persistence.publications,
+      jobs: persistence.jobs,
+      sendMessageOnce: async (params) => {
+        if (!bot) throw new Error('Telegram bot is not ready');
+        const { sendMessageOnce } = await import('./telegram.js');
+        return sendMessageOnce(bot.api, params);
+      },
+    });
+    bot = deps.createBot({ persistence, requestMatching, dispatcher });
     const polling = deps.startPolling(bot);
     await polling.started;
+    dispatcher.start();
 
     deps.startScheduler(
       bot.api,
       persistence,
       {
+        dispatcher,
         memberIndex: {
           cron: deps.requestMatching.memberIndexCron,
           run: () => requestMatching.memberDirectory.indexPending(),
@@ -102,12 +119,14 @@ export async function startApplication(
       async stop(): Promise<void> {
         if (stopped) return;
         stopped = true;
+        dispatcher?.stop();
         deps.stopScheduler();
         await bot?.stop();
         await pool.end();
       },
     };
   } catch (error: unknown) {
+    dispatcher?.stop();
     if (schedulerStarted) deps.stopScheduler();
     if (bot) {
       try {

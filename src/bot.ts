@@ -10,10 +10,24 @@ import { registerCaptureHandlers } from './capture.js';
 import { registerRequestHandlers } from './requests.js';
 import type { RequestMatchingRuntime } from './request.runtime.js';
 import type { CorePersistence } from './persistence.js';
+import type { PublicationDispatcher } from './publication-dispatcher.js';
+import type { ScheduledPublicationPipeline } from './scheduled-publication.repository.js';
+import { nextMoscowMidnight } from './time.js';
 
 export interface CreateBotOptions {
   persistence: CorePersistence;
   requestMatching?: RequestMatchingRuntime;
+  dispatcher?: PublicationDispatcher;
+}
+
+export function parseRetryPublicationPipeline(
+  argument: string,
+): ScheduledPublicationPipeline | null | undefined {
+  const value = argument.trim().toLowerCase();
+  if (value === '' || value === 'all') return null;
+  if (value === 'digest') return 'digest';
+  if (value === 'summary') return 'thread-summary';
+  return undefined;
 }
 
 export function createBot(options: CreateBotOptions): Bot {
@@ -153,17 +167,56 @@ export function createBot(options: CreateBotOptions): Bot {
     : !matchingSnapshot
       ? '🧩 Подбор участников: индекс ещё не готов'
       : `🧩 Подбор участников: ${String(matchingSnapshot.activeCount)} активных, ${String(matchingSnapshot.pendingCount)} ожидают индексации, ${matchingSnapshot.embeddingModel}, индекс обновлён ${new Date(matchingSnapshot.lastSuccessAt).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' })} МСК`;
+  let publicationInfo = '📨 Очередь публикаций: нет данных';
+  try {
+    const counts = await options.persistence.publications.getStatusCounts();
+    if (counts.length > 0) {
+      publicationInfo = `📨 Очередь публикаций: ${counts.map((entry) =>
+        `${entry.pipeline} ${entry.status}: ${String(entry.count)}`).join(', ')}`;
+    }
+  } catch (error: unknown) {
+    logger.error(
+      { errorClass: error instanceof Error ? error.name : 'unknown' },
+      'Publication status read failed',
+    );
+  }
 
   const statusText = [
     '🤖 Статус бота',
     '',
     lastDigestInfo,
     nextRunInfo,
+    publicationInfo,
     matchingInfo,
     `⏱ Аптайм: ${uptimeText}`,
   ].join('\n');
 
   await ctx.reply(statusText);
+  });
+
+  bot.command('retry_publications', async (ctx) => {
+  logger.info({ userId: ctx.from?.id }, '/retry_publications command received');
+  if (!(await isAdmin(ctx))) {
+    await ctx.reply('Команда доступна только администраторам.');
+    return;
+  }
+  const pipeline = parseRetryPublicationPipeline(ctx.match);
+  if (pipeline === undefined) {
+    await ctx.reply('Использование: /retry_publications [digest|summary|all]');
+    return;
+  }
+  if (!options.dispatcher) {
+    await ctx.reply('Повторная отправка сейчас недоступна.');
+    return;
+  }
+  const now = new Date();
+  const recovered = await options.persistence.publications.recover(
+    pipeline,
+    now,
+    nextMoscowMidnight(now),
+  );
+  await options.dispatcher.dispatchDue();
+  await ctx.reply(`Поставлено на повторную отправку: ${String(recovered)}.`);
   });
 
 // Repeatable development run: publishes the real format without advancing job state.

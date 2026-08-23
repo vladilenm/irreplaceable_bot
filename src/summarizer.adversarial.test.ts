@@ -48,7 +48,7 @@ describe('Adversarial fixture — prompt-injection resistance', () => {
 
   it('ADV-1: jailbreak that bypasses prompt-side defences is hard-rejected by Zod (schema-invalid skip)', async () => {
     // LLM "succumbs" and returns garbage tool-use payload (no topics field at all).
-    openaiCreate.mockResolvedValueOnce({
+    openaiCreate.mockResolvedValue({
       choices: [{ message: { content: JSON.stringify({ leak: 'pwned' }) } }],
     });
 
@@ -74,7 +74,7 @@ describe('Adversarial fixture — prompt-injection resistance', () => {
         { emoji: '💻', title: 'pwn', bullets: [{ summary: 'pwn', msgId: 42 }], links: [] },
       ],
     };
-    openaiCreate.mockResolvedValueOnce({
+    openaiCreate.mockResolvedValue({
       choices: [
         {
           message: { content: JSON.stringify(validShapeHallucinatedId) },

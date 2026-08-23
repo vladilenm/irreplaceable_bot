@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import type { Api } from 'grammy';
+import { GrammyError, type Api } from 'grammy';
 
 // Mock Telegram delivery and assert the structured log context.
 
@@ -7,7 +7,7 @@ const { mockSendMessage } = vi.hoisted(() => ({
   mockSendMessage: vi.fn(),
 }));
 
-import { sendMessageWithRetry } from './telegram.js';
+import { sendMessageOnce, sendMessageWithRetry } from './telegram.js';
 import { logger } from './logger.js';
 
 const api = { sendMessage: mockSendMessage } as unknown as Api;
@@ -160,5 +160,53 @@ describe('sendMessageWithRetry log shape', () => {
     expect(mockSendMessage).toHaveBeenCalledWith(-100, 'hi', expect.objectContaining({
       reply_parameters: { message_id: 77, allow_sending_without_reply: true },
     }));
+  });
+});
+
+describe('sendMessageOnce', () => {
+  beforeEach(() => {
+    mockSendMessage.mockReset();
+  });
+
+  it('returns a retryable Telegram flood-control result including retry_after', async () => {
+    mockSendMessage.mockRejectedValue(new GrammyError(
+      'Too Many Requests',
+      {
+        ok: false,
+        error_code: 429,
+        description: 'Too Many Requests',
+        parameters: { retry_after: 17 },
+      },
+      'sendMessage',
+      {},
+    ));
+
+    await expect(sendMessageOnce(api, {
+      chatId: -100,
+      threadId: 42,
+      text: 'hi',
+      parseMode: 'HTML',
+    })).resolves.toEqual({
+      ok: false,
+      errorCode: 'telegram-429',
+      retryable: true,
+      retryAfterMs: 17_000,
+    });
+  });
+
+  it('classifies transport errors as retryable without exposing their text', async () => {
+    mockSendMessage.mockRejectedValue(new Error('socket reset with private details'));
+
+    await expect(sendMessageOnce(api, {
+      chatId: -100,
+      threadId: 42,
+      text: 'hi',
+      parseMode: 'HTML',
+    })).resolves.toEqual({
+      ok: false,
+      errorCode: 'telegram-network',
+      retryable: true,
+      retryAfterMs: null,
+    });
   });
 });

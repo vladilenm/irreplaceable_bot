@@ -2,6 +2,7 @@ import { expect, it, vi } from 'vitest';
 import type { JobStateRepository } from './job-state.repository.js';
 import type { MessageRepository } from './messages.repository.js';
 import type { RequestMatchingRuntime } from './request.runtime.js';
+import type { ScheduledPublicationRepository } from './scheduled-publication.repository.js';
 
 const mocks = vi.hoisted(() => {
   const order: string[] = [];
@@ -32,12 +33,25 @@ const messages: MessageRepository = {
   selectWindow: vi.fn(async () => []),
   runRetention: vi.fn(async () => ({ rowsDeleted: 0, durationMs: 0 })),
 };
+const publications: ScheduledPublicationRepository = {
+  enqueue: vi.fn(),
+  claimDue: vi.fn(),
+  recordChunkDelivered: vi.fn(),
+  scheduleRetry: vi.fn(),
+  markFailed: vi.fn(),
+  markExpired: vi.fn(),
+  expireDue: vi.fn(),
+  recover: vi.fn(),
+  read: vi.fn(),
+  getStatusCounts: vi.fn(),
+  deleteExpiredPublications: vi.fn(),
+};
 
 it('registers member requests before terminal capture middleware', () => {
   mocks.order.length = 0;
 
   createBot({
-    persistence: { jobs, messages },
+    persistence: { jobs, messages, publications },
     requestMatching: { handlerOptions: {} } as RequestMatchingRuntime,
   });
 

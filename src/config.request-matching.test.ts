@@ -23,6 +23,7 @@ describe('readConfig', () => {
       threadSummaryThreadId: 22,
       trackedThreadIds: [11, 22, 33],
       aiApiKey: 'gateway-token',
+      aiModel: 'openai/gpt-5.6-luna',
       aiBaseUrl: 'https://api.timeweb.ai/v1',
       database: {
         url: 'postgresql://club:secret@db.example/club',
@@ -34,7 +35,7 @@ describe('readConfig', () => {
       requestMatching: {
         embeddingApiKey: 'gateway-token',
         embeddingBaseUrl: 'https://api.timeweb.ai/v1',
-        embeddingModel: 'openai/text-embedding-3-large',
+        embeddingModel: 'openai/text-embedding-3-small',
         embeddingDimensions: 1536,
         memberIndexCron: '*/15 * * * *',
         concurrency: 2,
@@ -43,6 +44,7 @@ describe('readConfig', () => {
       },
     });
     expect(config.digestCron).toBe(RUNTIME_DEFAULTS.schedules.digestCron);
+    expect(config.threadSummaryCron).toBe('30 6 * * *');
   });
 
   it.each([

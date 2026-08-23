@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { logger } from './logger.js';
 import type { Api } from 'grammy';
 import type { CorePersistence } from './persistence.js';
+import type { PublicationDispatcher } from './publication-dispatcher.js';
 import {
   startScheduler,
   stopScheduler,
@@ -11,6 +12,11 @@ import {
 } from './scheduler.js';
 
 const api = {} as Api;
+const dispatcher: PublicationDispatcher = {
+  dispatchDue: vi.fn(),
+  start: vi.fn(),
+  stop: vi.fn(),
+};
 const persistence: CorePersistence = {
   jobs: {
     read: vi.fn(async () => ({
@@ -27,6 +33,19 @@ const persistence: CorePersistence = {
     selectWindow: vi.fn(async () => []),
     runRetention: vi.fn(async () => ({ rowsDeleted: 0, durationMs: 0 })),
   },
+  publications: {
+    enqueue: vi.fn(),
+    claimDue: vi.fn(),
+    recordChunkDelivered: vi.fn(),
+    scheduleRetry: vi.fn(),
+    markFailed: vi.fn(),
+    markExpired: vi.fn(),
+    expireDue: vi.fn(),
+    recover: vi.fn(),
+    read: vi.fn(),
+    getStatusCounts: vi.fn(),
+    deleteExpiredPublications: vi.fn(),
+  },
 };
 
 beforeEach(() => {
@@ -35,7 +54,7 @@ beforeEach(() => {
 
 describe('cron registry', () => {
   it('C1: startScheduler registers exactly 3 named jobs', () => {
-    startScheduler(api, persistence);
+    startScheduler(api, persistence, { dispatcher });
     const names = _getRegisteredJobNames();
     expect(new Set(names)).toEqual(
       new Set(['digest', 'thread-summary', 'retention-sweep']),
@@ -45,7 +64,7 @@ describe('cron registry', () => {
 
   it('C2: stopScheduler logs `Cron job stopped` for each registered job', () => {
     const infoSpy = vi.spyOn(logger, 'info');
-    startScheduler(api, persistence);
+    startScheduler(api, persistence, { dispatcher });
     infoSpy.mockClear();
     stopScheduler();
     const stopLogs = infoSpy.mock.calls.filter((c) => c[1] === 'Cron job stopped');
@@ -57,13 +76,13 @@ describe('cron registry', () => {
   });
 
   it('C2b: after stopScheduler, registry is empty', () => {
-    startScheduler(api, persistence);
+    startScheduler(api, persistence, { dispatcher });
     stopScheduler();
     expect(_getRegisteredJobNames()).toEqual([]);
   });
 
   it('C3: startScheduler runs without throwing in normal env', () => {
-    expect(() => startScheduler(api, persistence)).not.toThrow();
+    expect(() => startScheduler(api, persistence, { dispatcher })).not.toThrow();
     stopScheduler();
   });
 
@@ -75,7 +94,7 @@ describe('cron registry', () => {
 
 describe('cron thread-summary handler wiring', () => {
   it('C7+C8+C9: registry still has 3 jobs and includes thread-summary', () => {
-    startScheduler(api, persistence);
+    startScheduler(api, persistence, { dispatcher });
     const names = _getRegisteredJobNames();
     expect(names).toContain('digest');
     expect(names).toContain('thread-summary');
@@ -86,7 +105,7 @@ describe('cron thread-summary handler wiring', () => {
 
 describe('cron retention-sweep wiring', () => {
   it('R1: retention-sweep is registered with digest and thread-summary', () => {
-    startScheduler(api, persistence);
+    startScheduler(api, persistence, { dispatcher });
     const names = _getRegisteredJobNames();
     expect(names).toContain('retention-sweep');
     expect(names).toHaveLength(3);
@@ -103,6 +122,7 @@ describe('cron retention-sweep wiring', () => {
 describe('member directory sync scheduling', () => {
   it('registers member-index only when provided', () => {
     startScheduler(api, persistence, {
+      dispatcher,
       memberIndex: {
         cron: '*/15 * * * *',
         run: vi.fn().mockResolvedValue(undefined),

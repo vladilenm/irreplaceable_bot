@@ -12,6 +12,7 @@ import { assertDatabaseReady, createPool } from './db/pool.js';
 import { logger, bootId, errMsg } from './logger.js';
 import { createPersistence } from './persistence.js';
 import { createRequestMatchingRuntime } from './request.runtime.js';
+import { createPublicationDispatcher } from './publication-dispatcher.js';
 import { startScheduler, stopScheduler } from './scheduler.js';
 import {
   classifyStartupError,
@@ -73,6 +74,7 @@ async function main(): Promise<void> {
     assertReady: assertDatabaseReady,
     createPersistence,
     createRequestMatching: createRequestMatchingRuntime,
+    createPublicationDispatcher,
     createBot,
     startPolling,
     startScheduler,

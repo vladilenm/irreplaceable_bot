@@ -15,10 +15,15 @@ import {
   PgRequestRepository,
   type RequestRepository,
 } from './request.repository.js';
+import {
+  PgScheduledPublicationRepository,
+  type ScheduledPublicationRepository,
+} from './scheduled-publication.repository.js';
 
 export interface CorePersistence {
   jobs: JobStateRepository;
   messages: MessageRepository;
+  publications: ScheduledPublicationRepository;
 }
 
 export interface Persistence extends CorePersistence {
@@ -30,6 +35,7 @@ export function createPersistence(pool: Pool): Persistence {
   return {
     jobs: new PgJobStateRepository(pool),
     messages: new PgMessageRepository(pool),
+    publications: new PgScheduledPublicationRepository(pool),
     members: new PgMemberRepository(pool),
     requests: new PgRequestRepository(pool),
   };

@@ -1,13 +1,13 @@
 export const RUNTIME_DEFAULTS = Object.freeze({
   ai: Object.freeze({
     baseUrl: 'https://api.timeweb.ai/v1',
-    chatModel: 'openai/gpt-4.1-mini',
-    embeddingModel: 'openai/text-embedding-3-large',
+    chatModel: 'openai/gpt-5.6-luna',
+    embeddingModel: 'openai/text-embedding-3-small',
     embeddingDimensions: 1536,
   }),
   schedules: Object.freeze({
     digestCron: '0 6 * * *',
-    threadSummaryCron: '30 3 * * *',
+    threadSummaryCron: '30 6 * * *',
     retentionSweepCron: '0 1 * * *',
     memberIndexCron: '*/15 * * * *',
   }),

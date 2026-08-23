@@ -5,7 +5,10 @@ const { mockRequestJson } = vi.hoisted(() => ({
   mockRequestJson: vi.fn(),
 }));
 
-vi.mock('./llm.js', () => ({ requestJson: mockRequestJson }));
+vi.mock('./llm.js', () => ({
+  requestJson: mockRequestJson,
+  LlmSchemaError: class LlmSchemaError extends Error {},
+}));
 
 import { filterArticles } from './radar.curator.js';
 
@@ -44,18 +47,40 @@ describe('filterArticles structured boundary', () => {
     ]);
   });
 
-  it('drops URLs that were not present in the input instead of publishing hallucinations', async () => {
-    mockRequestJson.mockResolvedValue({
-      items: [
-        {
-          title: 'Выдумка',
-          summary: 'Нет такого источника.',
-          url: 'https://hallucinated.example/news',
-          category: 'models',
-        },
-      ],
-    });
+  it('regenerates when every proposed URL is absent from the input', async () => {
+    mockRequestJson
+      .mockResolvedValueOnce({
+        items: [{
+          title: 'Выдумка', summary: 'Нет такого источника.',
+          url: 'https://hallucinated.example/news', category: 'models',
+        }],
+      })
+      .mockResolvedValueOnce({ items: [] });
 
     await expect(filterArticles([article])).resolves.toEqual([]);
+    expect(mockRequestJson).toHaveBeenCalledTimes(2);
+  });
+
+  it('regenerates once when the first structured result is invalid', async () => {
+    mockRequestJson
+      .mockResolvedValueOnce({ items: 'not-an-array' })
+      .mockResolvedValueOnce({
+        items: [{
+          title: 'Recovered', summary: 'Valid after retry.', url: article.link, category: 'tools',
+        }],
+      });
+
+    await expect(filterArticles([article])).resolves.toMatchObject([{ title: 'Recovered' }]);
+    expect(mockRequestJson).toHaveBeenCalledTimes(2);
+    expect(mockRequestJson.mock.calls[1]?.[1]).toMatchObject({
+      retryInstruction: expect.stringContaining('valid JSON'),
+    });
+  });
+
+  it('does not regenerate a valid empty digest', async () => {
+    mockRequestJson.mockResolvedValueOnce({ items: [] });
+
+    await expect(filterArticles([article])).resolves.toEqual([]);
+    expect(mockRequestJson).toHaveBeenCalledOnce();
   });
 });
