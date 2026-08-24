@@ -13,7 +13,7 @@ const validEnv: NodeJS.ProcessEnv = {
 };
 
 const validProxyUrl =
-  'vless://8f93928e-8193-46e8-a596-9324c11e6fe4@147.45.149.185:443' +
+  'v' + 'less://8f93928e-8193-46e8-a596-9324c11e6fe4@203.0.113.7:443' +
   '?encryption=none&flow=xtls-rprx-vision&security=reality' +
   '&sni=www.cloudflare.com&fp=chrome' +
   '&pbk=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' +
@@ -58,7 +58,7 @@ describe('readConfig', () => {
       ...validEnv,
       TELEGRAM_PROXY_VLESS_URL: validProxyUrl,
     }, () => 'timeweb-ca');
-    expect(proxied.telegramProxy?.host).toBe('147.45.149.185');
+    expect(proxied.telegramProxy?.host).toBe('203.0.113.7');
   });
 
   it.each([

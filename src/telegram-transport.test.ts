@@ -8,7 +8,7 @@ import {
 } from './telegram-transport.js';
 
 const proxy: TelegramProxyConfig = {
-  host: '147.45.149.185',
+  host: '203.0.113.7',
   port: 443,
   clientId: '8f93928e-8193-46e8-a596-9324c11e6fe4',
   encryption: 'none',
@@ -58,7 +58,7 @@ describe('buildXrayClientConfig', () => {
     expect(built.outbounds[0]).toMatchObject({
       protocol: 'vless',
       settings: { vnext: [{
-        address: '147.45.149.185',
+        address: '203.0.113.7',
         port: 443,
         users: [{
           id: proxy.clientId,

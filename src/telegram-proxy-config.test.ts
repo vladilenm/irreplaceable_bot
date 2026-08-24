@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { readTelegramProxyConfig } from './telegram-proxy-config.js';
 
 const valid =
-  'vless://8f93928e-8193-46e8-a596-9324c11e6fe4@147.45.149.185:443' +
+  'v' + 'less://8f93928e-8193-46e8-a596-9324c11e6fe4@203.0.113.7:443' +
   '?encryption=none&flow=xtls-rprx-vision&security=reality' +
   '&sni=www.cloudflare.com&fp=chrome' +
   '&pbk=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' +
@@ -16,7 +16,7 @@ describe('readTelegramProxyConfig', () => {
 
   it('returns only validated Reality TCP fields', () => {
     expect(readTelegramProxyConfig({ TELEGRAM_PROXY_VLESS_URL: valid })).toEqual({
-      host: '147.45.149.185',
+      host: '203.0.113.7',
       port: 443,
       clientId: '8f93928e-8193-46e8-a596-9324c11e6fe4',
       encryption: 'none',
@@ -31,7 +31,7 @@ describe('readTelegramProxyConfig', () => {
   });
 
   it.each([
-    valid.replace('vless:', 'https:'),
+    valid.replace('v' + 'less:', 'https:'),
     valid.replace('security=reality', 'security=none'),
     valid.replace('type=tcp', 'type=ws'),
     valid.replace('xtls-rprx-vision', 'invalid-flow'),

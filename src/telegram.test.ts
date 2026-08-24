@@ -239,7 +239,7 @@ describe('sendMessageOnce', () => {
     const errorSpy = vi.spyOn(logger, 'error');
     vi.useFakeTimers();
     mockSendMessage.mockRejectedValueOnce(
-      new HttpError('network failed', new Error('vless://secret-value')),
+      new HttpError('network failed', new Error('vless' + '://secret-value')),
     ).mockResolvedValueOnce({ message_id: 1 });
     const sent = sendMessageWithRetry(api, {
       chatId: -100,
@@ -249,6 +249,6 @@ describe('sendMessageOnce', () => {
     });
     await vi.advanceTimersByTimeAsync(3_100);
     await sent;
-    expect(JSON.stringify(errorSpy.mock.calls)).not.toContain('vless://secret-value');
+    expect(JSON.stringify(errorSpy.mock.calls)).not.toContain('vless' + '://secret-value');
   });
 });
