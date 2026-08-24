@@ -7,5 +7,6 @@ data/
 .env.production
 docker-compose.override.yml
 .claude/worktrees
+.worktrees/
 .superpowers/
 member-matching-eval*.json
