@@ -1,4 +1,4 @@
-import { Bot, type Context } from 'grammy';
+import { Bot, type ApiClientOptions, type Context } from 'grammy';
 import { config } from './config.js';
 import { logger, errMsg } from './logger.js';
 import {
@@ -18,6 +18,7 @@ export interface CreateBotOptions {
   persistence: CorePersistence;
   requestMatching?: RequestMatchingRuntime;
   dispatcher?: PublicationDispatcher;
+  telegramClientOptions?: ApiClientOptions;
 }
 
 export function parseRetryPublicationPipeline(
@@ -31,7 +32,9 @@ export function parseRetryPublicationPipeline(
 }
 
 export function createBot(options: CreateBotOptions): Bot {
-  const bot = new Bot(config.botToken);
+  const bot = new Bot(config.botToken, {
+    client: options.telegramClientOptions,
+  });
 
   bot.catch((err) => {
     logger.error({ err: err.error, update: err.ctx?.update?.update_id }, `Bot error caught: ${errMsg(err.error)}`);

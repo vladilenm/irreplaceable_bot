@@ -8,6 +8,7 @@ import {
 import type { Persistence } from './persistence.js';
 import type { RequestMatchingRuntime } from './request.runtime.js';
 import type { PublicationDispatcher } from './publication-dispatcher.js';
+import type { TelegramTransportRuntime } from './telegram-transport.js';
 
 function dependencies(events: string[], options: { migrationFailure?: boolean } = {}) {
   const migrationPool = {
@@ -41,6 +42,13 @@ function dependencies(events: string[], options: { migrationFailure?: boolean } 
       events.push('stop-bot');
     }),
   } as unknown as Bot;
+  const telegramTransport: TelegramTransportRuntime = {
+    clientOptions: { timeoutSeconds: 60 },
+    completed: new Promise<void>(() => undefined),
+    stop: vi.fn(async () => {
+      events.push('stop-telegram-transport');
+    }),
+  };
   let poolCall = 0;
   const deps = {
     database: {
@@ -59,6 +67,7 @@ function dependencies(events: string[], options: { migrationFailure?: boolean } 
       queueLimit: 50,
       processingTimeoutMinutes: 10,
     },
+    telegramProxy: null,
     createPool: vi.fn(() => poolCall++ === 0 ? migrationPool : runtimePool),
     migrate: vi.fn(async () => {
       events.push('migrate');
@@ -73,6 +82,10 @@ function dependencies(events: string[], options: { migrationFailure?: boolean } 
     }),
     createRequestMatching: vi.fn(async () => requestMatching),
     createPublicationDispatcher: vi.fn(() => dispatcher),
+    startTelegramTransport: vi.fn(async () => {
+      events.push('start-telegram-transport');
+      return telegramTransport;
+    }),
     createBot: vi.fn(() => {
       events.push('create-bot');
       return bot;
@@ -92,7 +105,7 @@ function dependencies(events: string[], options: { migrationFailure?: boolean } 
     }),
     runPreflight: vi.fn(async () => undefined),
   } satisfies ApplicationDependencies;
-  return { deps, migrationPool, runtimePool, bot };
+  return { deps, migrationPool, runtimePool, bot, telegramTransport };
 }
 
 it('does not construct or start the bot before migrations and PostgreSQL readiness', async () => {
@@ -109,6 +122,7 @@ it('does not construct or start the bot before migrations and PostgreSQL readine
     'close-migration-pool',
     'connect',
     'create-persistence',
+    'start-telegram-transport',
     'create-bot',
     'start-bot',
     'start-dispatcher',
@@ -135,5 +149,22 @@ it('shuts down scheduler, Telegram, then the runtime pool exactly once', async (
   await running.stop();
   await running.stop();
 
-  expect(events).toEqual(['stop-dispatcher', 'stop-scheduler', 'stop-bot', 'close-runtime-pool']);
+  expect(events).toEqual([
+    'stop-dispatcher',
+    'stop-scheduler',
+    'stop-bot',
+    'stop-telegram-transport',
+    'close-runtime-pool',
+  ]);
+});
+
+it('propagates a safe Telegram transport runtime failure', async () => {
+  const events: string[] = [];
+  const { deps, telegramTransport } = dependencies(events);
+  const safeFailure = new Error('Telegram proxy exited: code=23');
+  telegramTransport.completed = Promise.reject(safeFailure);
+
+  const running = await startApplication(deps);
+  await expect(running.pollingCompleted).rejects.toBe(safeFailure);
+  await running.stop();
 });

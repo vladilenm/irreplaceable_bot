@@ -61,3 +61,18 @@ it('registers member requests before terminal capture middleware', () => {
     expect.objectContaining({ messages }),
   );
 });
+
+it('passes the scoped API client options to grammY', () => {
+  const agent = {} as never;
+  const bot = createBot({
+    persistence: { jobs, messages, publications },
+    telegramClientOptions: {
+      timeoutSeconds: 60,
+      baseFetchConfig: { agent },
+    },
+  });
+  expect(bot.api.options).toMatchObject({
+    timeoutSeconds: 60,
+    baseFetchConfig: { agent },
+  });
+});

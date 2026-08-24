@@ -5,7 +5,12 @@ import { logger } from './logger.js';
 import type { Persistence } from './persistence.js';
 import type { RequestMatchingRuntime } from './request.runtime.js';
 import type { SchedulerOptions } from './scheduler.js';
-import type { DatabaseConfig, RequestMatchingConfig } from './types.js';
+import type {
+  DatabaseConfig,
+  RequestMatchingConfig,
+  TelegramProxyConfig,
+} from './types.js';
+import type { TelegramTransportRuntime } from './telegram-transport.js';
 import type {
   PublicationDispatcher,
   PublicationDispatcherOptions,
@@ -19,6 +24,7 @@ export interface PollingHandle {
 export interface ApplicationDependencies {
   database: DatabaseConfig;
   requestMatching: RequestMatchingConfig;
+  telegramProxy: TelegramProxyConfig | null;
   createPool(config: DatabaseConfig): Pool;
   migrate(pool: Pool): Promise<number | void>;
   assertReady(pool: Pool): Promise<void>;
@@ -32,6 +38,9 @@ export interface ApplicationDependencies {
   startScheduler(api: Api, persistence: Persistence, options?: SchedulerOptions): void;
   stopScheduler(): void;
   createPublicationDispatcher(options: PublicationDispatcherOptions): PublicationDispatcher;
+  startTelegramTransport(
+    proxy: TelegramProxyConfig | null,
+  ): Promise<TelegramTransportRuntime>;
   runPreflight(bot: Bot): Promise<unknown>;
 }
 
@@ -57,11 +66,13 @@ export async function startApplication(
   const pool = deps.createPool(deps.database);
   let bot: Bot | null = null;
   let dispatcher: PublicationDispatcher | null = null;
+  let telegramTransport: TelegramTransportRuntime | null = null;
   let schedulerStarted = false;
   try {
     await deps.assertReady(pool);
     const persistence = deps.createPersistence(pool);
     const requestMatching = await deps.createRequestMatching(deps.requestMatching, persistence);
+    telegramTransport = await deps.startTelegramTransport(deps.telegramProxy);
     dispatcher = deps.createPublicationDispatcher({
       publications: persistence.publications,
       jobs: persistence.jobs,
@@ -71,7 +82,12 @@ export async function startApplication(
         return sendMessageOnce(bot.api, params);
       },
     });
-    bot = deps.createBot({ persistence, requestMatching, dispatcher });
+    bot = deps.createBot({
+      persistence,
+      requestMatching,
+      dispatcher,
+      telegramClientOptions: telegramTransport.clientOptions,
+    });
     const polling = deps.startPolling(bot);
     await polling.started;
     dispatcher.start();
@@ -115,13 +131,17 @@ export async function startApplication(
       pool,
       persistence,
       requestMatching,
-      pollingCompleted: polling.completed,
+      pollingCompleted: Promise.race([
+        polling.completed,
+        telegramTransport.completed,
+      ]),
       async stop(): Promise<void> {
         if (stopped) return;
         stopped = true;
         dispatcher?.stop();
         deps.stopScheduler();
         await bot?.stop();
+        await telegramTransport?.stop();
         await pool.end();
       },
     };
@@ -131,6 +151,13 @@ export async function startApplication(
     if (bot) {
       try {
         await bot.stop();
+      } catch {
+        // Startup error is more actionable than a secondary stop error.
+      }
+    }
+    if (telegramTransport) {
+      try {
+        await telegramTransport.stop();
       } catch {
         // Startup error is more actionable than a secondary stop error.
       }

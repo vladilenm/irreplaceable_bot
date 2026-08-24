@@ -13,6 +13,7 @@ import { logger, bootId, errMsg } from './logger.js';
 import { createPersistence } from './persistence.js';
 import { createRequestMatchingRuntime } from './request.runtime.js';
 import { createPublicationDispatcher } from './publication-dispatcher.js';
+import { startTelegramTransport } from './telegram-transport.js';
 import { startScheduler, stopScheduler } from './scheduler.js';
 import {
   classifyStartupError,
@@ -47,7 +48,7 @@ function startPolling(bot: Bot): PollingHandle {
   return { started: startedPromise, completed };
 }
 
-async function handlePollingFailure(error: unknown): Promise<void> {
+async function handleRuntimeFailure(error: unknown): Promise<void> {
   await runningApplication?.stop();
   runningApplication = null;
   const kind = classifyStartupError(error);
@@ -59,7 +60,10 @@ async function handlePollingFailure(error: unknown): Promise<void> {
     setTimeout(() => process.exit(1), POLLING_CONFLICT_BACKOFF_MS);
     return;
   }
-  logger.fatal({ error }, `bot.start() failed: ${errMsg(error)}`);
+  logger.fatal(
+    { errorClass: error instanceof Error ? error.name : 'unknown' },
+    'Telegram runtime failed',
+  );
   process.exit(1);
 }
 
@@ -69,12 +73,14 @@ async function main(): Promise<void> {
   const application = await startApplication({
     database: config.database,
     requestMatching: config.requestMatching,
+    telegramProxy: config.telegramProxy,
     createPool,
     migrate: runMigrations,
     assertReady: assertDatabaseReady,
     createPersistence,
     createRequestMatching: createRequestMatchingRuntime,
     createPublicationDispatcher,
+    startTelegramTransport,
     createBot,
     startPolling,
     startScheduler,
@@ -83,7 +89,7 @@ async function main(): Promise<void> {
   });
   runningApplication = application;
   void application.pollingCompleted.catch((error: unknown) =>
-    handlePollingFailure(error));
+    handleRuntimeFailure(error));
 }
 
 async function shutdown(signal: string): Promise<void> {
