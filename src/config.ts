@@ -1,6 +1,7 @@
 import { RUNTIME_DEFAULTS } from './runtime-defaults.js';
 import type { BotConfig } from './types.js';
 import { readDatabaseConfig } from './database-config.js';
+import { readTelegramProxyConfig } from './telegram-proxy-config.js';
 
 export { readDatabaseConfig } from './database-config.js';
 
@@ -70,6 +71,7 @@ export function readConfig(
       queueLimit: RUNTIME_DEFAULTS.matching.queueLimit,
       processingTimeoutMinutes: RUNTIME_DEFAULTS.matching.processingTimeoutMinutes,
     },
+    telegramProxy: readTelegramProxyConfig(env),
   };
 }
 

@@ -13,6 +13,17 @@ export const RUNTIME_DEFAULTS = Object.freeze({
   }),
   messages: Object.freeze({ retentionDays: 90 }),
   database: Object.freeze({ poolMax: 5, statementTimeoutMs: 10_000 }),
+  telegram: Object.freeze({
+    requestTimeoutSeconds: 60,
+    proxy: Object.freeze({
+      binaryPath: '/usr/local/bin/xray',
+      socksHost: '127.0.0.1',
+      socksPort: 1080,
+      startupTimeoutMs: 10_000,
+      shutdownTimeoutMs: 5_000,
+    }),
+  }),
+  publications: Object.freeze({ deliveryLeaseMs: 5 * 60_000 }),
   matching: Object.freeze({
     concurrency: 2,
     queueLimit: 50,

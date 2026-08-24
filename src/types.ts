@@ -17,6 +17,20 @@ export interface DatabaseConfig {
   statementTimeoutMs: number;
 }
 
+export interface TelegramProxyConfig {
+  host: string;
+  port: number;
+  clientId: string;
+  encryption: 'none';
+  flow: 'xtls-rprx-vision';
+  security: 'reality';
+  network: 'tcp';
+  serverName: string;
+  fingerprint: 'chrome' | 'firefox' | 'safari';
+  publicKey: string;
+  shortId: string;
+}
+
 export interface BotConfig {
   botToken: string;
   targetChatId: number;
@@ -33,6 +47,7 @@ export interface BotConfig {
   database: DatabaseConfig;
   trackedThreadIds: number[];
   requestMatching: RequestMatchingConfig;
+  telegramProxy: TelegramProxyConfig | null;
 }
 
 export interface DigestItem {

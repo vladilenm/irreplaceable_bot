@@ -12,6 +12,13 @@ const validEnv: NodeJS.ProcessEnv = {
   DATABASE_URL: 'postgresql://club:secret@db.example/club',
 };
 
+const validProxyUrl =
+  'vless://8f93928e-8193-46e8-a596-9324c11e6fe4@147.45.149.185:443' +
+  '?encryption=none&flow=xtls-rprx-vision&security=reality' +
+  '&sni=www.cloudflare.com&fp=chrome' +
+  '&pbk=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' +
+  '&sid=0123456789abcdef&type=tcp#club-bot-amsterdam';
+
 describe('readConfig', () => {
   it('builds the complete runtime config from exactly seven env values', () => {
     const config = readConfig(validEnv, () => 'timeweb-ca');
@@ -45,6 +52,13 @@ describe('readConfig', () => {
     });
     expect(config.digestCron).toBe(RUNTIME_DEFAULTS.schedules.digestCron);
     expect(config.threadSummaryCron).toBe('30 6 * * *');
+    expect(config.telegramProxy).toBeNull();
+
+    const proxied = readConfig({
+      ...validEnv,
+      TELEGRAM_PROXY_VLESS_URL: validProxyUrl,
+    }, () => 'timeweb-ca');
+    expect(proxied.telegramProxy?.host).toBe('147.45.149.185');
   });
 
   it.each([
