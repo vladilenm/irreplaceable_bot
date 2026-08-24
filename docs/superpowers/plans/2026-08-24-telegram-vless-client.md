@@ -876,7 +876,7 @@ Expected: FAIL because deployment files still expose seven names and the image l
 Add the first Dockerfile stage:
 
 ```dockerfile
-FROM ghcr.io/xtls/xray-core:26.3.27@sha256:c98160906f3fe1d9d16e950c2a7997dc0c542c71816aa92c21e510412f90e1a2 AS xray
+FROM ghcr.io/xtls/xray-core:26.3.27@sha256:592ec4d11f656db95598d01e76dbcc6e002d67360b96a5436500a938230f52c7 AS xray
 ```
 
 In the production stage, before `USER botuser`, add:

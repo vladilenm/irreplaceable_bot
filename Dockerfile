@@ -1,3 +1,6 @@
+# Pinned userspace client used only when TELEGRAM_PROXY_VLESS_URL is supplied.
+FROM ghcr.io/xtls/xray-core:26.3.27@sha256:592ec4d11f656db95598d01e76dbcc6e002d67360b96a5436500a938230f52c7 AS xray
+
 # Build stage
 FROM node:22-alpine AS builder
 
@@ -17,6 +20,8 @@ FROM node:22-alpine
 WORKDIR /app
 
 ENV NODE_ENV=production
+
+COPY --from=xray /usr/local/bin/xray /usr/local/bin/xray
 
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev

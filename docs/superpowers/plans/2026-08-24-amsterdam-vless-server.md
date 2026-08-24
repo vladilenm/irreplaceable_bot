@@ -79,7 +79,7 @@ Expected file content: one metadata line; no environment values or secrets.
 - Create remote: `/opt/club-bot-egress/secrets/smoke-client.json`
 
 **Interfaces:**
-- Consumes: official Xray tag `ghcr.io/xtls/xray-core:26.3.27`; fixed endpoint `147.45.149.185:443`; Reality target/SNI `www.microsoft.com`.
+- Consumes: official Xray tag `ghcr.io/xtls/xray-core:26.3.27`; fixed endpoint `147.45.149.185:443`; Reality target/SNI `www.cloudflare.com`.
 - Produces: digest-pinned compose project, two VLESS URIs and a bot-credential smoke-test config. Secret files are never printed.
 
 - [ ] **Step 1: Create the provisioning program locally with `apply_patch`**
@@ -103,7 +103,7 @@ IMAGE_TAG = 'ghcr.io/xtls/xray-core:26.3.27'
 SERVER_IP = '147.45.149.185'
 SERVER_PORT = 443
 CONTAINER_PORT = 8443
-REALITY_NAME = 'www.microsoft.com'
+REALITY_NAME = 'www.cloudflare.com'
 REALITY_DEST = f'{REALITY_NAME}:443'
 
 

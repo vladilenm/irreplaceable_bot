@@ -72,7 +72,7 @@ git diff --check
 
 ## Environment
 
-Production использует ровно семь переменных:
+Подтверждённый production использует ровно семь переменных:
 
 ```text
 BOT_TOKEN
@@ -83,6 +83,8 @@ TRACKED_THREAD_IDS
 TIMEWEB_AI_TOKEN
 DATABASE_URL
 ```
+
+Локальный WIP дополнительно реализует необязательный `TELEGRAM_PROXY_VLESS_URL` для scoped Telegram egress через Amsterdam VLESS. До наблюдаемого deploy он не считается production-поведением. Значение является полным credential URI: не читать, не печатать, не добавлять в Git. Пустое значение сохраняет direct mode.
 
 Секреты App Platform не синхронизируются в Git или локальный `.env`. Приложение загружает `.env`, а не `.env.local`. `.env.example` содержит только имена и безопасный локальный `DATABASE_URL`; остальные значения пользователь заполняет сам.
 
@@ -142,7 +144,7 @@ node --input-type=module -e 'import{Pool}from"pg";const p=new Pool({connectionSt
 ## Правила изменения
 
 - Сначала воспроизводить дефект тестом, затем менять реализацию.
-- Сохранять семь env-переменных; новые операционные настройки добавлять в `runtime-defaults.ts`, если нет веской причины делать их deployment-specific.
+- Сохранять семь обязательных production env-переменных; `TELEGRAM_PROXY_VLESS_URL` допустим только как необязательный deployment-specific secret для scoped Telegram egress. Новые операционные настройки добавлять в `runtime-defaults.ts`, если нет веской причины делать их deployment-specific.
 - Не менять schema/embedding model без плана переиндексации карточек.
 - Не выполнять deploy, seed production, ротацию ключей, изменение Timeweb-ресурсов или push без явного разрешения пользователя.
 - Не коммитить планы как будто они являются реализованным поведением. В документации явно разделять production, проверенный local state и proposed/WIP.

@@ -16,11 +16,15 @@
 
 ```text
 Telegram -> bot on Timeweb App Platform
+         -> local Xray SOCKS (only when TELEGRAM_PROXY_VLESS_URL is set)
+         -> Amsterdam VLESS Reality -> Telegram API
          -> Timeweb AI Gateway (chat + embeddings, one token)
          -> Timeweb Managed PostgreSQL (messages + members + vector index)
 ```
 
-Операционные константы — модели, размерность embeddings, расписания, лимиты базы, обработки запросов и логирования — находятся в `src/runtime-defaults.ts`. Идентичность развёртывания и секреты находятся ровно в семи значениях окружения: `BOT_TOKEN`, `TARGET_CHAT_ID`, `AI_RADAR_THREAD_ID`, `THREAD_SUMMARY_THREAD_ID`, `TRACKED_THREAD_IDS`, `TIMEWEB_AI_TOKEN` и `DATABASE_URL`.
+Xray is a userspace child process, binds its SOCKS listener only to loopback and receives the VLESS configuration on stdin. Only grammY traffic uses this branch; PostgreSQL, Timeweb AI and RSS remain direct. The VLESS URI, UUID and Reality keys are deployment secrets and never appear in source or logs. A blank optional `TELEGRAM_PROXY_VLESS_URL` retains direct Telegram mode.
+
+Операционные константы — модели, размерность embeddings, расписания, лимиты базы, обработки запросов и логирования — находятся в `src/runtime-defaults.ts`. Текущее production подтверждено для семи значений окружения: `BOT_TOKEN`, `TARGET_CHAT_ID`, `AI_RADAR_THREAD_ID`, `THREAD_SUMMARY_THREAD_ID`, `TRACKED_THREAD_IDS`, `TIMEWEB_AI_TOKEN` и `DATABASE_URL`. Локальный WIP добавляет необязательный deployment-specific `TELEGRAM_PROXY_VLESS_URL`; до explicit deploy он не описывает production.
 
 `config/timeweb-cloud-ca.crt` — публичный материал сертификата для проверки TLS Managed PostgreSQL, а не секрет. Для домена, публичного IP и любого адреса вне разрешённых локальных сетей приложение использует этот сертификат. TLS выключается только для loopback и RFC1918 private IPv4 (`10/8`, `172.16/12`, `192.168/16`); private IP допустим только внутри общей приватной сети App Platform и Managed PostgreSQL.
 

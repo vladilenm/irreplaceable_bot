@@ -11,6 +11,7 @@ services:
       TRACKED_THREAD_IDS: "${TRACKED_THREAD_IDS}"
       TIMEWEB_AI_TOKEN: "${TIMEWEB_AI_TOKEN}"
       DATABASE_URL: "${DATABASE_URL}"
+      TELEGRAM_PROXY_VLESS_URL: "${TELEGRAM_PROXY_VLESS_URL:-}"
     logging:
       driver: json-file
       options:

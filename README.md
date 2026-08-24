@@ -29,7 +29,7 @@ docker compose -f docker-compose.test.yml down
 
 ## Переменные production
 
-В App Platform задаются ровно семь значений:
+В текущем production подтверждены ровно семь обязательных значений:
 
 | Переменная | Назначение |
 |---|---|
@@ -40,6 +40,8 @@ docker compose -f docker-compose.test.yml down
 | `TRACKED_THREAD_IDS` | ID отслеживаемых топиков через запятую |
 | `TIMEWEB_AI_TOKEN` | единый ключ Timeweb AI Gateway для чата и embeddings |
 | `DATABASE_URL` | URL Managed PostgreSQL; для RFC1918 private IP TLS выключен, для домена или публичного IP используется строгий TLS с CA Timeweb |
+
+Локальный WIP дополнительно поддерживает необязательный deployment-specific `TELEGRAM_PROXY_VLESS_URL`. Он содержит целый VLESS Reality URI для Amsterdam egress, не попадает в Git и никогда не выводится в логи. При пустом значении Telegram работает напрямую; PostgreSQL, Timeweb AI и RSS всегда остаются прямыми. До отдельного согласованного deploy эта переменная не является подтверждённой production-конфигурацией.
 
 Операционные значения моделей, расписаний, лимитов и логирования зафиксированы в `src/runtime-defaults.ts`; они не настраиваются через App Platform. Полный пример локального окружения находится в [.env.example](./.env.example).
 
@@ -56,7 +58,7 @@ npm run eval:member-matching -- /absolute/path/member-matching-eval.json
 
 Импорт SQLite допустим только в полностью пустую PostgreSQL-схему и не изменяет исходный файл. Eval-набор и реальные карточки не должны попадать в Git.
 
-Команды Telegram: `/start`, `/digest`, `/status`, `/dev-digest`, `/retry_publications [digest|summary|all]`. Последняя команда повторяет доставку уже сформированных scheduled-публикаций, не запуская RSS или LLM заново. В текущей реализации административные команды проверяют права в чате, где была отправлена команда: `/status` в личке всегда отклоняется, даже если пользователь администратор клуба. Используйте команду в целевой группе от неанонимного администратора. Ровно один экземпляр приложения должен работать с одним `BOT_TOKEN`.
+Команды Telegram: `/start`, `/digest`, `/status`, `/dev-digest`, `/retry_publications [digest|summary|all]`. Последняя команда повторяет доставку уже сформированных scheduled-публикаций, не запуская RSS или LLM заново; не запускайте `/digest` или `/dev-digest` для recovery сохранённой публикации. В текущей реализации административные команды проверяют права в чате, где была отправлена команда: `/status` в личке всегда отклоняется, даже если пользователь администратор клуба. Используйте команду в целевой группе от неанонимного администратора. Ровно один экземпляр приложения должен работать с одним `BOT_TOKEN`.
 
 Production-образ не содержит `tsx`. Одноразовый mock seed из консоли App Platform запускается так:
 

@@ -53,7 +53,7 @@ describe('classifyStartupError', () => {
 });
 
 describe('PostgreSQL deployment files', () => {
-  it('injects exactly the seven App Platform environment variables', async () => {
+  it('injects seven required and one optional App Platform environment variables', async () => {
     const [compose, dockerfile, env] = await Promise.all([
       readFile(new URL('../docker-compose.yml', import.meta.url), 'utf8'),
       readFile(new URL('../Dockerfile', import.meta.url), 'utf8'),
@@ -70,6 +70,7 @@ describe('PostgreSQL deployment files', () => {
       'TRACKED_THREAD_IDS',
       'TIMEWEB_AI_TOKEN',
       'DATABASE_URL',
+      'TELEGRAM_PROXY_VLESS_URL',
     ]);
 
     const exampleEnvNames = env
@@ -79,5 +80,11 @@ describe('PostgreSQL deployment files', () => {
     expect(exampleEnvNames).toEqual(composeEnvNames);
     expect(dockerfile).toContain('COPY config ./config');
     expect(dockerfile).toContain('ENV NODE_ENV=production');
+    expect(dockerfile).toContain(
+      'FROM ghcr.io/xtls/xray-core:26.3.27@sha256:592ec4d11f656db95598d01e76dbcc6e002d67360b96a5436500a938230f52c7 AS xray',
+    );
+    expect(dockerfile).toContain(
+      'COPY --from=xray /usr/local/bin/xray /usr/local/bin/xray',
+    );
   });
 });

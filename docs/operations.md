@@ -39,7 +39,7 @@ docker compose -f docker-compose.test.yml exec postgres-test \
 1. Создайте один ключ AI Gateway и сохраните его как `TIMEWEB_AI_TOKEN`.
 2. Для задеплоенного `597be1c` подтвердите `openai/gpt-4.1-mini` через `/models` и убедитесь, что `openai/text-embedding-3-large` возвращает 1536 значений при передаче `dimensions: 1536`. Локальный latency-WIP переключает defaults на `openai/gpt-5.6-luna` и `openai/text-embedding-3-small`; это изменение нельзя деплоить без полного release gate и переиндексации карточек.
 3. Создайте Managed PostgreSQL с pgvector. Для подключения по private IP добавьте App Platform и базу в одну приватную сеть и используйте RFC1918-адрес в `DATABASE_URL`; для подключения по домену или публичному IP используйте защищённый URL.
-4. Настройте семь переменных в существующем приложении App Platform: `BOT_TOKEN`, `TARGET_CHAT_ID`, `AI_RADAR_THREAD_ID`, `THREAD_SUMMARY_THREAD_ID`, `TRACKED_THREAD_IDS`, `TIMEWEB_AI_TOKEN`, `DATABASE_URL`.
+4. Настройте семь обязательных переменных в существующем приложении App Platform: `BOT_TOKEN`, `TARGET_CHAT_ID`, `AI_RADAR_THREAD_ID`, `THREAD_SUMMARY_THREAD_ID`, `TRACKED_THREAD_IDS`, `TIMEWEB_AI_TOKEN`, `DATABASE_URL`. Необязательный `TELEGRAM_PROXY_VLESS_URL` добавляется только после отдельного согласования proxy rollout; значение — полный VLESS URI, его нельзя печатать, коммитить или передавать в обычные логи.
 5. Разверните один экземпляр бота и проверьте `/start`, затем `/status` в целевой группе от неанонимного администратора. В текущем коде `/status` в личке не подтверждает права администратора клуба.
 6. Один раз запустите `node dist/member.seed.js --allow-production` из консоли приложения, чтобы добавить 20 временных карточек. Production-образ не содержит dev dependency `tsx`, поэтому `npm run seed:members` внутри контейнера не является правильной командой.
 7. Проверьте `#запрос` на трёх репрезентативных запросах и убедитесь, что каждый ответ содержит 3–5 упоминаний.
@@ -82,6 +82,10 @@ AI-радар и сводка намеренно отправляются в о�
 - Job state меняется только после подтверждённой доставки, поэтому состояния обоих pipeline не продвинулись. Однако scheduler не делает отложенный автоматический повтор после исчерпания встроенного retry.
 
 В реализованном локальном WIP final payload сохраняется в PostgreSQL outbox до первого Telegram request. Dispatcher сохраняет результат каждого chunk и повторяет transport/5xx/429 ошибки с persisted backoff `3s → 15s → 1m → 5m → 15m → 30m` до следующей полуночи МСК. Не-429 4xx переводят публикацию в `failed`; просроченные публикации — в `expired`. В обоих случаях администратор целевой группы запускает `/retry_publications [digest|summary|all]`; это повторяет только доставку, не RSS и не LLM. `/status` показывает только безопасные counts очереди.
+
+## Telegram egress через Amsterdam VLESS (локальный WIP до deploy)
+
+При заданном `TELEGRAM_PROXY_VLESS_URL` процесс запускает bundled Xray, ждёт loopback SOCKS и направляет через него только grammY. Проверка после deploy — `getMe` в startup/preflight и успешная доставка существующей outbox-публикации через `/retry_publications digest`; не запускайте `/digest` или `/dev-digest` для восстановления. Если прокси не стартует или Telegram всё ещё недоступен, удалите только optional secret и сделайте rollback приложения: direct mode будет восстановлен, а сохранённая публикация останется в outbox. Личный mobile URI не используется ботом; его ротация и ротация bot URI выполняются независимо.
 
 Отправка является at-least-once: обрыв сети после того, как Telegram принял запрос, нельзя надёжно отличить от неполученного сообщения. Поэтому при recovery возможен один дубликат конкретного chunk. Terminal записи очищаются через семь дней.
 
