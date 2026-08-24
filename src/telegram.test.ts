@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { GrammyError, type Api } from 'grammy';
+import { GrammyError, HttpError, type Api } from 'grammy';
 
 // Mock Telegram delivery and assert the structured log context.
 
@@ -85,10 +85,8 @@ describe('sendMessageWithRetry log shape', () => {
     );
     expect(errorCall).toBeDefined();
     expect((errorCall?.[0] as { pipeline: string }).pipeline).toBe('digest');
-    // Diagnostic contract (prod-digest-delivery-conflict): error fields surface in msg.
-    expect(errorCall?.[1] as string).toContain('error_code=');
-    expect(errorCall?.[1] as string).toContain('chatId=-100');
-    expect(errorCall?.[1] as string).toContain('threadId=42');
+    expect(errorCall?.[1]).toBe('Telegram sendMessage failed, retrying in 3s');
+    expect(JSON.stringify(errorCall)).not.toContain('flaky');
 
     const retrySuccess = infoSpy.mock.calls.find(
       (c) => c[1] === 'Telegram sendMessage ok (after retry)',
@@ -123,10 +121,8 @@ describe('sendMessageWithRetry log shape', () => {
     );
     expect(fatalCall).toBeDefined();
     expect((fatalCall?.[0] as { pipeline: string }).pipeline).toBe('thread-summary');
-    // Diagnostic contract (prod-digest-delivery-conflict): error fields surface in msg.
-    // Note: error from `new Error('flaky-2')` is a plain Error, so error_code falls back to 'no-code'.
-    expect(fatalCall?.[1] as string).toContain('error_code=no-code');
-    expect(fatalCall?.[1] as string).toContain('description=flaky-2');
+    expect(fatalCall?.[1]).toBe('Telegram sendMessage failed after retry');
+    expect(JSON.stringify(fatalCall)).not.toContain('flaky-2');
   });
 
   it('C5: pipeline is optional — omitted call still works and binding has pipeline:undefined', async () => {
@@ -186,11 +182,13 @@ describe('sendMessageOnce', () => {
       threadId: 42,
       text: 'hi',
       parseMode: 'HTML',
-    })).resolves.toEqual({
+    })).resolves.toMatchObject({
       ok: false,
       errorCode: 'telegram-429',
       retryable: true,
       retryAfterMs: 17_000,
+      errorMetadata: { errorClass: 'GrammyError', status: 429 },
+      durationMs: expect.any(Number),
     });
   });
 
@@ -202,11 +200,55 @@ describe('sendMessageOnce', () => {
       threadId: 42,
       text: 'hi',
       parseMode: 'HTML',
-    })).resolves.toEqual({
+    })).resolves.toMatchObject({
       ok: false,
       errorCode: 'telegram-network',
       retryable: true,
       retryAfterMs: null,
+      errorMetadata: { errorClass: 'Error' },
+      durationMs: expect.any(Number),
     });
+  });
+
+  it('extracts only a safe system code from nested HttpError cause', async () => {
+    const nested = Object.assign(new Error('connect to secret proxy URI failed'), {
+      code: 'ETIMEDOUT',
+    });
+    mockSendMessage.mockRejectedValue(new HttpError('network failed', nested));
+
+    await expect(sendMessageOnce(api, {
+      chatId: -100,
+      threadId: 42,
+      text: 'hi',
+      parseMode: 'HTML',
+    })).resolves.toMatchObject({
+      ok: false,
+      errorCode: 'telegram-network',
+      retryable: true,
+      retryAfterMs: null,
+      errorMetadata: {
+        errorClass: 'HttpError',
+        causeClass: 'Error',
+        code: 'ETIMEDOUT',
+      },
+      durationMs: expect.any(Number),
+    });
+  });
+
+  it('never puts provider error text into retry logs', async () => {
+    const errorSpy = vi.spyOn(logger, 'error');
+    vi.useFakeTimers();
+    mockSendMessage.mockRejectedValueOnce(
+      new HttpError('network failed', new Error('vless://secret-value')),
+    ).mockResolvedValueOnce({ message_id: 1 });
+    const sent = sendMessageWithRetry(api, {
+      chatId: -100,
+      threadId: 42,
+      text: 'hi',
+      parseMode: 'HTML',
+    });
+    await vi.advanceTimersByTimeAsync(3_100);
+    await sent;
+    expect(JSON.stringify(errorSpy.mock.calls)).not.toContain('vless://secret-value');
   });
 });

@@ -9,6 +9,7 @@ import type {
   ScheduledPublicationRepository,
 } from './scheduled-publication.repository.js';
 import type { SendMessageOnceResult } from './telegram.js';
+import { RUNTIME_DEFAULTS } from './runtime-defaults.js';
 
 const now = new Date('2030-08-23T06:00:00.000Z');
 const claimed = (overrides: Partial<ClaimedPublication> = {}): ClaimedPublication => ({
@@ -66,7 +67,7 @@ function sendResult(result: SendMessageOnceResult) {
 describe('publication dispatcher', () => {
   it('persists a sent chunk then advances digest state only after final delivery', async () => {
     const publications = makeRepository(claimed());
-    const send = sendResult({ ok: true, message: { message_id: 501 } as never });
+    const send = sendResult({ ok: true, message: { message_id: 501 } as never, durationMs: 10 });
     const dispatcher = createPublicationDispatcher({ publications, jobs, sendMessageOnce: send });
 
     await dispatcher.dispatchDue(now);
@@ -88,6 +89,8 @@ describe('publication dispatcher', () => {
       errorCode: 'telegram-network',
       retryable: true,
       retryAfterMs: null,
+      errorMetadata: { errorClass: 'Error' },
+      durationMs: 10,
     });
     const dispatcher = createPublicationDispatcher({ publications, jobs, sendMessageOnce: send });
 
@@ -108,6 +111,8 @@ describe('publication dispatcher', () => {
       errorCode: 'telegram-403',
       retryable: false,
       retryAfterMs: null,
+      errorMetadata: { errorClass: 'GrammyError', status: 403 },
+      durationMs: 10,
     });
     const dispatcher = createPublicationDispatcher({ publications, jobs, sendMessageOnce: send });
 
@@ -126,6 +131,8 @@ describe('publication dispatcher', () => {
       errorCode: 'telegram-network',
       retryable: true,
       retryAfterMs: null,
+      errorMetadata: { errorClass: 'Error' },
+      durationMs: 10,
     });
     const dispatcher = createPublicationDispatcher({ publications, jobs, sendMessageOnce: send });
 
@@ -145,5 +152,11 @@ describe('publication dispatcher', () => {
       30 * 60_000,
       30 * 60_000,
     ]);
+  });
+
+  it('keeps the durable lease at least three times longer than Telegram timeout', () => {
+    expect(RUNTIME_DEFAULTS.publications.deliveryLeaseMs).toBeGreaterThanOrEqual(
+      RUNTIME_DEFAULTS.telegram.requestTimeoutSeconds * 3_000,
+    );
   });
 });

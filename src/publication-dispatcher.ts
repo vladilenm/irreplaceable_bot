@@ -1,10 +1,10 @@
 import { logger } from './logger.js';
+import { RUNTIME_DEFAULTS } from './runtime-defaults.js';
 import type { JobStateRepository } from './job-state.repository.js';
 import type { ScheduledPublicationRepository } from './scheduled-publication.repository.js';
 import type { SendMessageOnceResult, SendMessageParams } from './telegram.js';
 
 const RETRY_DELAYS_MS = [3_000, 15_000, 60_000, 5 * 60_000, 15 * 60_000, 30 * 60_000] as const;
-const DEFAULT_LEASE_MS = 5 * 60_000;
 const DEFAULT_INTERVAL_MS = 30_000;
 const DEFAULT_BATCH_SIZE = 10;
 
@@ -28,7 +28,7 @@ export interface PublicationDispatcherOptions {
 }
 
 export function createPublicationDispatcher(options: PublicationDispatcherOptions): PublicationDispatcher {
-  const leaseMs = options.leaseMs ?? DEFAULT_LEASE_MS;
+  const leaseMs = options.leaseMs ?? RUNTIME_DEFAULTS.publications.deliveryLeaseMs;
   const intervalMs = options.intervalMs ?? DEFAULT_INTERVAL_MS;
   const batchSize = options.batchSize ?? DEFAULT_BATCH_SIZE;
   let timer: NodeJS.Timeout | null = null;
@@ -74,6 +74,7 @@ export function createPublicationDispatcher(options: PublicationDispatcherOption
             pipeline: publication.pipeline,
             publicationId: publication.id,
             chunkIndex: publication.chunk.chunkIndex,
+            durationMs: result.durationMs,
           },
           'Scheduled publication chunk delivered',
         );
@@ -82,7 +83,13 @@ export function createPublicationDispatcher(options: PublicationDispatcherOption
       if (!result.retryable) {
         await options.publications.markFailed(publication.id, result.errorCode);
         logger.error(
-          { pipeline: publication.pipeline, publicationId: publication.id, errorCode: result.errorCode },
+          {
+            pipeline: publication.pipeline,
+            publicationId: publication.id,
+            errorCode: result.errorCode,
+            durationMs: result.durationMs,
+            ...result.errorMetadata,
+          },
           'Scheduled publication delivery failed permanently',
         );
         continue;
@@ -92,14 +99,28 @@ export function createPublicationDispatcher(options: PublicationDispatcherOption
       if (retryAt.getTime() >= publication.expiresAt.getTime()) {
         await options.publications.markExpired(publication.id);
         logger.warn(
-          { pipeline: publication.pipeline, publicationId: publication.id },
+          {
+            pipeline: publication.pipeline,
+            publicationId: publication.id,
+            errorCode: result.errorCode,
+            durationMs: result.durationMs,
+            ...result.errorMetadata,
+          },
           'Scheduled publication expired before next retry',
         );
         continue;
       }
       await options.publications.scheduleRetry(publication.id, retryAt, result.errorCode);
       logger.warn(
-        { pipeline: publication.pipeline, publicationId: publication.id, errorCode: result.errorCode },
+        {
+          pipeline: publication.pipeline,
+          publicationId: publication.id,
+          attemptCount: publication.attemptCount,
+          nextAttemptAt: retryAt.toISOString(),
+          errorCode: result.errorCode,
+          durationMs: result.durationMs,
+          ...result.errorMetadata,
+        },
         'Scheduled publication delivery deferred',
       );
     }
