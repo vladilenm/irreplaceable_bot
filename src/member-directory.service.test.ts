@@ -28,6 +28,16 @@ const card = (
 function repository(pending: MemberSourceRecord[] = []) {
   return {
     upsertCards: vi.fn(async (records: readonly MemberSourceRecord[]) => records.length),
+    replaceSourceSnapshot: vi.fn(async () => ({
+      provider: 'web' as const,
+      generation: 1,
+      lastSuccessAt: '2026-08-21T10:01:00.000Z',
+      fetchedCount: 0,
+      activeCount: 0,
+      rejectedCount: 0,
+      deactivatedCount: 0,
+    })),
+    readSourceStatus: vi.fn(async () => null),
     readPending: vi.fn(async () => pending),
     upsertEmbedding: vi.fn(async () => undefined),
     search: vi.fn(async () => []),

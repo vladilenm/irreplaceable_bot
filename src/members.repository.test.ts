@@ -2,6 +2,7 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { runMigrations } from './db/migrations.js';
 import {
   PgMemberRepository,
+  type MemberSourceStatus,
   type MemberRepository,
 } from './members.repository.js';
 import { memberContentHash, type MemberSourceRecord } from './members.js';
@@ -109,6 +110,119 @@ describe('PgMemberRepository cards and pending index', () => {
     )).rejects.toThrow('1536 finite values');
     await expect(repo.search([...vector({ 0: 1 }), Number.NaN], MODEL, 20))
       .rejects.toThrow('1536 finite values');
+  });
+});
+
+describe('PgMemberRepository web source snapshots', () => {
+  it('atomically replaces a complete web snapshot', async () => {
+    const first = [
+      member('1001', 'Имя: Первый', {
+        source: 'web',
+        telegramUserId: '1001',
+        telegramUsername: 'first_user',
+      }),
+      member('1002', 'Имя: Второй', {
+        source: 'web',
+        telegramUserId: '1002',
+        telegramUsername: 'second_user',
+      }),
+    ];
+    await repo.replaceSourceSnapshot({
+      source: 'web',
+      records: first,
+      fetchedCount: 2,
+      rejectedCount: 0,
+      completedAt: new Date('2026-08-26T10:00:00.000Z'),
+    });
+
+    const status = await repo.replaceSourceSnapshot({
+      source: 'web',
+      records: [first[0]!],
+      fetchedCount: 1,
+      rejectedCount: 0,
+      completedAt: new Date('2026-08-26T10:05:00.000Z'),
+    });
+    expect(status).toMatchObject({
+      generation: 2,
+      fetchedCount: 1,
+      activeCount: 1,
+      rejectedCount: 0,
+      deactivatedCount: 1,
+    });
+    expect(await repo.readSourceStatus('web')).toEqual(status);
+  });
+
+  it('accepts a successful empty snapshot', async () => {
+    await repo.replaceSourceSnapshot({
+      source: 'web',
+      records: [member('1001', 'Имя: Первый', {
+        source: 'web', telegramUserId: '1001', telegramUsername: 'first_user',
+      })],
+      fetchedCount: 1,
+      rejectedCount: 0,
+      completedAt: new Date('2026-08-26T10:00:00.000Z'),
+    });
+    const status = await repo.replaceSourceSnapshot({
+      source: 'web',
+      records: [],
+      fetchedCount: 0,
+      rejectedCount: 0,
+      completedAt: new Date('2026-08-26T10:05:00.000Z'),
+    });
+    expect(status).toMatchObject({ activeCount: 0, deactivatedCount: 1 });
+  });
+
+  it('rolls back cards and source state when a snapshot has duplicate Telegram IDs', async () => {
+    const completedAt = new Date('2026-08-26T10:00:00.000Z');
+    const status = await repo.replaceSourceSnapshot({
+      source: 'web',
+      records: [
+        member('1001', 'Имя: Первый', {
+          source: 'web', telegramUserId: '1001', telegramUsername: 'first_user',
+        }),
+        member('1002', 'Имя: Второй', {
+          source: 'web', telegramUserId: '1002', telegramUsername: 'second_user',
+        }),
+      ],
+      fetchedCount: 2,
+      rejectedCount: 0,
+      completedAt,
+    });
+    const beforeRows = await pool.query<{
+      member_id: string;
+      active: boolean;
+      telegram_user_id: string | null;
+    }>(`
+      SELECT member_id, active, telegram_user_id
+      FROM members
+      WHERE source = 'web'
+      ORDER BY member_id
+    `);
+    const beforeStatus: MemberSourceStatus | null = await repo.readSourceStatus('web');
+
+    await expect(repo.replaceSourceSnapshot({
+      source: 'web',
+      records: [
+        member('1003', 'Имя: Третий', {
+          source: 'web', telegramUserId: '1003', telegramUsername: 'third_user',
+        }),
+        member('1004', 'Имя: Четвёртый', {
+          source: 'web', telegramUserId: '1003', telegramUsername: 'fourth_user',
+        }),
+      ],
+      fetchedCount: 2,
+      rejectedCount: 0,
+      completedAt: new Date('2026-08-26T10:05:00.000Z'),
+    })).rejects.toThrow('duplicate-web-snapshot-record');
+
+    await expect(pool.query(`
+      SELECT member_id, active, telegram_user_id
+      FROM members
+      WHERE source = 'web'
+      ORDER BY member_id
+    `)).resolves.toMatchObject({ rows: beforeRows.rows });
+    await expect(repo.readSourceStatus('web')).resolves.toEqual(beforeStatus);
+    expect(status).toEqual(beforeStatus);
   });
 });
 

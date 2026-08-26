@@ -303,8 +303,30 @@ export interface MemberIndexStatus {
   pendingCount: number;
 }
 
+export interface ReplaceMemberSourceSnapshotInput {
+  source: 'web';
+  records: readonly MemberSourceRecord[];
+  fetchedCount: number;
+  rejectedCount: number;
+  completedAt: Date;
+}
+
+export interface MemberSourceStatus {
+  provider: 'web';
+  generation: number;
+  lastSuccessAt: string;
+  fetchedCount: number;
+  activeCount: number;
+  rejectedCount: number;
+  deactivatedCount: number;
+}
+
 export interface MemberRepository {
   upsertCards(records: readonly MemberSourceRecord[]): Promise<number>;
+  replaceSourceSnapshot(
+    input: ReplaceMemberSourceSnapshotInput,
+  ): Promise<MemberSourceStatus>;
+  readSourceStatus(source: 'web'): Promise<MemberSourceStatus | null>;
   readPending(model: string, limit: number): Promise<MemberSourceRecord[]>;
   upsertEmbedding(
     memberId: string,
@@ -356,6 +378,16 @@ interface IndexStatusRow {
   pending_count: number;
 }
 
+interface SourceStatusRow {
+  provider: 'web';
+  generation: string;
+  last_success_at: Date;
+  fetched_count: number;
+  active_count: number;
+  rejected_count: number;
+  deactivated_count: number;
+}
+
 const VECTOR_DIMENSIONS = 1536;
 const registeredClients = new WeakSet<PoolClient>();
 
@@ -390,6 +422,54 @@ function mapIndexStatus(row: IndexStatusRow): MemberIndexStatus {
   };
 }
 
+function mapSourceStatus(row: SourceStatusRow): MemberSourceStatus {
+  return {
+    provider: row.provider,
+    generation: Number(row.generation),
+    lastSuccessAt: row.last_success_at.toISOString(),
+    fetchedCount: row.fetched_count,
+    activeCount: row.active_count,
+    rejectedCount: row.rejected_count,
+    deactivatedCount: row.deactivated_count,
+  };
+}
+
+async function upsertMemberWithClient(
+  client: PoolClient,
+  record: MemberSourceRecord,
+): Promise<number> {
+  const result = await client.query(`
+    INSERT INTO members (
+      member_id, source, external_id, telegram_user_id, display_name,
+      telegram_username, profile_text, content_hash, source_updated_at,
+      active, updated_at
+    ) VALUES ($1, $2, $3, $4::bigint, $5, $6, $7, $8, $9, $10, now())
+    ON CONFLICT(member_id) DO UPDATE SET
+      source = EXCLUDED.source,
+      external_id = EXCLUDED.external_id,
+      telegram_user_id = EXCLUDED.telegram_user_id,
+      display_name = EXCLUDED.display_name,
+      telegram_username = EXCLUDED.telegram_username,
+      profile_text = EXCLUDED.profile_text,
+      content_hash = EXCLUDED.content_hash,
+      source_updated_at = EXCLUDED.source_updated_at,
+      active = EXCLUDED.active,
+      updated_at = now()
+  `, [
+    buildMemberId(record.source, record.externalId),
+    record.source,
+    record.externalId,
+    record.telegramUserId,
+    record.displayName,
+    record.telegramUsername,
+    record.profileText,
+    memberContentHash(record),
+    record.sourceUpdatedAt,
+    record.active,
+  ]);
+  return result.rowCount ?? 0;
+}
+
 export class PgMemberRepository implements MemberRepository {
   constructor(private readonly pool: Pool) {}
 
@@ -418,38 +498,94 @@ export class PgMemberRepository implements MemberRepository {
     return withTransaction(this.pool, async (client) => {
       let upserted = 0;
       for (const record of records) {
-        const result = await client.query(`
-          INSERT INTO members (
-            member_id, source, external_id, telegram_user_id, display_name,
-            telegram_username, profile_text, content_hash, source_updated_at, active, updated_at
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now())
-          ON CONFLICT(member_id) DO UPDATE SET
-            source = EXCLUDED.source,
-            external_id = EXCLUDED.external_id,
-            telegram_user_id = EXCLUDED.telegram_user_id,
-            display_name = EXCLUDED.display_name,
-            telegram_username = EXCLUDED.telegram_username,
-            profile_text = EXCLUDED.profile_text,
-            content_hash = EXCLUDED.content_hash,
-            source_updated_at = EXCLUDED.source_updated_at,
-            active = EXCLUDED.active,
-            updated_at = now()
-        `, [
-          buildMemberId(record.source, record.externalId),
-          record.source,
-          record.externalId,
-          record.telegramUserId,
-          record.displayName,
-          record.telegramUsername,
-          record.profileText,
-          memberContentHash(record),
-          record.sourceUpdatedAt,
-          record.active,
-        ]);
-        upserted += result.rowCount ?? 0;
+        upserted += await upsertMemberWithClient(client, record);
       }
       return upserted;
     });
+  }
+
+  async replaceSourceSnapshot(
+    input: ReplaceMemberSourceSnapshotInput,
+  ): Promise<MemberSourceStatus> {
+    return withTransaction(this.pool, async (client) => {
+      await client.query('SELECT pg_advisory_xact_lock($1)', [620260823]);
+      const ids = new Set<string>();
+      const telegramIds = new Set<string>();
+      for (const record of input.records) {
+        if (
+          record.source !== input.source ||
+          record.telegramUserId === null ||
+          record.active !== true
+        ) {
+          throw new Error('invalid-web-snapshot-record');
+        }
+        const memberId = buildMemberId(record.source, record.externalId);
+        if (ids.has(memberId) || telegramIds.has(record.telegramUserId)) {
+          throw new Error('duplicate-web-snapshot-record');
+        }
+        ids.add(memberId);
+        telegramIds.add(record.telegramUserId);
+      }
+
+      for (const record of input.records) {
+        await upsertMemberWithClient(client, record);
+      }
+
+      const deactivated = await client.query(`
+        UPDATE members
+        SET active = false, updated_at = $3
+        WHERE source = $1
+          AND active = true
+          AND NOT (member_id = ANY($2::text[]))
+      `, [input.source, [...ids], input.completedAt]);
+
+      const previous = await client.query<{ generation: string }>(`
+        SELECT generation FROM member_source_state WHERE provider = $1
+      `, [input.source]);
+      const generation = Number(previous.rows[0]?.generation ?? 0) + 1;
+      const deactivatedCount = deactivated.rowCount ?? 0;
+      await client.query(`
+        INSERT INTO member_source_state (
+          provider, generation, last_success_at, fetched_count, active_count,
+          rejected_count, deactivated_count
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+        ON CONFLICT(provider) DO UPDATE SET
+          generation = EXCLUDED.generation,
+          last_success_at = EXCLUDED.last_success_at,
+          fetched_count = EXCLUDED.fetched_count,
+          active_count = EXCLUDED.active_count,
+          rejected_count = EXCLUDED.rejected_count,
+          deactivated_count = EXCLUDED.deactivated_count
+      `, [
+        input.source,
+        generation,
+        input.completedAt,
+        input.fetchedCount,
+        input.records.length,
+        input.rejectedCount,
+        deactivatedCount,
+      ]);
+      return {
+        provider: input.source,
+        generation,
+        lastSuccessAt: input.completedAt.toISOString(),
+        fetchedCount: input.fetchedCount,
+        activeCount: input.records.length,
+        rejectedCount: input.rejectedCount,
+        deactivatedCount,
+      };
+    });
+  }
+
+  async readSourceStatus(source: 'web'): Promise<MemberSourceStatus | null> {
+    const result = await this.pool.query<SourceStatusRow>(`
+      SELECT provider, generation, last_success_at, fetched_count, active_count,
+        rejected_count, deactivated_count
+      FROM member_source_state
+      WHERE provider = $1
+    `, [source]);
+    const row = result.rows[0];
+    return row ? mapSourceStatus(row) : null;
   }
 
   async readPending(model: string, limit: number): Promise<MemberSourceRecord[]> {
