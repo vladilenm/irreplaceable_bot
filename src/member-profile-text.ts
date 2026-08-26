@@ -1,5 +1,6 @@
 import type { MemberSourceRecord } from './members.js';
 import type { ClubMemberSourceRow } from './member-source.repository.js';
+import { isPositivePostgresBigint } from './telegram-user-id.js';
 
 export type MemberProjection =
   | { accepted: true; record: MemberSourceRecord }
@@ -29,7 +30,7 @@ export function projectClubMember(
   if (!supportedPolicies.has(row.consentPolicyVersion)) {
     return { accepted: false, reason: 'unsupported-consent-version' };
   }
-  if (!/^[1-9]\d*$/.test(row.telegramUserId)) {
+  if (!isPositivePostgresBigint(row.telegramUserId)) {
     return { accepted: false, reason: 'invalid-telegram-id' };
   }
   const telegramUsername = row.telegramUsername.trim().replace(/^@/, '').toLowerCase();

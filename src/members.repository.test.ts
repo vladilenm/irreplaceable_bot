@@ -279,6 +279,8 @@ describe('PgMemberRepository exact vector search', () => {
       .rejects.toThrow('requester Telegram user ID must be a positive decimal string');
     await expect(repo.search(vector({ 0: 1 }), MODEL, 20, '123abc'))
       .rejects.toThrow('requester Telegram user ID must be a positive decimal string');
+    await expect(repo.search(vector({ 0: 1 }), MODEL, 20, '9223372036854775808'))
+      .rejects.toThrow('requester Telegram user ID must be a positive decimal string');
   });
 });
 

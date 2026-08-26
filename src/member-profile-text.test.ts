@@ -47,6 +47,7 @@ it('rejects unsupported consent without exposing profile values', () => {
 });
 
 it.each([
+  [{ telegramUserId: '9223372036854775808' }, 'invalid-telegram-id'],
   [{ telegramUsername: 'bad name' }, 'invalid-telegram-username'],
   [{ occupation: '   ' }, 'invalid-profile-field'],
   [{ skills: [] }, 'invalid-profile-field'],

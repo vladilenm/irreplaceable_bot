@@ -139,7 +139,7 @@ PostgreSQL migrations complete
 Starting bot...
 Bot is running (long-polling mode)
 Scheduler started
-Initial member directory indexing complete
+Initial member source sync attempt finished
 ```
 
 Последние результаты `#запрос` безопасно проверяются из консоли приложения без печати credentials:

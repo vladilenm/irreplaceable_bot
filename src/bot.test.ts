@@ -133,18 +133,20 @@ it('passes the scoped API client options to grammY', () => {
 
 it('reports count-only web source and index state to an administrator', async () => {
   const profileFixtureValue = 'private canonical profile value';
+  const sourceStatus = {
+    provider: 'web' as const,
+    generation: 4,
+    lastSuccessAt: '2026-08-26T10:05:00.000Z',
+    fetchedCount: 8,
+    activeCount: 7,
+    rejectedCount: 1,
+    deactivatedCount: 2,
+    profileText: profileFixtureValue,
+  };
   const reply = await runStatus({
     handlerOptions: {} as never,
     memberRepository: {
-      readSourceStatus: vi.fn(async () => ({
-        provider: 'web' as const,
-        generation: 4,
-        lastSuccessAt: '2026-08-26T10:05:00.000Z',
-        fetchedCount: 8,
-        activeCount: 7,
-        rejectedCount: 1,
-        deactivatedCount: 2,
-      })),
+      readSourceStatus: vi.fn(async () => sourceStatus),
       readIndexStatus: vi.fn(async () => ({
         provider: 'postgres',
         generation: 5,

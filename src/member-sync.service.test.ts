@@ -94,21 +94,22 @@ it('commits accepted rows, deactivates rejected rows, then indexes pending cards
   const source = { readSnapshot: vi.fn().mockResolvedValue([
     sourceRow({ telegramUserId: '1001' }),
     sourceRow({ telegramUserId: '1002', consentPolicyVersion: 'member-matching-v2' }),
+    sourceRow({ telegramUserId: '9223372036854775808' }),
   ]) } satisfies MemberSourceRepository;
   const { service, members, directory } = serviceFor({ source });
 
   await expect(service.sync()).resolves.toEqual({
-    fetched: 2,
+    fetched: 3,
     accepted: 1,
-    rejected: 1,
+    rejected: 2,
     deactivated: 3,
     indexed: 1,
     failed: 0,
   });
   expect(members.replaceSourceSnapshot).toHaveBeenCalledWith(expect.objectContaining({
     source: 'web',
-    fetchedCount: 2,
-    rejectedCount: 1,
+    fetchedCount: 3,
+    rejectedCount: 2,
     records: [expect.objectContaining({ telegramUserId: '1001' })],
     completedAt: new Date('2026-08-26T10:00:00.000Z'),
   }));

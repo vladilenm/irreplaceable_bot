@@ -3,6 +3,7 @@ import type { Pool, PoolClient } from 'pg';
 import { registerTypes, toSql } from 'pgvector/pg';
 import { withTransaction } from './db/pool.js';
 import { buildMemberId, memberContentHash } from './members.js';
+import { isPositivePostgresBigint } from './telegram-user-id.js';
 import type {
   IndexedMember,
   MemberSourceRecord,
@@ -409,7 +410,7 @@ function validateLimit(limit: number): void {
 
 function validateRequesterTelegramUserId(value: string | undefined): string | null {
   if (value === undefined) return null;
-  if (!/^[1-9]\d*$/.test(value)) {
+  if (!isPositivePostgresBigint(value)) {
     throw new Error('requester Telegram user ID must be a positive decimal string');
   }
   return value;

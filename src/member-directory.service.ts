@@ -2,9 +2,9 @@ import { buildMemberId, canonicalSearchText, memberContentHash } from './members
 import type { EmbeddingProvider, MemberSourceRecord } from './members.js';
 import type { MemberRepository } from './members.repository.js';
 import { logger } from './logger.js';
+import { isPositivePostgresBigint } from './telegram-user-id.js';
 
 const INDEX_BATCH_SIZE = 100;
-const POSTGRES_BIGINT_MAX = '9223372036854775807';
 
 function normalizeVisibleText(raw: string, maxLength: number, field: string): string {
   const value = raw
@@ -31,11 +31,7 @@ function normalizeProfileText(raw: string): string {
 function normalizeTelegramUserId(raw: string | null): string | null {
   if (raw === null) return null;
   const value = raw.trim();
-  if (
-    !/^[1-9]\d*$/.test(value) ||
-    value.length > POSTGRES_BIGINT_MAX.length ||
-    (value.length === POSTGRES_BIGINT_MAX.length && value > POSTGRES_BIGINT_MAX)
-  ) {
+  if (!isPositivePostgresBigint(value)) {
     throw new Error('member-telegram-id-invalid');
   }
   return value;
