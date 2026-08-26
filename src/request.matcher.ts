@@ -40,7 +40,7 @@ export class MemberMatcher {
     requestJsonFn?: RequestJsonFn;
   }) {}
 
-  async match(query: string, requesterUsername?: string): Promise<PublicMemberMatch[]> {
+  async match(query: string, requesterTelegramUserId?: string): Promise<PublicMemberMatch[]> {
     const vectors = await this.deps.embeddings.embed([query]);
     const vector = vectors[0];
     if (!vector || vector.length === 0 || vector.some((value) => !Number.isFinite(value))) {
@@ -50,7 +50,7 @@ export class MemberMatcher {
       vector,
       this.deps.embeddings.model,
       20,
-      requesterUsername,
+      requesterTelegramUserId,
     );
     if (shortlist.length < 3) return [];
 

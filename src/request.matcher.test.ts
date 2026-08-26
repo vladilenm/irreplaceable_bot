@@ -60,7 +60,7 @@ it('requests exact PostgreSQL top-20 and returns code-owned usernames', async ()
     ],
   });
 
-  await expect(matcher.match('Ищу эксперта по B2B SaaS', 'requester')).resolves.toEqual([
+  await expect(matcher.match('Ищу эксперта по B2B SaaS', '1001')).resolves.toEqual([
     expect.objectContaining({ memberId: 'anna', telegramUsername: 'anna_product' }),
     expect.objectContaining({ memberId: 'mikhail', telegramUsername: 'mikhail_saas' }),
     expect.objectContaining({ memberId: 'olga', telegramUsername: 'olga_pilots' }),
@@ -69,7 +69,7 @@ it('requests exact PostgreSQL top-20 and returns code-owned usernames', async ()
     [1, 0],
     'text-embedding-3-small',
     20,
-    'requester',
+    '1001',
   );
   expect(embeddings.embed).toHaveBeenCalledWith(['Ищу эксперта по B2B SaaS']);
 });
@@ -108,15 +108,15 @@ it('rejects oversized schema output', async () => {
   expect(requestJsonFn).toHaveBeenCalledTimes(1);
 });
 
-it('passes requester exclusion to PostgreSQL before reranking', async () => {
+it('passes requester Telegram ID to PostgreSQL before reranking', async () => {
   const { matcher, members } = matcherFor({ matches: [] }, []);
 
-  await expect(matcher.match('Ищу эксперта', '@ANNA_Product')).resolves.toEqual([]);
+  await expect(matcher.match('Ищу эксперта', '1001')).resolves.toEqual([]);
   expect(members.search).toHaveBeenCalledWith(
     [1, 0],
     'text-embedding-3-small',
     20,
-    '@ANNA_Product',
+    '1001',
   );
 });
 

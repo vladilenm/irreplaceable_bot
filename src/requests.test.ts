@@ -56,6 +56,7 @@ function register(options: {
   matcher?: Pick<MemberMatcher, 'match'>;
   concurrency?: number;
   queueLimit?: number;
+  isMatchingReady?: () => Promise<boolean>;
   send?: typeof sendMessageWithRetry;
 }) {
   let handler: ((ctx: Context, next: () => Promise<void>) => Promise<void>) | undefined;
@@ -70,6 +71,7 @@ function register(options: {
     matcher: (options.matcher ?? { match: vi.fn().mockResolvedValue(matches) }) as MemberMatcher,
     concurrency: options.concurrency ?? 2,
     queueLimit: options.queueLimit ?? 50,
+    isMatchingReady: options.isMatchingReady,
     send: options.send,
     now: () => new Date('2026-08-21T10:00:00.000Z'),
   });
@@ -90,6 +92,8 @@ it('extracts exact hashtag entities and removes every request marker', () => {
     chatId: -1001,
     threadId: 10,
     messageId: 77,
+    authorId: 5,
+    authorUsername: 'author',
     query: 'Ищу B2B SaaS эксперта',
   });
 });
@@ -182,6 +186,32 @@ it('sends three matches in the source topic and records completion', async () =>
   expect(repository.complete).toHaveBeenCalledWith(-1001, 77, expect.objectContaining({
     responseMessageId: 88,
     matchCount: 3,
+  }));
+  expect(matcher.match).toHaveBeenCalledWith('Ищу эксперта', '5');
+});
+
+it('fails safely without embedding or matching before the first member snapshot', async () => {
+  const repository = requestRepository();
+  const matcher = { match: vi.fn() } as Pick<MemberMatcher, 'match'>;
+  const isMatchingReady = vi.fn().mockResolvedValue(false);
+  const send = vi.fn().mockResolvedValue({ message_id: 88 }) as unknown as typeof sendMessageWithRetry;
+  const handler = register({ repository, matcher, isMatchingReady, send });
+
+  await handler(context({
+    text: '#запрос Ищу эксперта',
+    entities: [{ type: 'hashtag', offset: 0, length: 7 }],
+  }), vi.fn().mockResolvedValue(undefined));
+
+  await vi.waitFor(() => expect(repository.fail).toHaveBeenCalledWith(
+    -1001,
+    77,
+    'member-source-not-ready',
+    expect.any(String),
+  ));
+  expect(isMatchingReady).toHaveBeenCalledTimes(1);
+  expect(matcher.match).not.toHaveBeenCalled();
+  expect(send).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+    text: 'Подбор участников временно недоступен. Попробуйте отправить новый запрос позже.',
   }));
 });
 

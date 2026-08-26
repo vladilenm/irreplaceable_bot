@@ -124,6 +124,8 @@ const emptyRequestText = 'Опишите запрос после #запрос.'
 const noMatchText = 'Не удалось найти минимум трёх надёжно подходящих участников.';
 const failedText = 'Подбор участников временно недоступен. Попробуйте отправить новый запрос позже.';
 
+class MemberSourceNotReadyError extends Error {}
+
 function nowIso(options: RequestHandlerOptions): string {
   return (options.now ?? (() => new Date()))().toISOString();
 }
@@ -183,7 +185,14 @@ async function processRequest(
       return;
     }
 
-    const matches = await options.matcher.match(request.query, request.authorUsername ?? undefined);
+    if (options.isMatchingReady && !(await options.isMatchingReady())) {
+      throw new MemberSourceNotReadyError();
+    }
+
+    const requesterTelegramUserId = request.authorId === null
+      ? undefined
+      : String(request.authorId);
+    const matches = await options.matcher.match(request.query, requesterTelegramUserId);
     if (matches.length < 3) {
       const sent = await sendReply(api, request, noMatchText, options);
       await options.repository.noMatch(request.chatId, request.messageId, {
@@ -206,7 +215,14 @@ async function processRequest(
       messageId: request.messageId,
       errorClass: error instanceof Error ? error.name : 'unknown',
     }, 'Member request matching failed');
-    await failRequest(api, request, options, 'processing-failed');
+    await failRequest(
+      api,
+      request,
+      options,
+      error instanceof MemberSourceNotReadyError
+        ? 'member-source-not-ready'
+        : 'processing-failed',
+    );
   }
 }
 

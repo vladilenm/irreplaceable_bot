@@ -338,7 +338,7 @@ export interface MemberRepository {
     vector: readonly number[],
     model: string,
     limit: number,
-    requesterUsername?: string,
+    requesterTelegramUserId?: string,
   ): Promise<SimilarMember[]>;
   recordIndexStatus(
     provider: string,
@@ -405,6 +405,14 @@ function validateLimit(limit: number): void {
   if (!Number.isInteger(limit) || limit < 1 || limit > 1000) {
     throw new Error('limit must be an integer between 1 and 1000');
   }
+}
+
+function validateRequesterTelegramUserId(value: string | undefined): string | null {
+  if (value === undefined) return null;
+  if (!/^[1-9]\d*$/.test(value)) {
+    throw new Error('requester Telegram user ID must be a positive decimal string');
+  }
+  return value;
 }
 
 function mapIndexStatus(row: IndexStatusRow): MemberIndexStatus {
@@ -642,11 +650,11 @@ export class PgMemberRepository implements MemberRepository {
     values: readonly number[],
     model: string,
     limit: number,
-    requesterUsername?: string,
+    requesterTelegramUserId?: string,
   ): Promise<SimilarMember[]> {
     const vector = validateVector(values);
     validateLimit(limit);
-    const excluded = requesterUsername?.replace(/^@/, '').toLowerCase() ?? null;
+    const excluded = validateRequesterTelegramUserId(requesterTelegramUserId);
     const result = await this.withVectorClient((client) =>
       client.query<SimilarMemberRow>(`
         SELECT m.member_id, m.display_name, m.telegram_username, m.profile_text,
@@ -658,7 +666,7 @@ export class PgMemberRepository implements MemberRepository {
          AND e.model = $2
          AND e.dimensions = $3
         WHERE m.active = true
-          AND ($4::text IS NULL OR lower(m.telegram_username) <> $4)
+          AND ($4::bigint IS NULL OR m.telegram_user_id IS DISTINCT FROM $4::bigint)
         ORDER BY e.embedding <=> $1::vector, m.member_id
         LIMIT $5
       `, [toSql(vector), model, VECTOR_DIMENSIONS, excluded, limit]));

@@ -253,15 +253,32 @@ describe('PgMemberRepository exact vector search', () => {
     expect(afterEdit.map((row) => row.member.memberId)).toEqual(['mock:beta', 'mock:gamma']);
   });
 
-  it('excludes the requester case-insensitively and respects limit', async () => {
-    const requester = member('requester', 'requester', { telegramUsername: 'The_Requester' });
-    const other = member('other', 'other');
+  it('excludes a web requester by Telegram ID after their username changes', async () => {
+    const requester = member('1001', 'requester', {
+      source: 'web',
+      telegramUserId: '1001',
+      telegramUsername: 'renamed_username',
+    });
+    const other = member('1002', 'other', {
+      source: 'web',
+      telegramUserId: '1002',
+      telegramUsername: 'other_user',
+    });
     await repo.upsertCards([requester, other]);
-    await repo.upsertEmbedding('mock:requester', MODEL, memberContentHash(requester), vector({ 0: 1 }));
-    await repo.upsertEmbedding('mock:other', MODEL, memberContentHash(other), vector({ 0: 0.9, 1: 0.1 }));
+    await repo.upsertEmbedding('web:1001', MODEL, memberContentHash(requester), vector({ 0: 1 }));
+    await repo.upsertEmbedding('web:1002', MODEL, memberContentHash(other), vector({ 0: 0.9, 1: 0.1 }));
 
-    const rows = await repo.search(vector({ 0: 1 }), MODEL, 1, 'the_requester');
-    expect(rows.map((row) => row.member.memberId)).toEqual(['mock:other']);
+    const rows = await repo.search(vector({ 0: 1 }), MODEL, 20, '1001');
+    expect(rows.map((row) => row.member.memberId)).toEqual(['web:1002']);
+  });
+
+  it('rejects malformed requester Telegram IDs', async () => {
+    await expect(repo.search(vector({ 0: 1 }), MODEL, 20, '0'))
+      .rejects.toThrow('requester Telegram user ID must be a positive decimal string');
+    await expect(repo.search(vector({ 0: 1 }), MODEL, 20, '001'))
+      .rejects.toThrow('requester Telegram user ID must be a positive decimal string');
+    await expect(repo.search(vector({ 0: 1 }), MODEL, 20, '123abc'))
+      .rejects.toThrow('requester Telegram user ID must be a positive decimal string');
   });
 });
 
