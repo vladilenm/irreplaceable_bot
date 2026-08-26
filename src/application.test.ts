@@ -5,12 +5,16 @@ import {
   startApplication,
   type ApplicationDependencies,
 } from './application.js';
+import { logger } from './logger.js';
 import type { Persistence } from './persistence.js';
 import type { RequestMatchingRuntime } from './request.runtime.js';
 import type { PublicationDispatcher } from './publication-dispatcher.js';
 import type { TelegramTransportRuntime } from './telegram-transport.js';
 
-function dependencies(events: string[], options: { migrationFailure?: boolean } = {}) {
+function dependencies(
+  events: string[],
+  options: { migrationFailure?: boolean; startupSyncResult?: 'completed' | 'failed' | 'timed-out' } = {},
+) {
   const migrationPool = {
     end: vi.fn(async () => {
       events.push('close-migration-pool');
@@ -23,8 +27,19 @@ function dependencies(events: string[], options: { migrationFailure?: boolean } 
   } as unknown as Pool;
   const persistence = {} as Persistence;
   const requestMatching = {
-    memberDirectory: {
-      indexPending: vi.fn(async () => ({ indexed: 0, failed: 0 })),
+    memberSync: {
+      startupAttempt: vi.fn(async () => {
+        events.push('sync-members');
+        return options.startupSyncResult ?? 'completed';
+      }),
+      sync: vi.fn(async () => ({
+        fetched: 0,
+        accepted: 0,
+        rejected: 0,
+        deactivated: 0,
+        indexed: 0,
+        failed: 0,
+      })),
     },
   } as unknown as RequestMatchingRuntime;
   const dispatcher: PublicationDispatcher = {
@@ -62,7 +77,9 @@ function dependencies(events: string[], options: { migrationFailure?: boolean } 
       embeddingBaseUrl: 'https://api.timeweb.ai/v1',
       embeddingModel: 'openai/text-embedding-3-large',
       embeddingDimensions: 1536,
-      memberIndexCron: '*/15 * * * *',
+      memberSyncCron: '*/5 * * * *',
+      memberSyncStartupTimeoutMs: 60_000,
+      supportedConsentPolicyVersions: ['member-matching-v1'],
       concurrency: 2,
       queueLimit: 50,
       processingTimeoutMinutes: 10,
@@ -122,12 +139,30 @@ it('does not construct or start the bot before migrations and PostgreSQL readine
     'close-migration-pool',
     'connect',
     'create-persistence',
+    'sync-members',
     'start-telegram-transport',
     'create-bot',
     'start-bot',
     'start-dispatcher',
     'start-scheduler',
   ]);
+  await running.stop();
+});
+
+it('continues to polling and logs only a safe outcome when startup sync fails', async () => {
+  const events: string[] = [];
+  const { deps } = dependencies(events, { startupSyncResult: 'failed' });
+  const warnSpy = vi.spyOn(logger, 'warn');
+
+  const running = await startApplication(deps);
+
+  expect(events).toContain('start-bot');
+  expect(warnSpy).toHaveBeenCalledWith(
+    { event: 'member-sync-startup', outcome: 'failed' },
+    'Initial member source sync attempt finished',
+  );
+  expect(JSON.stringify(warnSpy.mock.calls)).not.toContain('profile');
+  warnSpy.mockRestore();
   await running.stop();
 });
 

@@ -119,12 +119,12 @@ describe('cron retention-sweep wiring', () => {
   });
 });
 
-describe('member directory sync scheduling', () => {
-  it('registers member-index only when provided', () => {
+describe('member source sync scheduling', () => {
+  it('registers member-sync every five minutes only when provided', () => {
     startScheduler(api, persistence, {
       dispatcher,
-      memberIndex: {
-        cron: '*/15 * * * *',
+      memberSync: {
+        cron: '*/5 * * * *',
         run: vi.fn().mockResolvedValue(undefined),
       },
     });
@@ -132,7 +132,7 @@ describe('member directory sync scheduling', () => {
       'digest',
       'thread-summary',
       'retention-sweep',
-      'member-index',
+      'member-sync',
     ]));
     stopScheduler();
   });

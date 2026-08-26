@@ -72,6 +72,20 @@ export async function startApplication(
     await deps.assertReady(pool);
     const persistence = deps.createPersistence(pool);
     const requestMatching = await deps.createRequestMatching(deps.requestMatching, persistence);
+    const startupSync = await requestMatching.memberSync.startupAttempt(
+      deps.requestMatching.memberSyncStartupTimeoutMs,
+    );
+    if (startupSync === 'completed') {
+      logger.info(
+        { event: 'member-sync-startup', outcome: startupSync },
+        'Initial member source sync attempt finished',
+      );
+    } else {
+      logger.warn(
+        { event: 'member-sync-startup', outcome: startupSync },
+        'Initial member source sync attempt finished',
+      );
+    }
     telegramTransport = await deps.startTelegramTransport(deps.telegramProxy);
     dispatcher = deps.createPublicationDispatcher({
       publications: persistence.publications,
@@ -97,27 +111,14 @@ export async function startApplication(
       persistence,
       {
         dispatcher,
-        memberIndex: {
-          cron: deps.requestMatching.memberIndexCron,
-          run: () => requestMatching.memberDirectory.indexPending(),
+        memberSync: {
+          cron: deps.requestMatching.memberSyncCron,
+          run: () => requestMatching.memberSync.sync(),
         },
       },
     );
     schedulerStarted = true;
 
-    void requestMatching.memberDirectory.indexPending()
-      .then((result) => {
-        logger.info(
-          { indexed: result.indexed, failed: result.failed },
-          'Initial member directory indexing complete',
-        );
-      })
-      .catch((error: unknown) => {
-        logger.error(
-          { errorClass: error instanceof Error ? error.name : 'unknown' },
-          'Initial member directory indexing failed',
-        );
-      });
     void deps.runPreflight(bot).catch((error: unknown) => {
       logger.error(
         { errorClass: error instanceof Error ? error.name : 'unknown' },

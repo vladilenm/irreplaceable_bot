@@ -1,6 +1,7 @@
 import { config } from './config.js';
 import { OpenAiEmbeddingProvider } from './embeddings.js';
 import { MemberDirectoryService } from './member-directory.service.js';
+import { MemberSyncService } from './member-sync.service.js';
 import type { EmbeddingProvider } from './members.js';
 import type { MemberRepository } from './members.repository.js';
 import type { Persistence } from './persistence.js';
@@ -11,6 +12,7 @@ import type { RequestMatchingConfig } from './types.js';
 
 export interface RequestMatchingRuntime {
   memberDirectory: MemberDirectoryService;
+  memberSync: MemberSyncService;
   matcher: MemberMatcher;
   memberRepository: MemberRepository;
   requestRepository: RequestRepository;
@@ -19,7 +21,7 @@ export interface RequestMatchingRuntime {
 
 export async function createRequestMatchingRuntime(
   feature: RequestMatchingConfig,
-  persistence: Pick<Persistence, 'members' | 'requests'>,
+  persistence: Pick<Persistence, 'memberSource' | 'members' | 'requests'>,
   overrides: Partial<{
     embeddings: EmbeddingProvider;
     now: () => Date;
@@ -35,6 +37,13 @@ export async function createRequestMatchingRuntime(
   const memberDirectory = new MemberDirectoryService({
     repository: persistence.members,
     embeddings,
+    now,
+  });
+  const memberSync = new MemberSyncService({
+    source: persistence.memberSource,
+    members: persistence.members,
+    directory: memberDirectory,
+    supportedPolicies: new Set(feature.supportedConsentPolicyVersions),
     now,
   });
   const staleCutoff = new Date(
@@ -57,11 +66,13 @@ export async function createRequestMatchingRuntime(
     repository: persistence.requests,
     concurrency: feature.concurrency,
     queueLimit: feature.queueLimit,
+    isMatchingReady: () => memberSync.hasSuccessfulSnapshot(),
     now,
   };
 
   return {
     memberDirectory,
+    memberSync,
     matcher,
     memberRepository: persistence.members,
     requestRepository: persistence.requests,

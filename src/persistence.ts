@@ -12,6 +12,10 @@ import {
   type MemberRepository,
 } from './members.repository.js';
 import {
+  PgMemberSourceRepository,
+  type MemberSourceRepository,
+} from './member-source.repository.js';
+import {
   PgRequestRepository,
   type RequestRepository,
 } from './request.repository.js';
@@ -28,6 +32,7 @@ export interface CorePersistence {
 
 export interface Persistence extends CorePersistence {
   members: MemberRepository;
+  memberSource: MemberSourceRepository;
   requests: RequestRepository;
 }
 
@@ -37,6 +42,7 @@ export function createPersistence(pool: Pool): Persistence {
     messages: new PgMessageRepository(pool),
     publications: new PgScheduledPublicationRepository(pool),
     members: new PgMemberRepository(pool),
+    memberSource: new PgMemberSourceRepository(pool),
     requests: new PgRequestRepository(pool),
   };
 }

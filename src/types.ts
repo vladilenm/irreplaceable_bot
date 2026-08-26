@@ -3,7 +3,9 @@ export interface RequestMatchingConfig {
   embeddingBaseUrl: string;
   embeddingModel: string;
   embeddingDimensions: number;
-  memberIndexCron: string;
+  memberSyncCron: string;
+  memberSyncStartupTimeoutMs: number;
+  supportedConsentPolicyVersions: readonly string[];
   concurrency: number;
   queueLimit: number;
   processingTimeoutMinutes: number;

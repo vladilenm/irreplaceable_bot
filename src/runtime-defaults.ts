@@ -9,7 +9,7 @@ export const RUNTIME_DEFAULTS = Object.freeze({
     digestCron: '0 6 * * *',
     threadSummaryCron: '30 6 * * *',
     retentionSweepCron: '0 1 * * *',
-    memberIndexCron: '*/15 * * * *',
+    memberSyncCron: '*/5 * * * *',
   }),
   messages: Object.freeze({ retentionDays: 90 }),
   database: Object.freeze({ poolMax: 5, statementTimeoutMs: 10_000 }),
@@ -28,6 +28,8 @@ export const RUNTIME_DEFAULTS = Object.freeze({
     concurrency: 2,
     queueLimit: 50,
     processingTimeoutMinutes: 10,
+    memberSyncStartupTimeoutMs: 60_000,
+    supportedConsentPolicyVersions: Object.freeze(['member-matching-v1'] as const),
   }),
   logging: Object.freeze({ level: 'info' }),
 } as const);

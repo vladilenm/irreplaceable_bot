@@ -20,7 +20,9 @@ const feature: RequestMatchingConfig = {
   embeddingBaseUrl: 'https://api.timeweb.ai/v1',
   embeddingModel: 'openai/text-embedding-3-large',
   embeddingDimensions: 1536,
-  memberIndexCron: '*/15 * * * *',
+  memberSyncCron: '*/5 * * * *',
+  memberSyncStartupTimeoutMs: 60_000,
+  supportedConsentPolicyVersions: ['member-matching-v1'],
   concurrency: 2,
   queueLimit: 50,
   processingTimeoutMinutes: 10,
@@ -38,6 +40,10 @@ it('fails stale reservations and constructs PostgreSQL-backed matching without i
       recordIndexStatus: vi.fn(),
       readIndexStatus: vi.fn(),
       countBySource: vi.fn(),
+      readSourceStatus: vi.fn().mockResolvedValue(null),
+    },
+    memberSource: {
+      readSnapshot: vi.fn(),
     },
     requests: {
       reserve: vi.fn(),
@@ -61,6 +67,10 @@ it('fails stale reservations and constructs PostgreSQL-backed matching without i
   expect(persistence.requests.failStale).toHaveBeenCalledWith('2026-08-21T09:50:00.000Z');
   expect(persistence.members.readPending).not.toHaveBeenCalled();
   expect(runtime.memberDirectory).toBeDefined();
+  expect(runtime.memberSync).toBeDefined();
+  const isMatchingReady = runtime.handlerOptions.isMatchingReady;
+  expect(isMatchingReady).toBeDefined();
+  await expect(isMatchingReady?.()).resolves.toBe(false);
   expect(runtime.handlerOptions.repository).toBe(persistence.requests);
   expect(runtime.handlerOptions.matcher).toBe(runtime.matcher);
 });

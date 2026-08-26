@@ -115,6 +115,7 @@ export interface RequestHandlerOptions {
   repository: RequestRepository;
   concurrency: number;
   queueLimit: number;
+  isMatchingReady?: () => Promise<boolean>;
   send?: typeof sendMessageWithRetry;
   now?: () => Date;
 }
