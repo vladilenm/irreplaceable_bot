@@ -1,6 +1,8 @@
 import { expect, it, vi } from 'vitest';
+import type { Update } from 'grammy/types';
 import type { JobStateRepository } from './job-state.repository.js';
 import type { MessageRepository } from './messages.repository.js';
+import type { MemberRepository } from './members.repository.js';
 import type { RequestMatchingRuntime } from './request.runtime.js';
 import type { ScheduledPublicationRepository } from './scheduled-publication.repository.js';
 
@@ -17,6 +19,58 @@ vi.mock('./capture.js', () => ({ registerCaptureHandlers: mocks.registerCaptureH
 vi.mock('./requests.js', () => ({ registerRequestHandlers: mocks.registerRequestHandlers }));
 
 import { createBot } from './bot.js';
+
+const adminId = 101;
+type StatusRuntime = {
+  handlerOptions: RequestMatchingRuntime['handlerOptions'];
+  memberRepository: Pick<MemberRepository, 'readSourceStatus' | 'readIndexStatus'>;
+};
+
+function statusUpdate(): Update {
+  return {
+    update_id: 1,
+    message: {
+      message_id: 2,
+      date: 1_777_500_000,
+      chat: { id: -1001, type: 'supergroup', title: 'Club' },
+      from: { id: adminId, is_bot: false, first_name: 'Admin' },
+      text: '/status',
+      entities: [{ offset: 0, length: 7, type: 'bot_command' }],
+    },
+  };
+}
+
+async function runStatus(
+  requestMatching: StatusRuntime,
+): Promise<string> {
+  const bot = createBot({
+    persistence: { jobs, messages, publications },
+    requestMatching: requestMatching as RequestMatchingRuntime,
+  });
+  bot.botInfo = { id: 999, is_bot: true, first_name: 'Club bot', username: 'club_bot' } as never;
+  const replies: string[] = [];
+  bot.api.config.use(async (_previous, method, payload) => {
+    if (method === 'getChatAdministrators') {
+      return {
+        ok: true,
+        result: [{
+          status: 'administrator',
+          user: { id: adminId, is_bot: false, first_name: 'Admin' },
+        }],
+      } as never;
+    }
+    if (method === 'sendMessage') {
+      if (!('text' in payload)) throw new Error('sendMessage payload must include text');
+      replies.push(String(payload.text));
+      return { ok: true, result: { message_id: 3, date: 1, chat: { id: -1001, type: 'supergroup' } } } as never;
+    }
+    throw new Error(`Unexpected Telegram API method: ${method}`);
+  });
+
+  await bot.handleUpdate(statusUpdate());
+  expect(replies).toHaveLength(1);
+  return replies[0]!;
+}
 
 const jobs: JobStateRepository = {
   read: vi.fn(async () => ({
@@ -43,7 +97,7 @@ const publications: ScheduledPublicationRepository = {
   expireDue: vi.fn(),
   recover: vi.fn(),
   read: vi.fn(),
-  getStatusCounts: vi.fn(),
+  getStatusCounts: vi.fn(async () => []),
   deleteExpiredPublications: vi.fn(),
 };
 
@@ -75,4 +129,63 @@ it('passes the scoped API client options to grammY', () => {
     timeoutSeconds: 60,
     baseFetchConfig: { agent },
   });
+});
+
+it('reports count-only web source and index state to an administrator', async () => {
+  const profileFixtureValue = 'private canonical profile value';
+  const reply = await runStatus({
+    handlerOptions: {} as never,
+    memberRepository: {
+      readSourceStatus: vi.fn(async () => ({
+        provider: 'web' as const,
+        generation: 4,
+        lastSuccessAt: '2026-08-26T10:05:00.000Z',
+        fetchedCount: 8,
+        activeCount: 7,
+        rejectedCount: 1,
+        deactivatedCount: 2,
+      })),
+      readIndexStatus: vi.fn(async () => ({
+        provider: 'postgres',
+        generation: 5,
+        lastSuccessAt: '2026-08-26T10:06:00.000Z',
+        embeddingModel: 'openai/text-embedding-3-small',
+        dimensions: 1536 as const,
+        activeCount: 7,
+        pendingCount: 0,
+      })),
+    },
+  });
+
+  expect(reply).toContain('🗂 Источник анкет: 7 активных, 1 отклонена, поколение 4, синхронизация 26.08.2026');
+  expect(reply).toContain('🧩 Индекс: 7 активных, 0 ожидают индексации, openai/text-embedding-3-small');
+  expect(reply).not.toContain(profileFixtureValue);
+});
+
+it('reports that the web source has never synchronized', async () => {
+  const reply = await runStatus({
+    handlerOptions: {} as never,
+    memberRepository: {
+      readSourceStatus: vi.fn(async () => null),
+      readIndexStatus: vi.fn(async () => null),
+    },
+  });
+
+  expect(reply).toContain('🗂 Источник анкет: успешной синхронизации ещё не было');
+  expect(reply).toContain('🧩 Индекс: ещё не готов');
+});
+
+it('keeps the status command available when matching status reads fail', async () => {
+  const reply = await runStatus({
+    handlerOptions: {} as never,
+    memberRepository: {
+      readSourceStatus: vi.fn(async () => { throw new Error('private source failure'); }),
+      readIndexStatus: vi.fn(async () => { throw new Error('private index failure'); }),
+    },
+  });
+
+  expect(reply).toContain('🗂 Источник анкет: нет данных');
+  expect(reply).toContain('🧩 Индекс: нет данных');
+  expect(reply).not.toContain('private source failure');
+  expect(reply).not.toContain('private index failure');
 });

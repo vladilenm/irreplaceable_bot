@@ -32,6 +32,54 @@ docker compose -f docker-compose.test.yml exec postgres-test \
 
 До создания платного кластера, постоянного ключа AI Gateway, внесения ключа или реквизитов базы в App Platform, а также до подтверждения списания, остановитесь и получите action-time подтверждение. Оно должно включать конфигурацию PostgreSQL, регион, период оплаты, выбор публичного IP и backup, а также точную сумму из панели Timeweb.
 
+## Cutover реального каталога (только после явной авторизации)
+
+Ни этот документ, ни локально проверенный код не авторизуют production-действия.
+Перед началом получите отдельное action-time подтверждение владельца production:
+оно должно разрешать deploy, остановку polling и деактивацию mocks. Выполняйте шаги
+строго в указанном порядке; не печатайте credentials, profile values или canonical
+documents.
+
+1. Confirm shared PostgreSQL backup and tested restore path.
+2. Confirm the site migration/view/grants are deployed.
+3. Confirm at least three eligible real rows using count-only SQL.
+4. Stop Telegram polling during the cutover window and verify the active mock count is exactly 20; abort the cutover if it differs.
+5. Deploy bot migration/code and wait for web source generation >= 1.
+6. Confirm active web count >= 3 and pending_count = 0.
+7. In one explicit transaction, UPDATE members SET active = false, updated_at = now() WHERE source = 'mock' AND active = true; verify its affected-row count is exactly 20 before committing.
+8. Verify active mock count = 0 and active web count matches source state.
+9. Start one bot instance and run three representative #запрос checks.
+10. Observe request states, sync counts, latency, and Telegram delivery.
+
+For step 7, run exactly this guarded transaction. A mock population other than 20
+raises an exception, so PostgreSQL rolls the transaction back instead of committing
+a partial cutover:
+
+```sql
+BEGIN;
+DO $$
+DECLARE
+  changed_count integer;
+BEGIN
+  UPDATE members
+  SET active = false, updated_at = now()
+  WHERE source = 'mock' AND active = true;
+  GET DIAGNOSTICS changed_count = ROW_COUNT;
+  IF changed_count <> 20 THEN
+    RAISE EXCEPTION 'expected 20 active mock members, changed %', changed_count;
+  END IF;
+END $$;
+SELECT
+  COUNT(*) FILTER (WHERE source = 'mock' AND active)::integer AS active_mock,
+  COUNT(*) FILTER (WHERE source = 'web' AND active)::integer AS active_web
+FROM members;
+COMMIT;
+```
+
+Rollback: redeploy the prior bot commit, leave web data and embeddings intact, keep
+mocks inactive, and leave the additive site columns and view in place. Never
+reinterpret revoked consent and never automatically reactivate a mock fallback.
+
 ## Timeweb: production checklist
 
 После этого подтверждения выполните шаги по порядку:
@@ -115,7 +163,7 @@ node --input-type=module -e 'import{Pool}from"pg";const p=new Pool({connectionSt
 
 ## Диагностика и безопасность
 
-- `/status` показывает состояние радара, индекса участников и аптайм.
+- `/status` показывает состояние радара, count-only web source/index state и аптайм. Для web-каталога он выводит только счётчики, timestamp, generation и embedding model; анкеты, Telegram ID, canonical document, URLs, credentials и raw errors не выводятся. Ошибка чтения статуса даёт `нет данных` и не отменяет административную команду.
 - `/status` в текущей реализации разрешён только неанонимному администратору того group/supergroup, где отправлена команда. DM всегда получает отказ.
 - При Telegram 409 найдите второй процесс с тем же токеном.
 - `Network request for 'sendMessage' failed` без Telegram error code означает транспортный сбой до ответа Telegram. Если далее есть `Telegram sendMessage ok (after retry)`, отправка восстановилась автоматически.

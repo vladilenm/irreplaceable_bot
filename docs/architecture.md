@@ -30,13 +30,37 @@ Xray is a userspace child process, binds its SOCKS listener only to loopback and
 
 Будущее web-приложение не должно подключаться к PostgreSQL прямо из браузера. Оно вызывает собственный backend, а тот нормализует карточку и использует тот же сервис каталога или эквивалентный application API.
 
+## Локально проверенный pipeline web-каталога
+
+Этот pipeline проверен локально, но не является production-поведением до отдельного
+release gate и явно авторизованного deploy:
+
+```text
+club.member_matching_source -> full snapshot -> transactional web projection
+-> content-hash pending set -> 1536-dimensional embeddings
+-> exact top-20 -> LLM rerank/evidence validation -> 3–5 mentions
+```
+
+`club.member_matching_source` — единственный read contract: snapshot целиком
+валидируется до транзакционной проекции `source = 'web'`. В canonical document
+обязательно входят все шесть полей сайта: `display_name`, `occupation`, `industry`,
+`expertise`, `can_help_with` и `skills`. Неподдерживаемая версия consent не
+принимается в snapshot и деактивирует ранее активную web-карточку как отсутствующую
+в новой полной проекции. Попытка чтения выполняется при старте, а scheduler повторяет
+её каждые пять минут.
+
+После commit content hash определяет pending set; только он получает
+1536-dimensional embeddings. Поиск исключает автора `#запрос` по стабильному Telegram
+ID, а не username. После cutover активные mock-карточки не являются fallback: код и
+rollback никогда автоматически не реактивируют mocks и не переопределяют согласие.
+
 ## Подбор по `#запрос`
 
 1. Обработчик реагирует только на Telegram entity с точным хэштегом `#запрос` в `TARGET_CHAT_ID`.
 2. Запрос атомарно резервируется в `member_requests`. Повторная доставка того же сообщения не запускает второй pipeline.
 3. Через Timeweb AI Gateway создаётся один 1536-мерный embedding запроса.
 4. PostgreSQL вычисляет cosine distance и возвращает точный top-20. При каталоге до 1000 карточек ANN-индекс не нужен: exact search проще и предсказуемее.
-5. В поиск попадают только активные карточки, у которых embedding создан текущей моделью и соответствует текущему content hash. Устаревший vector никогда не используется молча.
+5. В поиск попадают только активные карточки, у которых embedding создан текущей моделью и соответствует текущему content hash; автор запроса исключается по Telegram ID. Устаревший vector никогда не используется молча.
 6. LLM выбирает 3–5 кандидатов только из top-20 и обязан вернуть evidence из карточки. Код проверяет ID и evidence, затем сам формирует упоминания.
 7. При менее чем трёх валидных результатах ответ не публикуется. Статус запроса переводится в терминальное состояние.
 

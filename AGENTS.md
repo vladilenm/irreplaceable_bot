@@ -48,6 +48,15 @@ git log --oneline --decorate -8
 
 Локальный `main` содержит непушенный WIP: документацию latency-патча, изменения defaults моделей/LLM transport и исправления scheduled delivery. Полный latency-патч из plan ещё не реализован и не проверен целиком.
 
+В изолированной локальной worktree проверена интеграция реального каталога: чтение
+`club.member_matching_source`, full snapshot с transactional web projection,
+content-hash indexing 1536-dimensional embeddings, sync на старте и каждые пять
+минут, исключение автора по Telegram ID и count-only `/status`. Это не production:
+до release gate и явного deploy production по-прежнему содержит только 20 активных
+mock-карточек. После будущего авторизованного cutover mocks должны остаться inactive;
+не добавлять автоматический fallback, не реактивировать mocks и не переосмысливать
+отозванное/неподдерживаемое consent.
+
 Не деплоить и не пушить этот WIP без явного запроса пользователя и полного release gate:
 
 ```bash

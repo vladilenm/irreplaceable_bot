@@ -162,14 +162,29 @@ export function createBot(options: CreateBotOptions): Bot {
   const uptimeText =
     uptimeHours > 0 ? `${uptimeHours}ч ${uptimeMinutes}м` : `${uptimeMinutes}м`;
 
-  const matchingSnapshot = options.requestMatching
-    ? await options.requestMatching.memberRepository.readIndexStatus('postgres')
-    : null;
-  const matchingInfo = !config.requestMatching
-    ? '🧩 Подбор участников: выключен'
-    : !matchingSnapshot
-      ? '🧩 Подбор участников: индекс ещё не готов'
-      : `🧩 Подбор участников: ${String(matchingSnapshot.activeCount)} активных, ${String(matchingSnapshot.pendingCount)} ожидают индексации, ${matchingSnapshot.embeddingModel}, индекс обновлён ${new Date(matchingSnapshot.lastSuccessAt).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' })} МСК`;
+  let sourceInfo = '🗂 Источник анкет: успешной синхронизации ещё не было';
+  let indexInfo = '🧩 Индекс: ещё не готов';
+  try {
+    const [sourceStatus, indexStatus] = options.requestMatching
+      ? await Promise.all([
+        options.requestMatching.memberRepository.readSourceStatus('web'),
+        options.requestMatching.memberRepository.readIndexStatus('postgres'),
+      ])
+      : [null, null];
+    sourceInfo = sourceStatus
+      ? `🗂 Источник анкет: ${String(sourceStatus.activeCount)} активных, ${String(sourceStatus.rejectedCount)} отклонена, поколение ${String(sourceStatus.generation)}, синхронизация ${new Date(sourceStatus.lastSuccessAt).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' })} МСК`
+      : '🗂 Источник анкет: успешной синхронизации ещё не было';
+    indexInfo = indexStatus
+      ? `🧩 Индекс: ${String(indexStatus.activeCount)} активных, ${String(indexStatus.pendingCount)} ожидают индексации, ${indexStatus.embeddingModel}`
+      : '🧩 Индекс: ещё не готов';
+  } catch (error: unknown) {
+    logger.error(
+      { errorClass: error instanceof Error ? error.name : 'unknown' },
+      'Member matching status read failed',
+    );
+    sourceInfo = '🗂 Источник анкет: нет данных';
+    indexInfo = '🧩 Индекс: нет данных';
+  }
   let publicationInfo = '📨 Очередь публикаций: нет данных';
   try {
     const counts = await options.persistence.publications.getStatusCounts();
@@ -190,7 +205,8 @@ export function createBot(options: CreateBotOptions): Bot {
     lastDigestInfo,
     nextRunInfo,
     publicationInfo,
-    matchingInfo,
+    sourceInfo,
+    indexInfo,
     `⏱ Аптайм: ${uptimeText}`,
   ].join('\n');
 

@@ -27,6 +27,26 @@ npm run dev
 docker compose -f docker-compose.test.yml down
 ```
 
+## Каталог участников: локально проверенный WIP
+
+Интеграция реальных анкет проверена локально и **ещё не развёрнута в production**. Её контракт:
+
+```text
+club.member_matching_source -> full snapshot -> transactional web projection
+-> content-hash pending set -> 1536-dimensional embeddings
+-> exact top-20 -> LLM rerank/evidence validation -> 3–5 mentions
+```
+
+В canonical document входят все шесть полей сайта: имя, профессия/специализация,
+сфера, опыт, чем участник может помочь и навыки. Строка с неподдерживаемой версией
+согласия не попадает в active web projection (прежняя web-карточка деактивируется
+полным snapshot). Синхронизация выполняется при старте и затем каждые пять минут;
+автор `#запрос` исключается по Telegram ID, а не по изменяемому username.
+
+После подтверждённого cutover активный mock fallback запрещён: бот не должен
+автоматически реактивировать mock-карточки или подменять ими web-каталог. Полный
+guarded runbook и rollback находятся в [docs/operations.md](./docs/operations.md).
+
 ## Переменные production
 
 В текущем production подтверждены ровно семь обязательных значений:
@@ -58,7 +78,7 @@ npm run eval:member-matching -- /absolute/path/member-matching-eval.json
 
 Импорт SQLite допустим только в полностью пустую PostgreSQL-схему и не изменяет исходный файл. Eval-набор и реальные карточки не должны попадать в Git.
 
-Команды Telegram: `/start`, `/digest`, `/status`, `/dev-digest`, `/retry_publications [digest|summary|all]`. Последняя команда повторяет доставку уже сформированных scheduled-публикаций, не запуская RSS или LLM заново; не запускайте `/digest` или `/dev-digest` для recovery сохранённой публикации. В текущей реализации административные команды проверяют права в чате, где была отправлена команда: `/status` в личке всегда отклоняется, даже если пользователь администратор клуба. Используйте команду в целевой группе от неанонимного администратора. Ровно один экземпляр приложения должен работать с одним `BOT_TOKEN`.
+Команды Telegram: `/start`, `/digest`, `/status`, `/dev-digest`, `/retry_publications [digest|summary|all]`. Последняя команда повторяет доставку уже сформированных scheduled-публикаций, не запуская RSS или LLM заново; не запускайте `/digest` или `/dev-digest` для recovery сохранённой публикации. В текущей реализации административные команды проверяют права в чате, где была отправлена команда: `/status` в личке всегда отклоняется, даже если пользователь администратор клуба. Используйте команду в целевой группе от неанонимного администратора. В локально проверенной интеграции `/status` выводит только count-only состояние web-источника и индекса (счётчики, timestamp, generation и embedding model), без анкет, ID, ссылок, canonical document, credentials или raw errors. Ровно один экземпляр приложения должен работать с одним `BOT_TOKEN`.
 
 Production-образ не содержит `tsx`. Одноразовый mock seed из консоли App Platform запускается так:
 
