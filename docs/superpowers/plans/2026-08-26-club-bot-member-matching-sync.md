@@ -369,6 +369,11 @@ Expected: FAIL because `member-profile-text.ts` does not exist.
 
 Create `src/member-profile-text.ts` with this public result type:
 
+Control characters in source fields are replaced with a normalizable space before
+whitespace collapse. They never remain in the canonical document, but a control
+between words preserves the word boundary: `Автор и\nпреподаватель` becomes
+`Автор и преподаватель`.
+
 ```ts
 export type MemberProjection =
   | { accepted: true; record: MemberSourceRecord }
@@ -385,7 +390,7 @@ export type MemberProjection =
 const scalar = (raw: string, maxLength: number): string | null => {
   const value = raw
     .normalize('NFC')
-    .replace(/[\p{C}]/gu, '')
+    .replace(/[\p{C}]/gu, ' ')
     .replace(/\s+/g, ' ')
     .trim();
   return value !== '' && value.length <= maxLength ? value : null;
