@@ -27,6 +27,7 @@ const member = (
 ): MemberSourceRecord => ({
   source: 'mock',
   externalId,
+  telegramUserId: null,
   displayName: `Участник ${externalId}`,
   telegramUsername: `member_${externalId}`,
   profileText,
@@ -56,6 +57,21 @@ describe('PgMemberRepository cards and pending index', () => {
         source: 'mock',
         externalId: '01',
         telegramUsername: 'member_01',
+      }),
+    ]);
+  });
+
+  it('persists Telegram IDs as decimal strings', async () => {
+    await repo.upsertCards([member('web-01', 'Product', {
+      source: 'web',
+      telegramUserId: '94659185',
+    })]);
+
+    await expect(repo.readPending(MODEL, 100)).resolves.toEqual([
+      expect.objectContaining({
+        source: 'web',
+        externalId: 'web-01',
+        telegramUserId: '94659185',
       }),
     ]);
   });

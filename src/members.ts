@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 export interface MemberSourceRecord {
   source: 'mock' | 'web' | 'notion';
   externalId: string;
+  telegramUserId: string | null;
   displayName: string;
   telegramUsername: string;
   profileText: string;
@@ -39,9 +40,9 @@ export function buildMemberId(source: string, externalId: string): string {
 }
 
 export function canonicalSearchText(
-  member: Pick<MemberSourceRecord, 'displayName' | 'profileText'>,
+  member: Pick<MemberSourceRecord, 'profileText'>,
 ): string {
-  return `${member.displayName}\n${member.profileText}`;
+  return member.profileText;
 }
 
 export function memberContentHash(record: MemberSourceRecord): string {

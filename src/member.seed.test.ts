@@ -60,14 +60,16 @@ it('seeds exactly 20 deterministic mock members twice without duplicates', async
   await expect(repository.countBySource('mock')).resolves.toBe(20);
   const rows = await pool.query<{
     external_id: string;
+    telegram_user_id: string | null;
     telegram_username: string;
     active: boolean;
   }>(`
-    SELECT external_id, telegram_username, active
+    SELECT external_id, telegram_user_id, telegram_username, active
     FROM members WHERE source = 'mock' ORDER BY external_id
   `);
   expect(rows.rows[0]).toEqual({
     external_id: 'mock-01',
+    telegram_user_id: null,
     telegram_username: 'club_demo_member_01',
     active: true,
   });

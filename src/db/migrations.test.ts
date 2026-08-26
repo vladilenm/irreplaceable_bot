@@ -31,6 +31,7 @@ describe('runMigrations', () => {
       'member_embeddings',
       'member_index_state',
       'member_requests',
+      'member_source_state',
       'members',
       'messages',
       'scheduled_publication_chunks',
@@ -79,5 +80,34 @@ describe('runMigrations', () => {
       "SELECT to_regclass('public.migration_probe')::text AS present",
     );
     expect(probe.rows[0]?.present).toBeNull();
+  });
+
+  it('adds stable Telegram identity and source snapshot state', async () => {
+    await runMigrations(pool);
+
+    const columns = await pool.query<{ column_name: string; is_nullable: string }>(`
+      SELECT column_name, is_nullable
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'members'
+        AND column_name = 'telegram_user_id'
+    `);
+    expect(columns.rows).toEqual([
+      { column_name: 'telegram_user_id', is_nullable: 'YES' },
+    ]);
+
+    const index = await pool.query<{ indexname: string }>(`
+      SELECT indexname FROM pg_indexes
+      WHERE schemaname = 'public'
+        AND indexname = 'idx_members_telegram_user_id_uidx'
+    `);
+    expect(index.rows).toEqual([
+      { indexname: 'idx_members_telegram_user_id_uidx' },
+    ]);
+
+    const sourceState = await pool.query<{ present: string | null }>(
+      "SELECT to_regclass('public.member_source_state')::text AS present",
+    );
+    expect(sourceState.rows[0]?.present).toBe('member_source_state');
   });
 });

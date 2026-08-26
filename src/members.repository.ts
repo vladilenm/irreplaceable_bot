@@ -330,6 +330,7 @@ export interface MemberRepository {
 interface PendingMemberRow {
   source: MemberSourceRecord['source'];
   external_id: string;
+  telegram_user_id: string | null;
   display_name: string;
   telegram_username: string;
   profile_text: string;
@@ -419,12 +420,13 @@ export class PgMemberRepository implements MemberRepository {
       for (const record of records) {
         const result = await client.query(`
           INSERT INTO members (
-            member_id, source, external_id, display_name, telegram_username,
-            profile_text, content_hash, source_updated_at, active, updated_at
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())
+            member_id, source, external_id, telegram_user_id, display_name,
+            telegram_username, profile_text, content_hash, source_updated_at, active, updated_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now())
           ON CONFLICT(member_id) DO UPDATE SET
             source = EXCLUDED.source,
             external_id = EXCLUDED.external_id,
+            telegram_user_id = EXCLUDED.telegram_user_id,
             display_name = EXCLUDED.display_name,
             telegram_username = EXCLUDED.telegram_username,
             profile_text = EXCLUDED.profile_text,
@@ -436,6 +438,7 @@ export class PgMemberRepository implements MemberRepository {
           buildMemberId(record.source, record.externalId),
           record.source,
           record.externalId,
+          record.telegramUserId,
           record.displayName,
           record.telegramUsername,
           record.profileText,
@@ -452,8 +455,8 @@ export class PgMemberRepository implements MemberRepository {
   async readPending(model: string, limit: number): Promise<MemberSourceRecord[]> {
     validateLimit(limit);
     const result = await this.pool.query<PendingMemberRow>(`
-      SELECT m.source, m.external_id, m.display_name, m.telegram_username,
-        m.profile_text, m.source_updated_at, m.active
+      SELECT m.source, m.external_id, m.telegram_user_id, m.display_name,
+        m.telegram_username, m.profile_text, m.source_updated_at, m.active
       FROM members AS m
       LEFT JOIN member_embeddings AS e ON e.member_id = m.member_id
       WHERE m.active = true AND (
@@ -468,6 +471,7 @@ export class PgMemberRepository implements MemberRepository {
     return result.rows.map((row) => ({
       source: row.source,
       externalId: row.external_id,
+      telegramUserId: row.telegram_user_id,
       displayName: row.display_name,
       telegramUsername: row.telegram_username,
       profileText: row.profile_text,

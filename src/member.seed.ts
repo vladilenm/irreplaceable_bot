@@ -57,6 +57,7 @@ export const MOCK_MEMBERS: readonly MemberSourceRecord[] = PROFILES.map(
     return {
       source: 'mock',
       externalId: `mock-${suffix}`,
+      telegramUserId: null,
       displayName,
       telegramUsername: `club_demo_member_${suffix}`,
       profileText,

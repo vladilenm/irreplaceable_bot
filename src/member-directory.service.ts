@@ -5,13 +5,33 @@ import { logger } from './logger.js';
 
 const INDEX_BATCH_SIZE = 100;
 
-function normalizeVisibleText(raw: string, maxLength: number): string {
-  return raw
+function normalizeVisibleText(raw: string, maxLength: number, field: string): string {
+  const value = raw
     .normalize('NFC')
     .replace(/[\p{C}]/gu, '')
     .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, maxLength);
+    .trim();
+  if (value.length > maxLength) throw new Error(`member-${field}-too-long`);
+  return value;
+}
+
+function normalizeProfileText(raw: string): string {
+  const value = raw
+    .normalize('NFC')
+    .replace(/\r\n?/g, '\n')
+    .split('\n')
+    .map((line) => line.replace(/[\p{C}]/gu, '').replace(/[ \t]+/g, ' ').trim())
+    .filter(Boolean)
+    .join('\n');
+  if (value.length > 2500) throw new Error('member-profile-text-too-long');
+  return value;
+}
+
+function normalizeTelegramUserId(raw: string | null): string | null {
+  if (raw === null) return null;
+  const value = raw.trim();
+  if (!/^[1-9]\d*$/.test(value)) throw new Error('member-telegram-id-invalid');
+  return value;
 }
 
 function normalizeTelegramUsername(raw: string): string {
@@ -20,18 +40,23 @@ function normalizeTelegramUsername(raw: string): string {
 }
 
 export function normalizeMemberCard(record: MemberSourceRecord): MemberSourceRecord {
-  const externalId = normalizeVisibleText(record.externalId, 256);
-  if (externalId === '') throw new Error('member externalId is required');
-  const displayName = normalizeVisibleText(record.displayName, 200);
+  const externalId = normalizeVisibleText(record.externalId, 256, 'external-id');
+  if (externalId === '') throw new Error('member-external-id-required');
+  const telegramUserId = normalizeTelegramUserId(record.telegramUserId);
+  if (record.source === 'web' && telegramUserId === null) {
+    throw new Error('member-telegram-id-required');
+  }
+  const displayName = normalizeVisibleText(record.displayName, 200, 'display-name');
   const telegramUsername = normalizeTelegramUsername(record.telegramUsername);
-  const profileText = normalizeVisibleText(record.profileText, 2000);
+  const profileText = normalizeProfileText(record.profileText);
   const sourceUpdatedAt = new Date(record.sourceUpdatedAt);
   if (Number.isNaN(sourceUpdatedAt.getTime())) {
-    throw new Error('member sourceUpdatedAt must be a valid timestamp');
+    throw new Error('member-source-updated-at-invalid');
   }
   return {
-    source: record.source,
+    ...record,
     externalId,
+    telegramUserId,
     displayName,
     telegramUsername,
     profileText,

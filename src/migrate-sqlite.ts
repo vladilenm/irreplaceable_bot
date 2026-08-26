@@ -175,6 +175,7 @@ async function assertApplicationTablesEmpty(client: PoolClient): Promise<void> {
       (SELECT COUNT(*) FROM members) +
       (SELECT COUNT(*) FROM member_embeddings) +
       (SELECT COUNT(*) FROM member_index_state) +
+      (SELECT COUNT(*) FROM member_source_state) +
       (SELECT COUNT(*) FROM member_requests)
     )::text AS count
   `);
@@ -229,9 +230,9 @@ async function insertMembers(client: PoolClient, rows: readonly LegacyMemberRow[
     }
     await client.query(`
       INSERT INTO members (
-        member_id, source, external_id, display_name, telegram_username,
-        profile_text, content_hash, source_updated_at, active, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        member_id, source, external_id, telegram_user_id, display_name,
+        telegram_username, profile_text, content_hash, source_updated_at, active, updated_at
+      ) VALUES ($1, $2, $3, NULL, $4, $5, $6, $7, $8, $9, $10)
     `, [
       row.member_id,
       row.source,

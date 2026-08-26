@@ -182,6 +182,14 @@ it('imports every durable table and preserves the source SQLite file', async () 
     'SELECT provider, pending_count FROM member_index_state',
   );
   expect(state.rows[0]).toEqual({ provider: 'postgres', pending_count: 0 });
+  const telegramIds = await pool.query<{ telegram_user_id: string | null }>(
+    "SELECT telegram_user_id FROM members WHERE source = 'notion' ORDER BY member_id",
+  );
+  expect(telegramIds.rows).toEqual([
+    { telegram_user_id: null },
+    { telegram_user_id: null },
+    { telegram_user_id: null },
+  ]);
 });
 
 it('rolls back PostgreSQL on an invalid embedding blob', async () => {
@@ -203,6 +211,18 @@ it('refuses to merge into a non-empty PostgreSQL application schema', async () =
   await pool.query(`
     INSERT INTO job_state(job_name, last_outcome, item_count)
     VALUES ('digest', 'success', 0)
+  `);
+
+  await expect(importSqlite(path, pool)).rejects.toThrow('must be empty');
+});
+
+it('refuses to import when web source snapshot state already exists', async () => {
+  const path = createLegacySqlite();
+  await pool.query(`
+    INSERT INTO member_source_state (
+      provider, generation, last_success_at, fetched_count,
+      active_count, rejected_count, deactivated_count
+    ) VALUES ('web', 1, '2026-08-21T10:00:00Z', 0, 0, 0, 0)
   `);
 
   await expect(importSqlite(path, pool)).rejects.toThrow('must be empty');

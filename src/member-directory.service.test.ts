@@ -16,6 +16,7 @@ const card = (
 ): MemberSourceRecord => ({
   source: 'web',
   externalId: id,
+  telegramUserId: '94659185',
   displayName: ' Анна\u0000  Иванова ',
   telegramUsername: ' @ANNA_Product ',
   profileText,
@@ -61,7 +62,7 @@ it('normalizes cards before PostgreSQL upsert and deactivates incomplete cards',
       externalId: 'member-1',
       displayName: 'Анна Иванова',
       telegramUsername: 'anna_product',
-      profileText: 'Запускала B2B SaaS',
+      profileText: 'Запускала\nB2B SaaS',
       active: true,
     }),
     expect.objectContaining({
@@ -84,7 +85,7 @@ it('embeds pending canonical text and records index status', async () => {
   });
 
   await expect(service.indexPending()).resolves.toEqual({ indexed: 1, failed: 0 });
-  expect(embeddings.embed).toHaveBeenCalledWith(['Анна Иванова\nB2B SaaS']);
+  expect(embeddings.embed).toHaveBeenCalledWith(['B2B SaaS']);
   expect(members.upsertEmbedding).toHaveBeenCalledWith(
     'web:member-1',
     MODEL,
@@ -96,6 +97,20 @@ it('embeds pending canonical text and records index status', async () => {
     MODEL,
     new Date('2026-08-21T10:01:00Z'),
   );
+});
+
+it('rejects oversized profiles and web cards without Telegram IDs before upsert', async () => {
+  const members = repository();
+  const service = new MemberDirectoryService({
+    repository: members,
+    embeddings: { model: MODEL, embed: vi.fn() },
+  });
+
+  await expect(service.upsert([card('oversized', 'x'.repeat(2501))]))
+    .rejects.toThrow('member-profile-text-too-long');
+  await expect(service.upsert([card('missing-id', 'Profile', { telegramUserId: null })]))
+    .rejects.toThrow('member-telegram-id-required');
+  expect(members.upsertCards).not.toHaveBeenCalled();
 });
 
 it('continues with the next batch after an embedding failure without logging profiles', async () => {

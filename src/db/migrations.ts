@@ -147,6 +147,26 @@ export const POSTGRES_MIGRATIONS: readonly PostgresMigration[] = [
         WHERE delivered_at IS NULL;
     `,
   },
+  {
+    version: 3,
+    description: 'Add web member identity and source snapshot state',
+    sql: `
+      ALTER TABLE members ADD COLUMN telegram_user_id bigint;
+      CREATE UNIQUE INDEX idx_members_telegram_user_id_uidx
+        ON members(telegram_user_id)
+        WHERE telegram_user_id IS NOT NULL;
+
+      CREATE TABLE member_source_state (
+        provider text PRIMARY KEY CHECK (provider = 'web'),
+        generation bigint NOT NULL CHECK (generation >= 1),
+        last_success_at timestamptz NOT NULL,
+        fetched_count integer NOT NULL CHECK (fetched_count >= 0),
+        active_count integer NOT NULL CHECK (active_count >= 0),
+        rejected_count integer NOT NULL CHECK (rejected_count >= 0),
+        deactivated_count integer NOT NULL CHECK (deactivated_count >= 0)
+      );
+    `,
+  },
 ];
 
 const CREATE_MIGRATION_TABLE_SQL = `
