@@ -113,6 +113,19 @@ it('rejects oversized profiles and web cards without Telegram IDs before upsert'
   expect(members.upsertCards).not.toHaveBeenCalled();
 });
 
+it('rejects Telegram IDs above PostgreSQL BIGINT before upsert', async () => {
+  const members = repository();
+  const service = new MemberDirectoryService({
+    repository: members,
+    embeddings: { model: MODEL, embed: vi.fn() },
+  });
+
+  await expect(service.upsert([card('out-of-range', 'Profile', {
+    telegramUserId: '9223372036854775808',
+  })])).rejects.toThrow('member-telegram-id-invalid');
+  expect(members.upsertCards).not.toHaveBeenCalled();
+});
+
 it('continues with the next batch after an embedding failure without logging profiles', async () => {
   const secret = 'СЕКРЕТНЫЙ ПРОФИЛЬ';
   const pending = Array.from({ length: 101 }, (_, index) =>
