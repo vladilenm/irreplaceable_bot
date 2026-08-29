@@ -80,6 +80,36 @@ Rollback: redeploy the prior bot commit, leave web data and embeddings intact, k
 mocks inactive, and leave the additive site columns and view in place. Never
 reinterpret revoked consent and never automatically reactivate a mock fallback.
 
+## Проверка legacy member import (count-only)
+
+Подготовка, review, atomic write и rollback legacy-анкет принадлежат companion
+репозиторию `club-site`; используйте там
+`docs/operations/legacy-member-import.md`. Ни наличие runbook, ни локальные
+коммиты не подтверждают, что production import уже выполнен.
+
+До import запишите baseline `club.member_matching_source` только как число. После
+разрешённого write import site-side delta должна быть ровно `+23`. После bot sync
+запустите из консоли worker следующий count-only запрос — он не печатает Telegram
+ID, username, profile text или embedding:
+
+```bash
+node --input-type=module -e 'import{Pool}from"pg";const p=new Pool({connectionString:process.env.DATABASE_URL});const q=`WITH idx AS (SELECT embedding_model,dimensions,pending_count FROM member_index_state WHERE provider = $1) SELECT (SELECT COUNT(*)::integer FROM club.member_matching_source) AS site_eligible,(SELECT COUNT(*)::integer FROM members WHERE source = $2 AND active) AS active_web,(SELECT COUNT(*)::integer FROM members WHERE source = $3 AND active) AS active_mock,COALESCE((SELECT pending_count FROM idx),-1)::integer AS pending_count,COALESCE((SELECT dimensions FROM idx),0)::integer AS dimensions,(SELECT COUNT(*)::integer FROM members AS m INNER JOIN member_embeddings AS e ON e.member_id=m.member_id INNER JOIN idx ON e.model=idx.embedding_model AND e.dimensions=idx.dimensions WHERE m.source=$2 AND m.active AND e.content_hash=m.content_hash) AS indexed_current_web FROM (SELECT 1) AS singleton`;const{rows}=await p.query(q,["postgres","web","mock"]);console.table(rows);await p.end()'
+```
+
+Критерии после завершившихся snapshot/index циклов:
+
+- `site_eligible` увеличился относительно baseline ровно на 23;
+- `active_web = site_eligible`;
+- `pending_count = 0`;
+- `dimensions = 1536`;
+- `indexed_current_web = active_web`;
+- `active_mock = 0`.
+
+Если любой count не совпадает, не запускайте smoke `#запрос`, не реактивируйте
+mocks и не делайте повторный import с новым batch ID. Сначала проверьте
+`member_source_state`, `member_index_state`, безопасные error classes и site-side
+batch status.
+
 ## Timeweb: production checklist
 
 После этого подтверждения выполните шаги по порядку:

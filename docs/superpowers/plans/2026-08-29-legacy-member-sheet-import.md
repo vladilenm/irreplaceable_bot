@@ -6,7 +6,7 @@
 
 **Architecture:** `club-site` owns a small `member-import` domain with pure snapshot/profile validators, replaceable Telegram/LLM/access adapters, a full preflight orchestrator, and a single PostgreSQL transaction for apply/rollback. The CLI reads protected JSON artifacts outside Git, defaults to dry-run, and prints safe aggregate reports only. `club_bot` receives no new write path; its existing `club.member_matching_source` sync and embedding pipeline is verified as the downstream consumer.
 
-**Tech Stack:** Node.js 22, TypeScript 5, Next.js 16.3, PostgreSQL 16, Drizzle ORM 0.45, `pg` 8.23, Zod 4.4, OpenAI SDK 6, GramJS `telegram`, Vitest 4, Docker/Timeweb.
+**Tech Stack:** Node.js 22, TypeScript 5, Next.js 16.3, PostgreSQL 16, Drizzle ORM 0.45, `pg` 8.23, Zod 4.4, OpenAI SDK 7, maintained GramJS successor `teleproto`, Vitest 4, Docker/Timeweb.
 
 ## Global Constraints
 
@@ -47,7 +47,7 @@
 - Create `src/lib/member-import/*.test.ts`: synthetic unit fixtures only.
 - Create `src/lib/member-import/repository.integration.test.ts`: transaction/view/login/rollback tests.
 - Create `scripts/member-import.ts`: argument parsing and `prepare | apply | rollback` command orchestration.
-- Modify `package.json` and `package-lock.json`: add `member:import`, `openai`, `telegram`, and `tsx`.
+- Modify `package.json` and `package-lock.json`: add `member:import`, `openai`, `teleproto`, and `tsx`.
 - Modify `Dockerfile`: copy `scripts/` and `src/` so the explicit CLI is available in the release image.
 - Modify `.gitignore`: ignore `/tmp/member-import/` and `member-import-*.json` defensively.
 - Modify `.env.example`: document optional one-shot-only names without values.
@@ -344,7 +344,7 @@ For access, cover configured admin, successful Nemiling member grant, denied sub
 
 - [ ] **Step 3: Implement official MTProto resolution**
 
-Use `TelegramClient`, `StringSession("")`, and `Api.contacts.ResolveUsername` from `telegram`. Authenticate with `BOT_TOKEN`, `TELEGRAM_API_ID`, and `TELEGRAM_API_HASH`; keep the session in memory and disconnect in `finally`. Convert GramJS integer IDs to decimal strings and validate positive PostgreSQL bigint before returning them.
+Use `TelegramClient`, `StringSession("")`, and typed `contacts.resolveUsername` from `teleproto`. Authenticate with `BOT_TOKEN`, `TELEGRAM_API_ID`, and `TELEGRAM_API_HASH`; keep the session in memory, disable library logging, and disconnect in `finally`. Convert MTProto integer IDs to decimal strings and validate positive PostgreSQL bigint before returning them. The originally planned `telegram` package is archived; its own deprecation notice points to the largely compatible maintained `teleproto` fork.
 
 - [ ] **Step 4: Implement Bot API membership verification**
 
