@@ -11,12 +11,24 @@ const mocks = vi.hoisted(() => {
   return {
     order,
     registerCaptureHandlers: vi.fn(() => order.push('capture')),
+    registerPrivateRequestCommand: vi.fn((_bot: unknown, _options: unknown) =>
+      order.push('private-request')),
     registerRequestHandlers: vi.fn(() => order.push('request')),
   };
 });
 
 vi.mock('./capture.js', () => ({ registerCaptureHandlers: mocks.registerCaptureHandlers }));
+vi.mock('./private-request-command.js', () => ({
+  registerPrivateRequestCommand: mocks.registerPrivateRequestCommand,
+}));
 vi.mock('./requests.js', () => ({ registerRequestHandlers: mocks.registerRequestHandlers }));
+vi.mock('./config.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./config.js')>();
+  return {
+    ...actual,
+    config: { ...actual.config, privateTestAdminId: 101 },
+  };
+});
 
 import { createBot } from './bot.js';
 
@@ -103,13 +115,23 @@ const publications: ScheduledPublicationRepository = {
 
 it('registers member requests before terminal capture middleware', () => {
   mocks.order.length = 0;
+  const matcher = { match: vi.fn() };
+  const isMatchingReady = vi.fn().mockResolvedValue(true);
 
   createBot({
     persistence: { jobs, messages, publications },
-    requestMatching: { handlerOptions: {} } as RequestMatchingRuntime,
+    requestMatching: {
+      matcher,
+      handlerOptions: { isMatchingReady },
+    } as unknown as RequestMatchingRuntime,
   });
 
-  expect(mocks.order).toEqual(['request', 'capture']);
+  expect(mocks.order).toEqual(['private-request', 'request', 'capture']);
+  expect(mocks.registerPrivateRequestCommand.mock.calls.at(-1)?.[1]).toMatchObject({
+    adminUserId: adminId,
+    matcher,
+    isMatchingReady,
+  });
   expect(mocks.registerCaptureHandlers).toHaveBeenCalledWith(
     expect.anything(),
     expect.objectContaining({ messages }),

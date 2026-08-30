@@ -8,6 +8,7 @@ import {
 import { isDigestPublishedTodayWithState } from './job-state.repository.js';
 import { registerCaptureHandlers } from './capture.js';
 import { registerRequestHandlers } from './requests.js';
+import { registerPrivateRequestCommand } from './private-request-command.js';
 import type { RequestMatchingRuntime } from './request.runtime.js';
 import type { CorePersistence } from './persistence.js';
 import type { PublicationDispatcher } from './publication-dispatcher.js';
@@ -290,6 +291,13 @@ export function createBot(options: CreateBotOptions): Bot {
   }
   });
 
+  if (options.requestMatching && config.privateTestAdminId !== null) {
+    registerPrivateRequestCommand(bot, {
+      adminUserId: config.privateTestAdminId,
+      matcher: options.requestMatching.matcher,
+      isMatchingReady: options.requestMatching.handlerOptions.isMatchingReady,
+    });
+  }
   if (options.requestMatching) {
     registerRequestHandlers(bot, options.requestMatching.handlerOptions);
   }
