@@ -2,6 +2,7 @@ import { expect, it, vi } from 'vitest';
 import type { SimilarMember } from './members.js';
 import type { MemberRepository } from './members.repository.js';
 import { MemberMatcher } from './request.matcher.js';
+import { formatMemberMatches } from './requests.js';
 
 const shortlist: SimilarMember[] = [
   {
@@ -95,19 +96,34 @@ it('returns verbatim profile evidence instead of a free-form metric paraphrase',
     }],
   }, rows);
 
-  await expect(matcher.match('Ищу помощь с блогом', {
+  const result = await matcher.match('Ищу помощь с блогом', {
     minimumMatches: 1,
-  })).resolves.toEqual([
-    expect.objectContaining({ evidence }),
-  ]);
+  });
+
+  expect(result).toEqual([{
+    memberId: 'owner',
+    displayName: 'Владелец',
+    telegramUsername: 'owner_blog',
+    evidence,
+    similarity: 1,
+  }]);
+  expect(result[0]).not.toHaveProperty('reason');
+
+  const formatted = formatMemberMatches(result);
+  expect(formatted).toContain(`@owner_blog — ${evidence}`);
+  expect(formatted).not.toContain('3,5 млн просмотров');
 });
 
-it('rejects evidence that changes source casing or whitespace', async () => {
+it.each([
+  ['changed casing', 'запускала B2B SaaS'],
+  ['changed whitespace', 'Запускала  B2B SaaS'],
+  ['changed word', 'Запустила B2B SaaS'],
+])('rejects evidence with %s', async (_caseName, evidence) => {
   const rows = shortlist.slice(0, 1);
   const { matcher } = matcherFor({
     matches: [{
       memberId: 'anna',
-      evidence: 'запускала  B2B SaaS',
+      evidence,
     }],
   }, rows);
 
