@@ -192,7 +192,9 @@ async function processRequest(
     const requesterTelegramUserId = request.authorId === null
       ? undefined
       : String(request.authorId);
-    const matches = await options.matcher.match(request.query, requesterTelegramUserId);
+    const matches = await options.matcher.match(request.query, {
+      requesterTelegramUserId,
+    });
     if (matches.length < 3) {
       const sent = await sendReply(api, request, noMatchText, options);
       await options.repository.noMatch(request.chatId, request.messageId, {

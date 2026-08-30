@@ -187,7 +187,9 @@ it('sends three matches in the source topic and records completion', async () =>
     responseMessageId: 88,
     matchCount: 3,
   }));
-  expect(matcher.match).toHaveBeenCalledWith('Ищу эксперта', '5');
+  expect(matcher.match).toHaveBeenCalledWith('Ищу эксперта', {
+    requesterTelegramUserId: '5',
+  });
 });
 
 it('fails safely without embedding or matching before the first member snapshot', async () => {

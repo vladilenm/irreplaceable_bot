@@ -60,7 +60,9 @@ it('requests exact PostgreSQL top-20 and returns code-owned usernames', async ()
     ],
   });
 
-  await expect(matcher.match('Ищу эксперта по B2B SaaS', '1001')).resolves.toEqual([
+  await expect(matcher.match('Ищу эксперта по B2B SaaS', {
+    requesterTelegramUserId: '1001',
+  })).resolves.toEqual([
     expect.objectContaining({ memberId: 'anna', telegramUsername: 'anna_product' }),
     expect.objectContaining({ memberId: 'mikhail', telegramUsername: 'mikhail_saas' }),
     expect.objectContaining({ memberId: 'olga', telegramUsername: 'olga_pilots' }),
@@ -95,6 +97,28 @@ it('does not call the reranker when PostgreSQL shortlist has fewer than three me
   expect(requestJsonFn).not.toHaveBeenCalled();
 });
 
+it('allows one grounded result only when minimumMatches is one', async () => {
+  const one = shortlist.slice(0, 1);
+  const raw = {
+    matches: [
+      { memberId: 'anna', reason: 'Запускала SaaS', evidence: 'B2B SaaS' },
+    ],
+  };
+  const defaultMatcher = matcherFor(raw, one);
+  const privateMatcher = matcherFor(raw, one);
+
+  await expect(defaultMatcher.matcher.match('Ищу эксперта')).resolves.toEqual([]);
+  expect(defaultMatcher.requestJsonFn).not.toHaveBeenCalled();
+  await expect(privateMatcher.matcher.match('Ищу эксперта', {
+    minimumMatches: 1,
+  })).resolves.toEqual([
+    expect.objectContaining({
+      memberId: 'anna',
+      telegramUsername: 'anna_product',
+    }),
+  ]);
+});
+
 it('rejects oversized schema output', async () => {
   const { matcher, requestJsonFn } = matcherFor({
     matches: Array.from({ length: 6 }, (_, index) => ({
@@ -111,7 +135,9 @@ it('rejects oversized schema output', async () => {
 it('passes requester Telegram ID to PostgreSQL before reranking', async () => {
   const { matcher, members } = matcherFor({ matches: [] }, []);
 
-  await expect(matcher.match('Ищу эксперта', '1001')).resolves.toEqual([]);
+  await expect(matcher.match('Ищу эксперта', {
+    requesterTelegramUserId: '1001',
+  })).resolves.toEqual([]);
   expect(members.search).toHaveBeenCalledWith(
     [1, 0],
     'text-embedding-3-small',

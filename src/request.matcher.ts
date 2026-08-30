@@ -24,6 +24,11 @@ export interface PublicMemberMatch {
   similarity: number;
 }
 
+export interface MemberMatchOptions {
+  requesterTelegramUserId?: string;
+  minimumMatches?: 1 | 3;
+}
+
 type RequestJsonFn = <T>(config: LlmConfig, request: JsonCompletionRequest) => Promise<T>;
 
 const normalized = (value: string): string => value
@@ -40,7 +45,11 @@ export class MemberMatcher {
     requestJsonFn?: RequestJsonFn;
   }) {}
 
-  async match(query: string, requesterTelegramUserId?: string): Promise<PublicMemberMatch[]> {
+  async match(
+    query: string,
+    options: MemberMatchOptions = {},
+  ): Promise<PublicMemberMatch[]> {
+    const minimumMatches = options.minimumMatches ?? 3;
     const vectors = await this.deps.embeddings.embed([query]);
     const vector = vectors[0];
     if (!vector || vector.length === 0 || vector.some((value) => !Number.isFinite(value))) {
@@ -50,9 +59,9 @@ export class MemberMatcher {
       vector,
       this.deps.embeddings.model,
       20,
-      requesterTelegramUserId,
+      options.requesterTelegramUserId,
     );
-    if (shortlist.length < 3) return [];
+    if (shortlist.length < minimumMatches) return [];
 
     const request: JsonCompletionRequest = {
       system: PROMPT,
@@ -114,6 +123,6 @@ export class MemberMatcher {
         similarity: candidate.similarity,
       });
     }
-    return valid.length >= 3 ? valid.slice(0, 5) : [];
+    return valid.length >= minimumMatches ? valid.slice(0, 5) : [];
   }
 }
