@@ -4,7 +4,7 @@
 
 **Goal:** Add an owner-only `/test_request <query>` command in Telegram DM that runs the production member-matching pipeline and can return one grounded candidate without changing the public `#запрос` minimum of three.
 
-**Architecture:** An optional deployment-specific Telegram user ID enables a focused private-command module. `MemberMatcher` receives typed per-call options with a default minimum of three; the private command overrides it to one while reusing PostgreSQL search, requester exclusion, LLM reranking, evidence validation, and code-owned formatting. Private tests do not write `member_requests` rows because that repository models idempotent forum-topic messages.
+**Architecture:** An optional deployment-specific Telegram user ID enables a focused private-command module. `MemberMatcher` receives typed per-call options with a default minimum of three; the private command overrides it to one while reusing PostgreSQL search, LLM reranking, evidence validation, and code-owned formatting. The private smoke command allows the owner's own card so it can prove that card is present and indexed; public requests retain requester exclusion. Private tests do not write `member_requests` rows because that repository models idempotent forum-topic messages.
 
 **Tech Stack:** Node.js 22, TypeScript 6, grammY 1.42, PostgreSQL 16/pgvector, OpenAI-compatible Timeweb AI Gateway, Vitest 1.6.
 
@@ -16,7 +16,7 @@
 - The existing seven production environment variables remain required; the command is disabled when the optional ID is absent.
 - The private minimum is exactly one and the public minimum remains exactly three.
 - The maximum published match count remains five.
-- The requester remains excluded by stable Telegram user ID.
+- The private smoke command allows the requester; public requests remain excluded by stable Telegram user ID.
 - Query text, profiles, embeddings, prompts, model responses, environment values, and credentials must not enter logs.
 - Do not persist private test invocations in `member_requests`.
 - Do not push to `origin/main`.
@@ -281,7 +281,6 @@ it('edits the status message with one grounded match', async () => {
   await handler(context({ fromId: 101, chatType: 'private', match: 'Ищу B2B SaaS' }));
   expect(reply).toHaveBeenCalledWith('⏳ Ищу подходящих участников…');
   expect(matcher.match).toHaveBeenCalledWith('Ищу B2B SaaS', {
-    requesterTelegramUserId: '101',
     minimumMatches: 1,
   });
   expect(editMessageText).toHaveBeenCalledWith(
@@ -336,7 +335,6 @@ export function registerPrivateRequestCommand(
         throw new Error('Member source is not ready');
       }
       const matches = await options.matcher.match(query, {
-        requesterTelegramUserId: String(ctx.from.id),
         minimumMatches: 1,
       });
       const text = matches.length === 0
@@ -420,7 +418,7 @@ Document all of the following exact facts:
 - `PRIVATE_TEST_ADMIN_ID` is optional and deployment-specific.
 - `/test_request <text>` works only in DM for the exact configured ID.
 - The private minimum is one; public `#запрос` remains three.
-- The requester is excluded by Telegram ID.
+- The requester is eligible only in the private smoke command; public requester exclusion is unchanged.
 - The command exercises the real PostgreSQL/pgvector and LLM pipeline but does not
   create `member_requests` rows.
 - The ID value is never committed or logged.
