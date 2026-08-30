@@ -31,6 +31,7 @@ vi.mock('./config.js', async (importOriginal) => {
 });
 
 import { createBot } from './bot.js';
+import { config } from './config.js';
 
 const adminId = 101;
 type StatusRuntime = {
@@ -136,6 +137,25 @@ it('registers member requests before terminal capture middleware', () => {
     expect.anything(),
     expect.objectContaining({ messages }),
   );
+});
+
+it('does not register the private request command when the owner ID is absent', () => {
+  mocks.order.length = 0;
+  const configuredAdminId = config.privateTestAdminId;
+  config.privateTestAdminId = null;
+  try {
+    createBot({
+      persistence: { jobs, messages, publications },
+      requestMatching: {
+        matcher: { match: vi.fn() },
+        handlerOptions: { isMatchingReady: vi.fn().mockResolvedValue(true) },
+      } as unknown as RequestMatchingRuntime,
+    });
+  } finally {
+    config.privateTestAdminId = configuredAdminId;
+  }
+
+  expect(mocks.order).toEqual(['request', 'capture']);
 });
 
 it('passes the scoped API client options to grammY', () => {

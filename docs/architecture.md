@@ -24,7 +24,7 @@ Telegram -> bot on Timeweb App Platform
 
 Xray is a userspace child process, binds its SOCKS listener only to loopback and receives the VLESS configuration on stdin. Only grammY traffic uses this branch; PostgreSQL, Timeweb AI and RSS remain direct. The VLESS URI, UUID and Reality keys are deployment secrets and never appear in source or logs. A blank optional `TELEGRAM_PROXY_VLESS_URL` retains direct Telegram mode.
 
-Операционные константы — модели, размерность embeddings, расписания, лимиты базы, обработки запросов и логирования — находятся в `src/runtime-defaults.ts`. Текущее production подтверждено для семи значений окружения: `BOT_TOKEN`, `TARGET_CHAT_ID`, `AI_RADAR_THREAD_ID`, `THREAD_SUMMARY_THREAD_ID`, `TRACKED_THREAD_IDS`, `TIMEWEB_AI_TOKEN` и `DATABASE_URL`. Локальный WIP добавляет необязательный deployment-specific `TELEGRAM_PROXY_VLESS_URL`; до explicit deploy он не описывает production.
+Операционные константы — модели, размерность embeddings, расписания, лимиты базы, обработки запросов и логирования — находятся в `src/runtime-defaults.ts`. Текущее production подтверждено для семи значений окружения: `BOT_TOKEN`, `TARGET_CHAT_ID`, `AI_RADAR_THREAD_ID`, `THREAD_SUMMARY_THREAD_ID`, `TRACKED_THREAD_IDS`, `TIMEWEB_AI_TOKEN` и `DATABASE_URL`. Локальный WIP добавляет необязательные deployment-specific `TELEGRAM_PROXY_VLESS_URL` и `PRIVATE_TEST_ADMIN_ID`; до explicit deploy они не описывают production.
 
 `config/timeweb-cloud-ca.crt` — публичный материал сертификата для проверки TLS Managed PostgreSQL, а не секрет. Для домена, публичного IP и любого адреса вне разрешённых локальных сетей приложение использует этот сертификат. TLS выключается только для loopback и RFC1918 private IPv4 (`10/8`, `172.16/12`, `192.168/16`); private IP допустим только внутри общей приватной сети App Platform и Managed PostgreSQL.
 
@@ -73,6 +73,15 @@ rollback никогда автоматически не реактивируют
 `/digest`, `/status` и `/dev-digest` используют список администраторов текущего group/supergroup с пятиминутным process-local cache. Личная переписка намеренно short-circuit-ится как неадминистративная, поэтому администратор целевой группы пока не может вызвать `/status` в DM. Telegram также не раскрывает реальный user ID анонимного администратора.
 
 Исправление без новой env-переменной должно проверять `ctx.from.id` по администраторам `TARGET_CHAT_ID`, когда команда пришла в личке. До такого изменения административные команды следует запускать в целевой группе от неанонимного аккаунта.
+
+Локальный WIP добавляет отдельную `/test_request <текст>` для проверки member
+matching в DM. Она регистрируется только при непустом `PRIVATE_TEST_ADMIN_ID` и
+молча игнорирует другой user ID или неприватный chat. Handler вызывает тот же
+`MemberMatcher`, передаёт автора как исключаемый Telegram ID и снижает minimum
+только для этого вызова с трёх до одного. Публичный `#запрос` сохраняет threshold
+три. Приватный вызов использует реальные embedding, PostgreSQL exact search и LLM
+evidence validation, но не пишет `member_requests`, потому что эта таблица хранит
+идемпотентные forum-topic сообщения.
 
 ## Данные
 

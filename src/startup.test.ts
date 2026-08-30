@@ -53,7 +53,7 @@ describe('classifyStartupError', () => {
 });
 
 describe('PostgreSQL deployment files', () => {
-  it('injects seven required and one optional App Platform environment variables', async () => {
+  it('injects seven required and two optional App Platform environment variables', async () => {
     const [compose, dockerfile, env] = await Promise.all([
       readFile(new URL('../docker-compose.yml', import.meta.url), 'utf8'),
       readFile(new URL('../Dockerfile', import.meta.url), 'utf8'),
@@ -71,6 +71,7 @@ describe('PostgreSQL deployment files', () => {
       'TIMEWEB_AI_TOKEN',
       'DATABASE_URL',
       'TELEGRAM_PROXY_VLESS_URL',
+      'PRIVATE_TEST_ADMIN_ID',
     ]);
 
     const exampleEnvNames = env

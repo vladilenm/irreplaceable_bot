@@ -117,7 +117,7 @@ batch status.
 1. Создайте один ключ AI Gateway и сохраните его как `TIMEWEB_AI_TOKEN`.
 2. Для задеплоенного `597be1c` подтвердите `openai/gpt-4.1-mini` через `/models` и убедитесь, что `openai/text-embedding-3-large` возвращает 1536 значений при передаче `dimensions: 1536`. Локальный latency-WIP переключает defaults на `openai/gpt-5.6-luna` и `openai/text-embedding-3-small`; это изменение нельзя деплоить без полного release gate и переиндексации карточек.
 3. Создайте Managed PostgreSQL с pgvector. Для подключения по private IP добавьте App Platform и базу в одну приватную сеть и используйте RFC1918-адрес в `DATABASE_URL`; для подключения по домену или публичному IP используйте защищённый URL.
-4. Настройте семь обязательных переменных в существующем приложении App Platform: `BOT_TOKEN`, `TARGET_CHAT_ID`, `AI_RADAR_THREAD_ID`, `THREAD_SUMMARY_THREAD_ID`, `TRACKED_THREAD_IDS`, `TIMEWEB_AI_TOKEN`, `DATABASE_URL`. Необязательный `TELEGRAM_PROXY_VLESS_URL` добавляется только после отдельного согласования proxy rollout; значение — полный VLESS URI, его нельзя печатать, коммитить или передавать в обычные логи.
+4. Настройте семь обязательных переменных в существующем приложении App Platform: `BOT_TOKEN`, `TARGET_CHAT_ID`, `AI_RADAR_THREAD_ID`, `THREAD_SUMMARY_THREAD_ID`, `TRACKED_THREAD_IDS`, `TIMEWEB_AI_TOKEN`, `DATABASE_URL`. Необязательный `TELEGRAM_PROXY_VLESS_URL` добавляется только после отдельного согласования proxy rollout; значение — полный VLESS URI, его нельзя печатать, коммитить или передавать в обычные логи. Необязательный `PRIVATE_TEST_ADMIN_ID` включает `/test_request` только для одного точного Telegram user ID; значение также не печатается и не коммитится.
 5. Разверните один экземпляр бота и проверьте `/start`, затем `/status` в целевой группе от неанонимного администратора. В текущем коде `/status` в личке не подтверждает права администратора клуба.
 6. Один раз запустите `node dist/member.seed.js --allow-production` из консоли приложения, чтобы добавить 20 временных карточек. Production-образ не содержит dev dependency `tsx`, поэтому `npm run seed:members` внутри контейнера не является правильной командой.
 7. Проверьте `#запрос` на трёх репрезентативных запросах и убедитесь, что каждый ответ содержит 3–5 упоминаний.
@@ -186,6 +186,25 @@ node --input-type=module -e 'import{Pool}from"pg";const p=new Pool({connectionSt
 - `failed`: используйте `error_code` и app logs, не выводя query или credentials.
 
 Два разных `tg_message_id` — два реальных Telegram-сообщения, а не повторная обработка одного update. При production-проверке 2026-08-22 успешный запрос занял около 139 секунд, а второй почти одновременный запрос завершился `processing-failed` примерно через 269 секунд. Это исходная точка для latency-патча, а не целевая производительность.
+
+## Приватная проверка подбора
+
+После настройки `PRIVATE_TEST_ADMIN_ID` владелец отправляет боту в личном чате:
+
+```text
+/test_request Ищу специалиста по B2B-продажам
+```
+
+Команда сначала показывает `⏳ Ищу подходящих участников…`, затем редактирует это
+сообщение. Она допускает один grounded-кандидат, но сохраняет лимит пять и исключает
+карточку владельца по Telegram ID. Другой пользователь и вызов в группе не получают
+ответа. При пустой переменной команда не регистрируется.
+
+Это smoke реального embedding → PostgreSQL/pgvector → LLM reranking pipeline, но
+не smoke таблицы `member_requests`: приватные команды не создают в ней строк. После
+вызова проверяйте безопасные app logs и count-only `/status`, не выводя значение
+переменной, текст запроса, анкеты или embeddings. Публичный `#запрос` продолжает
+требовать минимум три валидных совпадения.
 
 ## Rollback
 
