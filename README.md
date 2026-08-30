@@ -91,7 +91,9 @@ npm run eval:member-matching -- /absolute/path/member-matching-eval.json
 `PRIVATE_TEST_ADMIN_ID`, использует настоящий PostgreSQL/pgvector и LLM pipeline,
 допускает карточку владельца и один валидный результат. Она не создаёт строку в
 `member_requests`; публичный `#запрос` по-прежнему исключает автора и сохраняет
-порог три. Команда
+порог три. LLM выбирает участника и дословный фрагмент анкеты. Код принимает
+evidence только при точном raw substring match в `profileText` и показывает именно
+этот фрагмент. Свободный LLM-пересказ в Telegram не публикуется. Команда
 `/retry_publications` повторяет доставку уже сформированных scheduled-публикаций,
 не запуская RSS или LLM заново; не запускайте `/digest` или `/dev-digest` для
 recovery сохранённой публикации. В текущей реализации остальные административные
