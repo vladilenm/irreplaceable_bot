@@ -122,7 +122,7 @@ it('returns usage for an empty owner command without running matching', async ()
   expect(matcher.match).not.toHaveBeenCalled();
 });
 
-it('edits the status message with one grounded match', async () => {
+it('allows one grounded self-match without excluding the owner', async () => {
   const matcher = matcherReturning(oneMatch);
   const { handler } = registeredCommand({ matcher });
   const request = commandContext();
@@ -134,7 +134,6 @@ it('edits the status message with one grounded match', async () => {
     vi.mocked(matcher.match).mock.invocationCallOrder[0]!,
   );
   expect(matcher.match).toHaveBeenCalledWith('Ищу B2B SaaS', {
-    requesterTelegramUserId: '101',
     minimumMatches: 1,
   });
   expect(request.editMessageText).toHaveBeenCalledWith(

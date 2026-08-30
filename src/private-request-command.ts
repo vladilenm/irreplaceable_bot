@@ -36,7 +36,6 @@ export function registerPrivateRequestCommand(
       }
 
       const matches = await options.matcher.match(query, {
-        requesterTelegramUserId: String(ctx.from.id),
         minimumMatches: 1,
       });
       const text = matches.length === 0

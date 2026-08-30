@@ -89,8 +89,9 @@ npm run eval:member-matching -- /absolute/path/member-matching-eval.json
 `/retry_publications [digest|summary|all]` и необязательная
 `/test_request <текст>`. Последняя доступна только в DM от точного
 `PRIVATE_TEST_ADMIN_ID`, использует настоящий PostgreSQL/pgvector и LLM pipeline,
-исключает автора по Telegram ID и допускает один валидный результат. Она не создаёт
-строку в `member_requests`; публичный `#запрос` сохраняет порог три. Команда
+допускает карточку владельца и один валидный результат. Она не создаёт строку в
+`member_requests`; публичный `#запрос` по-прежнему исключает автора и сохраняет
+порог три. Команда
 `/retry_publications` повторяет доставку уже сформированных scheduled-публикаций,
 не запуская RSS или LLM заново; не запускайте `/digest` или `/dev-digest` для
 recovery сохранённой публикации. В текущей реализации остальные административные
