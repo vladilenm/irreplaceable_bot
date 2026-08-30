@@ -11,7 +11,6 @@ const PROMPT = readFileSync(promptUrl, 'utf8');
 export const MemberMatchSchema = z.object({
   matches: z.array(z.object({
     memberId: z.string().min(1),
-    reason: z.string().min(1).max(160),
     evidence: z.string().min(1).max(300),
   })).max(5),
 });
@@ -20,7 +19,7 @@ export interface PublicMemberMatch {
   memberId: string;
   displayName: string;
   telegramUsername: string;
-  reason: string;
+  evidence: string;
   similarity: number;
 }
 
@@ -30,12 +29,6 @@ export interface MemberMatchOptions {
 }
 
 type RequestJsonFn = <T>(config: LlmConfig, request: JsonCompletionRequest) => Promise<T>;
-
-const normalized = (value: string): string => value
-  .normalize('NFC')
-  .replace(/\s+/g, ' ')
-  .trim()
-  .toLowerCase();
 
 export class MemberMatcher {
   constructor(private readonly deps: {
@@ -86,11 +79,10 @@ export class MemberMatcher {
             items: {
               type: 'object',
               additionalProperties: false,
-              required: ['memberId', 'reason', 'evidence'],
+              required: ['memberId', 'evidence'],
               properties: {
                 memberId: { type: 'string' },
-                reason: { type: 'string', maxLength: 160 },
-                evidence: { type: 'string', maxLength: 300 },
+                evidence: { type: 'string', minLength: 1, maxLength: 300 },
               },
             },
           },
@@ -110,7 +102,7 @@ export class MemberMatcher {
       if (
         !candidate ||
         seen.has(match.memberId) ||
-        !normalized(candidate.member.profileText).includes(normalized(match.evidence))
+        !candidate.member.profileText.includes(match.evidence)
       ) {
         continue;
       }
@@ -119,7 +111,7 @@ export class MemberMatcher {
         memberId: match.memberId,
         displayName: candidate.member.displayName,
         telegramUsername: candidate.member.telegramUsername,
-        reason: match.reason,
+        evidence: match.evidence,
         similarity: candidate.similarity,
       });
     }

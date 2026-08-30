@@ -35,9 +35,9 @@ function context(overrides: Record<string, unknown> = {}): Context {
 }
 
 const matches: PublicMemberMatch[] = [
-  { memberId: 'anna', displayName: 'Анна', telegramUsername: 'anna_product', reason: 'B2B SaaS', similarity: 1 },
-  { memberId: 'mikhail', displayName: 'Михаил', telegramUsername: 'mikhail_saas', reason: 'Enterprise sales', similarity: 0.9 },
-  { memberId: 'olga', displayName: 'Ольга', telegramUsername: 'olga_pilots', reason: 'Проводила пилоты', similarity: 0.8 },
+  { memberId: 'anna', displayName: 'Анна', telegramUsername: 'anna_product', evidence: 'B2B SaaS', similarity: 1 },
+  { memberId: 'mikhail', displayName: 'Михаил', telegramUsername: 'mikhail_saas', evidence: 'Enterprise sales', similarity: 0.9 },
+  { memberId: 'olga', displayName: 'Ольга', telegramUsername: 'olga_pilots', evidence: 'Проводила пилоты', similarity: 0.8 },
 ];
 
 function requestRepository(reserve = true) {
@@ -125,8 +125,8 @@ it('supports captions, uppercase hashtags, edits and UTF-16 offsets', () => {
   }), -1001)).toBeNull();
 });
 
-it('formats code-owned usernames and escapes LLM reasons', () => {
-  expect(formatMemberMatches([{ ...matches[0]!, reason: '<b>опасный</b> & текст' }]))
+it('formats code-owned usernames and escapes exact profile evidence', () => {
+  expect(formatMemberMatches([{ ...matches[0]!, evidence: '<b>опасный</b> & текст' }]))
     .toContain('@anna_product — &lt;b&gt;опасный&lt;/b&gt; &amp; текст');
 });
 

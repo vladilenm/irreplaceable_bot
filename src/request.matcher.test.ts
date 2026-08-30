@@ -54,9 +54,9 @@ function matcherFor(raw: unknown, rows: readonly SimilarMember[] = shortlist) {
 it('requests exact PostgreSQL top-20 and returns code-owned usernames', async () => {
   const { matcher, members, embeddings } = matcherFor({
     matches: [
-      { memberId: 'anna', reason: 'Запускала SaaS', evidence: 'B2B SaaS' },
-      { memberId: 'mikhail', reason: 'Enterprise-продажи', evidence: 'Enterprise sales' },
-      { memberId: 'olga', reason: 'Проводила пилоты', evidence: 'Пилоты для корпораций' },
+      { memberId: 'anna', evidence: 'B2B SaaS' },
+      { memberId: 'mikhail', evidence: 'Enterprise sales' },
+      { memberId: 'olga', evidence: 'пилоты для корпораций' },
     ],
   });
 
@@ -76,14 +76,54 @@ it('requests exact PostgreSQL top-20 and returns code-owned usernames', async ()
   expect(embeddings.embed).toHaveBeenCalledWith(['Ищу эксперта по B2B SaaS']);
 });
 
+it('returns verbatim profile evidence instead of a free-form metric paraphrase', async () => {
+  const evidence = 'мой контент посмотрели более 3,5 млн уникальных пользователей';
+  const rows: SimilarMember[] = [{
+    member: {
+      memberId: 'owner',
+      displayName: 'Владелец',
+      telegramUsername: 'owner_blog',
+      profileText: `Опыт: ${evidence}.`,
+    },
+    similarity: 1,
+  }];
+  const { matcher } = matcherFor({
+    matches: [{
+      memberId: 'owner',
+      reason: 'Добился 3,5 млн просмотров',
+      evidence,
+    }],
+  }, rows);
+
+  await expect(matcher.match('Ищу помощь с блогом', {
+    minimumMatches: 1,
+  })).resolves.toEqual([
+    expect.objectContaining({ evidence }),
+  ]);
+});
+
+it('rejects evidence that changes source casing or whitespace', async () => {
+  const rows = shortlist.slice(0, 1);
+  const { matcher } = matcherFor({
+    matches: [{
+      memberId: 'anna',
+      evidence: 'запускала  B2B SaaS',
+    }],
+  }, rows);
+
+  await expect(matcher.match('Ищу эксперта', {
+    minimumMatches: 1,
+  })).resolves.toEqual([]);
+});
+
 it('returns no mentions when fewer than three grounded rows survive validation', async () => {
   const { matcher } = matcherFor({
     matches: [
-      { memberId: 'unknown', reason: 'Подходит', evidence: 'B2B SaaS' },
-      { memberId: 'anna', reason: 'Запускала SaaS', evidence: 'B2B SaaS' },
-      { memberId: 'anna', reason: 'Дубликат', evidence: 'B2B SaaS' },
-      { memberId: 'mikhail', reason: 'Не подтверждено', evidence: 'Несуществующий факт' },
-      { memberId: 'olga', reason: 'Проводила пилоты', evidence: 'Пилоты для корпораций' },
+      { memberId: 'unknown', evidence: 'B2B SaaS' },
+      { memberId: 'anna', evidence: 'B2B SaaS' },
+      { memberId: 'anna', evidence: 'B2B SaaS' },
+      { memberId: 'mikhail', evidence: 'Несуществующий факт' },
+      { memberId: 'olga', evidence: 'пилоты для корпораций' },
     ],
   });
 
@@ -101,7 +141,7 @@ it('allows one grounded result only when minimumMatches is one', async () => {
   const one = shortlist.slice(0, 1);
   const raw = {
     matches: [
-      { memberId: 'anna', reason: 'Запускала SaaS', evidence: 'B2B SaaS' },
+      { memberId: 'anna', evidence: 'B2B SaaS' },
     ],
   };
   const defaultMatcher = matcherFor(raw, one);
@@ -123,7 +163,6 @@ it('rejects oversized schema output', async () => {
   const { matcher, requestJsonFn } = matcherFor({
     matches: Array.from({ length: 6 }, (_, index) => ({
       memberId: `member-${String(index)}`,
-      reason: 'Причина',
       evidence: 'Факт',
     })),
   });
@@ -158,9 +197,9 @@ it('treats instructions in profile text as untrusted card content', async () => 
   }));
   const { matcher } = matcherFor({
     matches: [
-      { memberId: 'anna', reason: 'Запускала SaaS', evidence: 'B2B SaaS' },
-      { memberId: 'mikhail', reason: 'Enterprise-продажи', evidence: 'Enterprise sales' },
-      { memberId: 'olga', reason: 'Проводила пилоты', evidence: 'Пилоты для корпораций' },
+      { memberId: 'anna', evidence: 'B2B SaaS' },
+      { memberId: 'mikhail', evidence: 'Enterprise sales' },
+      { memberId: 'olga', evidence: 'пилоты для корпораций' },
     ],
   }, injected);
 

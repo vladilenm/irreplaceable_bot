@@ -58,7 +58,7 @@ export function formatMemberMatches(matches: readonly PublicMemberMatch[]): stri
     '🔎 <b>Могут подойти:</b>',
     '',
     ...matches.map((match, index) =>
-      `${String(index + 1)}. @${match.telegramUsername} — ${escapeHtml(match.reason)}`),
+      `${String(index + 1)}. @${match.telegramUsername} — ${escapeHtml(match.evidence)}`),
   ].join('\n');
 }
 

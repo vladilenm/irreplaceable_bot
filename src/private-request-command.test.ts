@@ -14,7 +14,7 @@ const oneMatch: PublicMemberMatch[] = [{
   memberId: 'anna',
   displayName: 'Анна',
   telegramUsername: 'anna_product',
-  reason: 'Запускала B2B SaaS',
+  evidence: 'Запускала B2B SaaS',
   similarity: 1,
 }];
 
