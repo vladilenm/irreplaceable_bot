@@ -22,6 +22,22 @@ function requireEnvInt(env: NodeJS.ProcessEnv, name: string): number {
   return Number(value);
 }
 
+function optionalPositiveSafeInteger(
+  env: NodeJS.ProcessEnv,
+  name: string,
+): number | null {
+  const raw = env[name]?.trim();
+  if (!raw) return null;
+  if (!/^[1-9]\d*$/.test(raw)) {
+    throw new Error(`${name} must be a positive safe integer`);
+  }
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value)) {
+    throw new Error(`${name} must be a positive safe integer`);
+  }
+  return value;
+}
+
 function parseTrackedThreadIds(raw: string): number[] {
   if (raw.trim() === '') return [];
   return raw
@@ -61,6 +77,7 @@ export function readConfig(
     retentionSweepCron: RUNTIME_DEFAULTS.schedules.retentionSweepCron,
     database: readDatabaseConfig(env, loadCa),
     trackedThreadIds: parseTrackedThreadIds(requireEnv(env, 'TRACKED_THREAD_IDS')),
+    privateTestAdminId: optionalPositiveSafeInteger(env, 'PRIVATE_TEST_ADMIN_ID'),
     requestMatching: {
       embeddingApiKey: timewebAiToken,
       embeddingBaseUrl: RUNTIME_DEFAULTS.ai.baseUrl,

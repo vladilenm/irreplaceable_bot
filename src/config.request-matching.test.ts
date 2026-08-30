@@ -55,6 +55,7 @@ describe('readConfig', () => {
     expect(config.digestCron).toBe(RUNTIME_DEFAULTS.schedules.digestCron);
     expect(config.threadSummaryCron).toBe('30 6 * * *');
     expect(config.telegramProxy).toBeNull();
+    expect(config.privateTestAdminId).toBeNull();
 
     const proxied = readConfig({
       ...validEnv,
@@ -62,6 +63,25 @@ describe('readConfig', () => {
     }, () => 'timeweb-ca');
     expect(proxied.telegramProxy?.host).toBe('203.0.113.7');
   });
+
+  it('reads an optional private test administrator ID', () => {
+    expect(readConfig({
+      ...validEnv,
+      PRIVATE_TEST_ADMIN_ID: '123456789',
+    }, () => 'timeweb-ca').privateTestAdminId).toBe(123456789);
+  });
+
+  it.each(['0', '-1', 'not-a-number', '9007199254740992'])(
+    'rejects an invalid optional private test administrator ID',
+    (privateTestAdminId) => {
+      expect(() => readConfig({
+        ...validEnv,
+        PRIVATE_TEST_ADMIN_ID: privateTestAdminId,
+      }, () => 'timeweb-ca')).toThrow(
+        'PRIVATE_TEST_ADMIN_ID must be a positive safe integer',
+      );
+    },
+  );
 
   it.each([
     'BOT_TOKEN',

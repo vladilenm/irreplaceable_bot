@@ -48,6 +48,7 @@ export interface BotConfig {
   retentionSweepCron: string;
   database: DatabaseConfig;
   trackedThreadIds: number[];
+  privateTestAdminId: number | null;
   requestMatching: RequestMatchingConfig;
   telegramProxy: TelegramProxyConfig | null;
 }
