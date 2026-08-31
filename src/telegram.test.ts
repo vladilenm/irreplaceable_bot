@@ -3,14 +3,26 @@ import { GrammyError, HttpError, type Api } from 'grammy';
 
 // Mock Telegram delivery and assert the structured log context.
 
-const { mockSendMessage } = vi.hoisted(() => ({
+const { mockSendMessage, mockSendRichMessage } = vi.hoisted(() => ({
   mockSendMessage: vi.fn(),
+  mockSendRichMessage: vi.fn(),
 }));
 
-import { sendMessageOnce, sendMessageWithRetry } from './telegram.js';
+import {
+  sendMessageOnce,
+  sendMessageWithRetry,
+  sendRichMessageOnce,
+} from './telegram.js';
 import { logger } from './logger.js';
+import {
+  RICH_MESSAGE_LIMIT_BLOCKS,
+  RICH_MESSAGE_LIMIT_CHARACTERS,
+} from './rich-digest.renderer.js';
 
-const api = { sendMessage: mockSendMessage } as unknown as Api;
+const api = {
+  sendMessage: mockSendMessage,
+  raw: { sendRichMessage: mockSendRichMessage },
+} as unknown as Api;
 
 describe('sendMessageWithRetry log shape', () => {
   beforeEach(() => {
@@ -250,5 +262,108 @@ describe('sendMessageOnce', () => {
     await vi.advanceTimersByTimeAsync(3_100);
     await sent;
     expect(JSON.stringify(errorSpy.mock.calls)).not.toContain('vless' + '://secret-value');
+  });
+});
+
+describe('sendRichMessageOnce', () => {
+  beforeEach(() => {
+    mockSendRichMessage.mockReset();
+  });
+
+  it('uses the proxy-aware grammY raw client with the exact Rich Message payload', async () => {
+    mockSendRichMessage.mockResolvedValue({ message_id: 707 });
+
+    await expect(sendRichMessageOnce(api, {
+      chatId: -100123,
+      threadId: 77,
+      html: '<h1>Digest</h1>',
+      pipeline: 'digest',
+    })).resolves.toMatchObject({
+      ok: true,
+      message: { message_id: 707 },
+      durationMs: expect.any(Number),
+    });
+    expect(mockSendRichMessage).toHaveBeenCalledWith({
+      chat_id: -100123,
+      message_thread_id: 77,
+      rich_message: {
+        html: '<h1>Digest</h1>',
+        skip_entity_detection: true,
+      },
+    });
+  });
+
+  it.each([
+    ['characters', '😀'.repeat(RICH_MESSAGE_LIMIT_CHARACTERS + 1)],
+    ['blocks', '<p>x</p>'.repeat(RICH_MESSAGE_LIMIT_BLOCKS + 1)],
+  ])('rejects an over-limit Rich Message by %s before the API call', async (_name, html) => {
+    await expect(sendRichMessageOnce(api, {
+      chatId: -100123,
+      threadId: 77,
+      html,
+      pipeline: 'digest',
+    })).resolves.toMatchObject({
+      ok: false,
+      errorCode: 'telegram-rich-message-too-large',
+      retryable: false,
+      retryAfterMs: null,
+      errorMetadata: { errorClass: 'RichMessageSizeError' },
+    });
+    expect(mockSendRichMessage).not.toHaveBeenCalled();
+  });
+
+  it('retains Telegram 429 classification and retry_after', async () => {
+    mockSendRichMessage.mockRejectedValue(new GrammyError(
+      'Too Many Requests',
+      {
+        ok: false,
+        error_code: 429,
+        description: 'Too Many Requests',
+        parameters: { retry_after: 17 },
+      },
+      'sendRichMessage',
+      {},
+    ));
+
+    await expect(sendRichMessageOnce(api, {
+      chatId: -100123,
+      threadId: 77,
+      html: '<h1>Digest</h1>',
+    })).resolves.toMatchObject({
+      ok: false,
+      errorCode: 'telegram-429',
+      retryable: true,
+      retryAfterMs: 17_000,
+    });
+  });
+
+  it('retains permanent 4xx and retryable network classification', async () => {
+    mockSendRichMessage.mockRejectedValueOnce(new GrammyError(
+      'Forbidden',
+      { ok: false, error_code: 403, description: 'Forbidden' },
+      'sendRichMessage',
+      {},
+    ));
+    await expect(sendRichMessageOnce(api, {
+      chatId: -100123,
+      threadId: 77,
+      html: '<h1>Digest</h1>',
+    })).resolves.toMatchObject({
+      ok: false,
+      errorCode: 'telegram-403',
+      retryable: false,
+    });
+
+    mockSendRichMessage.mockRejectedValueOnce(new Error('private network detail'));
+    await expect(sendRichMessageOnce(api, {
+      chatId: -100123,
+      threadId: 77,
+      html: '<h1>Digest</h1>',
+    })).resolves.toMatchObject({
+      ok: false,
+      errorCode: 'telegram-network',
+      retryable: true,
+      errorMetadata: { errorClass: 'Error' },
+    });
   });
 });

@@ -53,6 +53,20 @@ function statusUpdate(): Update {
   };
 }
 
+function commandUpdate(text: string, updateId: number): Update {
+  return {
+    update_id: updateId,
+    message: {
+      message_id: updateId,
+      date: 1_777_500_000,
+      chat: { id: 101, type: 'private', first_name: 'Admin' },
+      from: { id: adminId, is_bot: false, first_name: 'Admin' },
+      text,
+      entities: [{ offset: 0, length: text.length, type: 'bot_command' }],
+    },
+  };
+}
+
 async function runStatus(
   requestMatching: StatusRuntime,
 ): Promise<string> {
@@ -173,6 +187,38 @@ it('passes the scoped API client options to grammY', () => {
   });
 });
 
+it('does not register legacy digest generation commands', async () => {
+  const bot = createBot({ persistence: { jobs, messages, publications } });
+  bot.botInfo = { id: 999, is_bot: true, first_name: 'Club bot', username: 'club_bot' } as never;
+  const apiCalls: string[] = [];
+  bot.api.config.use(async (_previous, method) => {
+    apiCalls.push(method);
+    return { ok: true, result: true } as never;
+  });
+
+  for (const [index, command] of ['/digest', '/dev-' + 'digest'].entries()) {
+    await bot.handleUpdate(commandUpdate(command, 10 + index));
+  }
+
+  expect(apiCalls).toEqual([]);
+});
+
+it('describes digest delivery as a Topic Digest consumer on /start', async () => {
+  const bot = createBot({ persistence: { jobs, messages, publications } });
+  bot.botInfo = { id: 999, is_bot: true, first_name: 'Club bot', username: 'club_bot' } as never;
+  const replies: string[] = [];
+  bot.api.config.use(async (_previous, method, payload) => {
+    if (method === 'sendMessage' && 'text' in payload) replies.push(String(payload.text));
+    return { ok: true, result: { message_id: 3, date: 1, chat: { id: 101, type: 'private' } } } as never;
+  });
+
+  await bot.handleUpdate(commandUpdate('/start', 12));
+
+  expect(replies).toHaveLength(1);
+  expect(replies[0]).toContain('Topic Digest');
+  expect(replies[0]).not.toContain('Источники:');
+});
+
 it('reports count-only web source and index state to an administrator', async () => {
   const profileFixtureValue = 'private canonical profile value';
   const sourceStatus = {
@@ -217,6 +263,8 @@ it('reports that the web source has never synchronized', async () => {
 
   expect(reply).toContain('🗂 Источник анкет: успешной синхронизации ещё не было');
   expect(reply).toContain('🧩 Индекс: ещё не готов');
+  expect(reply).toContain('🗞 Дайджест: автоматически после публикации Topic Digest');
+  expect(reply).not.toContain('⏰ Расписание:');
 });
 
 it('keeps the status command available when matching status reads fail', async () => {

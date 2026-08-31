@@ -38,6 +38,13 @@ function optionalPositiveSafeInteger(
   return value;
 }
 
+function requireExactBoolean(env: NodeJS.ProcessEnv, name: string): boolean {
+  const value = env[name];
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  throw new Error(`${name} must be exactly true or false`);
+}
+
 function parseTrackedThreadIds(raw: string): number[] {
   if (raw.trim() === '') return [];
   return raw
@@ -66,7 +73,7 @@ export function readConfig(
     botToken: requireEnv(env, 'BOT_TOKEN'),
     targetChatId: requireEnvInt(env, 'TARGET_CHAT_ID'),
     aiRadarThreadId: requireEnvInt(env, 'AI_RADAR_THREAD_ID'),
-    digestCron: RUNTIME_DEFAULTS.schedules.digestCron,
+    digestImportEnabled: requireExactBoolean(env, 'DIGEST_IMPORT_ENABLED'),
     aiApiKey: timewebAiToken,
     aiModel: RUNTIME_DEFAULTS.ai.chatModel,
     aiBaseUrl: RUNTIME_DEFAULTS.ai.baseUrl,

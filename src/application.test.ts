@@ -10,6 +10,7 @@ import type { Persistence } from './persistence.js';
 import type { RequestMatchingRuntime } from './request.runtime.js';
 import type { PublicationDispatcher } from './publication-dispatcher.js';
 import type { TelegramTransportRuntime } from './telegram-transport.js';
+import type { DigestImporter } from './digest-importer.js';
 
 function dependencies(
   events: string[],
@@ -51,6 +52,15 @@ function dependencies(
       events.push('stop-dispatcher');
     }),
   };
+  const importer: DigestImporter = {
+    importDue: vi.fn(),
+    start: vi.fn(() => {
+      events.push('start-importer');
+    }),
+    stop: vi.fn(() => {
+      events.push('stop-importer');
+    }),
+  };
   const bot = {
     api: {},
     stop: vi.fn(async () => {
@@ -65,7 +75,7 @@ function dependencies(
     }),
   };
   let poolCall = 0;
-  const deps = {
+  const deps: ApplicationDependencies = {
     database: {
       url: 'postgresql://runtime',
       ssl: false,
@@ -85,6 +95,12 @@ function dependencies(
       processingTimeoutMinutes: 10,
     },
     telegramProxy: null,
+    digestImport: {
+      enabled: true,
+      targetChatId: -100123,
+      threadId: 77,
+      intervalMs: 30_000,
+    },
     createPool: vi.fn(() => poolCall++ === 0 ? migrationPool : runtimePool),
     migrate: vi.fn(async () => {
       events.push('migrate');
@@ -99,6 +115,7 @@ function dependencies(
     }),
     createRequestMatching: vi.fn(async () => requestMatching),
     createPublicationDispatcher: vi.fn(() => dispatcher),
+    createDigestImporter: vi.fn(() => importer),
     startTelegramTransport: vi.fn(async () => {
       events.push('start-telegram-transport');
       return telegramTransport;
@@ -121,13 +138,22 @@ function dependencies(
       events.push('stop-scheduler');
     }),
     runPreflight: vi.fn(async () => undefined),
-  } satisfies ApplicationDependencies;
-  return { deps, migrationPool, runtimePool, bot, telegramTransport };
+  };
+  return {
+    deps,
+    migrationPool,
+    runtimePool,
+    bot,
+    telegramTransport,
+    importer,
+    dispatcher,
+    persistence,
+  };
 }
 
 it('does not construct or start the bot before migrations and PostgreSQL readiness', async () => {
   const events: string[] = [];
-  const { deps } = dependencies(events);
+  const { deps, persistence, dispatcher } = dependencies(events);
 
   const running = await startApplication(deps);
 
@@ -144,8 +170,19 @@ it('does not construct or start the bot before migrations and PostgreSQL readine
     'create-bot',
     'start-bot',
     'start-dispatcher',
+    'start-importer',
     'start-scheduler',
   ]);
+  expect(deps.createDigestImporter).toHaveBeenCalledWith(expect.objectContaining({
+    publications: persistence.publications,
+    source: persistence.digestSource,
+    dispatcher,
+    targetChatId: -100123,
+    threadId: 77,
+    intervalMs: 30_000,
+    onError: expect.any(Function),
+    logInvalid: expect.any(Function),
+  }));
   await running.stop();
 });
 
@@ -185,12 +222,25 @@ it('shuts down scheduler, Telegram, then the runtime pool exactly once', async (
   await running.stop();
 
   expect(events).toEqual([
+    'stop-importer',
     'stop-dispatcher',
     'stop-scheduler',
     'stop-bot',
     'stop-telegram-transport',
     'close-runtime-pool',
   ]);
+});
+
+it('keeps digest importing disabled when the explicit kill switch is false', async () => {
+  const events: string[] = [];
+  const { deps } = dependencies(events);
+  deps.digestImport.enabled = false;
+
+  const running = await startApplication(deps);
+
+  expect(deps.createDigestImporter).not.toHaveBeenCalled();
+  expect(events).not.toContain('start-importer');
+  await running.stop();
 });
 
 it('propagates a safe Telegram transport runtime failure', async () => {

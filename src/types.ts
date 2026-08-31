@@ -37,7 +37,7 @@ export interface BotConfig {
   botToken: string;
   targetChatId: number;
   aiRadarThreadId: number;
-  digestCron: string;
+  digestImportEnabled: boolean;
   aiApiKey: string;
   aiModel: string;
   aiBaseUrl: string;
@@ -51,34 +51,6 @@ export interface BotConfig {
   privateTestAdminId: number | null;
   requestMatching: RequestMatchingConfig;
   telegramProxy: TelegramProxyConfig | null;
-}
-
-export interface DigestItem {
-  title: string;
-  summary: string;
-  url: string;
-  category: DigestCategory;
-}
-
-export type DigestCategory =
-  | 'agents'
-  | 'orchestration'
-  | 'models'
-  | 'tools'
-  | 'technologies'
-  | 'business';
-
-export interface FeedConfig {
-  url: string;
-  name: string;
-}
-
-export interface RawArticle {
-  title: string;
-  description: string;
-  link: string;
-  source: string;
-  pubDate: Date;
 }
 
 export interface CapturedMessage {

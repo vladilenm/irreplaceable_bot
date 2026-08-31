@@ -167,6 +167,23 @@ export const POSTGRES_MIGRATIONS: readonly PostgresMigration[] = [
       );
     `,
   },
+  {
+    version: 4,
+    description: 'Add Rich Message format and digest origin identity to publication outbox',
+    sql: `
+      ALTER TABLE scheduled_publications
+        ADD COLUMN message_format text NOT NULL DEFAULT 'regular-html',
+        ADD COLUMN origin_digest_id uuid;
+
+      ALTER TABLE scheduled_publications
+        ADD CONSTRAINT scheduled_publications_message_format_check
+        CHECK (message_format IN ('regular-html', 'rich-html'));
+
+      CREATE UNIQUE INDEX scheduled_publications_origin_digest_id_key
+        ON scheduled_publications(origin_digest_id)
+        WHERE origin_digest_id IS NOT NULL;
+    `,
+  },
 ];
 
 const CREATE_MIGRATION_TABLE_SQL = `

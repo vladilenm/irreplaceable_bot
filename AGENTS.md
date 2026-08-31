@@ -44,6 +44,14 @@ git log --oneline --decorate -8
 
 Локальный WIP реализует: `30 6 * * *` для summary; durable PostgreSQL outbox с backoff до полуночи МСК; safe `/status` counts и `/retry_publications`; capability cache `json_schema` → `json_object`; одну validation retry для malformed/schema-invalid/all-hallucinated LLM output. До release gate и явного deploy это не production-поведение.
 
+В ветке `codex/topic-digest-consumer` legacy RSS/LLM radar удалён. Бот читает
+`digest.telegram_issue_source` каждые 30 секунд при точном
+`DIGEST_IMPORT_ENABLED=true`, валидирует `PublishedDigest v3`, рендерит один Rich
+Message Main/Radar/Focus и идемпотентно импортирует `digestId` в durable outbox.
+Команд ручной генерации и digest cron в этой ветке нет. Миграция 4 добавляет
+`message_format` и уникальный nullable `origin_digest_id`. Это не production до
+merge и явно авторизованного deploy.
+
 ## Текущий локальный WIP
 
 Локальный `main` содержит непушенный WIP: документацию latency-патча, изменения defaults моделей/LLM transport и исправления scheduled delivery. Полный latency-патч из plan ещё не реализован и не проверен целиком.
@@ -76,7 +84,8 @@ git diff --check
 | `#запрос` orchestration | `src/requests.ts`, `src/request.repository.ts` |
 | Поиск участников | `src/request.matcher.ts`, `src/members.repository.ts`, `src/embeddings.ts` |
 | PostgreSQL | `src/db/migrations.ts`, `src/db/pool.ts`, `src/persistence.ts` |
-| Scheduler/радар/сводки | `src/scheduler.ts`, `src/radar.ts`, `src/summarizer.ts` |
+| Topic Digest consumer | `src/digest-importer.ts`, `src/digest-source.repository.ts`, `src/rich-digest.renderer.ts` |
+| Scheduler/сводки | `src/scheduler.ts`, `src/summarizer.ts` |
 | Безопасные логи | `src/logger.ts`, `src/telegram.ts` |
 
 ## Environment
@@ -92,6 +101,10 @@ TRACKED_THREAD_IDS
 TIMEWEB_AI_TOKEN
 DATABASE_URL
 ```
+
+Ветка Topic Digest consumer дополнительно требует точный kill switch
+`DIGEST_IMPORT_ENABLED=true|false`. Перед deploy он должен быть добавлен как
+`false`; включать его можно только после проверки producer view и grants.
 
 Локальный WIP дополнительно реализует необязательный `TELEGRAM_PROXY_VLESS_URL` для scoped Telegram egress через Amsterdam VLESS. До наблюдаемого deploy он не считается production-поведением. Значение является полным credential URI: не читать, не печатать, не добавлять в Git. Пустое значение сохраняет direct mode.
 
@@ -142,6 +155,8 @@ Scheduler started
 Initial member source sync attempt finished
 ```
 
+При `DIGEST_IMPORT_ENABLED=true` также ожидается `Digest importer started`.
+
 Последние результаты `#запрос` безопасно проверяются из консоли приложения без печати credentials:
 
 ```bash
@@ -153,7 +168,7 @@ node --input-type=module -e 'import{Pool}from"pg";const p=new Pool({connectionSt
 ## Правила изменения
 
 - Сначала воспроизводить дефект тестом, затем менять реализацию.
-- Сохранять семь обязательных production env-переменных; `TELEGRAM_PROXY_VLESS_URL` допустим только как необязательный deployment-specific secret для scoped Telegram egress. Новые операционные настройки добавлять в `runtime-defaults.ts`, если нет веской причины делать их deployment-specific.
+- Сохранять семь подтверждённых production env-переменных. В consumer-коде также обязателен точный kill switch `DIGEST_IMPORT_ENABLED=true|false`; перед deploy его добавляют как `false`. `TELEGRAM_PROXY_VLESS_URL` допустим только как необязательный deployment-specific secret для scoped Telegram egress. Новые операционные настройки добавлять в `runtime-defaults.ts`, если нет веской причины делать их deployment-specific.
 - Не менять schema/embedding model без плана переиндексации карточек.
 - Не выполнять deploy, seed production, ротацию ключей, изменение Timeweb-ресурсов или push без явного разрешения пользователя.
 - Не коммитить планы как будто они являются реализованным поведением. В документации явно разделять production, проверенный local state и proposed/WIP.

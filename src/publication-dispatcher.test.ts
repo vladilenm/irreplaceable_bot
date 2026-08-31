@@ -15,6 +15,8 @@ const now = new Date('2030-08-23T06:00:00.000Z');
 const claimed = (overrides: Partial<ClaimedPublication> = {}): ClaimedPublication => ({
   id: '1',
   pipeline: 'digest',
+  messageFormat: 'regular-html',
+  originDigestId: null,
   publicationDate: '2030-08-23',
   targetChatId: -100123,
   threadId: 6359,
@@ -68,7 +70,13 @@ describe('publication dispatcher', () => {
   it('persists a sent chunk then advances digest state only after final delivery', async () => {
     const publications = makeRepository(claimed());
     const send = sendResult({ ok: true, message: { message_id: 501 } as never, durationMs: 10 });
-    const dispatcher = createPublicationDispatcher({ publications, jobs, sendMessageOnce: send });
+    const sendRich = sendResult({ ok: true, message: { message_id: 999 } as never, durationMs: 10 });
+    const dispatcher = createPublicationDispatcher({
+      publications,
+      jobs,
+      sendMessageOnce: send,
+      sendRichMessageOnce: sendRich,
+    });
 
     await dispatcher.dispatchDue(now);
 
@@ -79,7 +87,43 @@ describe('publication dispatcher', () => {
       pipeline: 'digest',
     }));
     expect(publications.recordChunkDelivered).toHaveBeenCalledWith('1', 0, 501, now);
+    expect(sendRich).not.toHaveBeenCalled();
     expect(jobs.recordDigest).toHaveBeenCalledWith(now, false, 2);
+  });
+
+  it('dispatches persisted rich-html through sendRichMessage and records its message id', async () => {
+    const publications = makeRepository(claimed({
+      messageFormat: 'rich-html',
+      originDigestId: '11111111-1111-4111-8111-111111111111',
+      chunk: { chunkIndex: 0, text: '<h1>Digest</h1>' },
+    }));
+    const sendRegular = sendResult({
+      ok: true,
+      message: { message_id: 501 } as never,
+      durationMs: 10,
+    });
+    const sendRich = sendResult({
+      ok: true,
+      message: { message_id: 707 } as never,
+      durationMs: 10,
+    });
+    const dispatcher = createPublicationDispatcher({
+      publications,
+      jobs,
+      sendMessageOnce: sendRegular,
+      sendRichMessageOnce: sendRich,
+    });
+
+    await dispatcher.dispatchDue(now);
+
+    expect(sendRegular).not.toHaveBeenCalled();
+    expect(sendRich).toHaveBeenCalledWith({
+      chatId: -100123,
+      threadId: 6359,
+      html: '<h1>Digest</h1>',
+      pipeline: 'digest',
+    });
+    expect(publications.recordChunkDelivered).toHaveBeenCalledWith('1', 0, 707, now);
   });
 
   it('persists bounded retry timing for retryable network errors', async () => {
@@ -92,7 +136,12 @@ describe('publication dispatcher', () => {
       errorMetadata: { errorClass: 'Error' },
       durationMs: 10,
     });
-    const dispatcher = createPublicationDispatcher({ publications, jobs, sendMessageOnce: send });
+    const dispatcher = createPublicationDispatcher({
+      publications,
+      jobs,
+      sendMessageOnce: send,
+      sendRichMessageOnce: send,
+    });
 
     await dispatcher.dispatchDue(now);
 
@@ -114,7 +163,12 @@ describe('publication dispatcher', () => {
       errorMetadata: { errorClass: 'GrammyError', status: 403 },
       durationMs: 10,
     });
-    const dispatcher = createPublicationDispatcher({ publications, jobs, sendMessageOnce: send });
+    const dispatcher = createPublicationDispatcher({
+      publications,
+      jobs,
+      sendMessageOnce: send,
+      sendRichMessageOnce: send,
+    });
 
     await dispatcher.dispatchDue(now);
 
@@ -134,7 +188,12 @@ describe('publication dispatcher', () => {
       errorMetadata: { errorClass: 'Error' },
       durationMs: 10,
     });
-    const dispatcher = createPublicationDispatcher({ publications, jobs, sendMessageOnce: send });
+    const dispatcher = createPublicationDispatcher({
+      publications,
+      jobs,
+      sendMessageOnce: send,
+      sendRichMessageOnce: send,
+    });
 
     await dispatcher.dispatchDue(now);
 

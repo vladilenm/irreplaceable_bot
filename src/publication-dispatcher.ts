@@ -2,7 +2,11 @@ import { logger } from './logger.js';
 import { RUNTIME_DEFAULTS } from './runtime-defaults.js';
 import type { JobStateRepository } from './job-state.repository.js';
 import type { ScheduledPublicationRepository } from './scheduled-publication.repository.js';
-import type { SendMessageOnceResult, SendMessageParams } from './telegram.js';
+import type {
+  SendMessageOnceResult,
+  SendMessageParams,
+  SendRichMessageParams,
+} from './telegram.js';
 
 const RETRY_DELAYS_MS = [3_000, 15_000, 60_000, 5 * 60_000, 15 * 60_000, 30 * 60_000] as const;
 const DEFAULT_INTERVAL_MS = 30_000;
@@ -22,6 +26,7 @@ export interface PublicationDispatcherOptions {
   publications: ScheduledPublicationRepository;
   jobs: JobStateRepository;
   sendMessageOnce(params: SendMessageParams): Promise<SendMessageOnceResult>;
+  sendRichMessageOnce(params: SendRichMessageParams): Promise<SendMessageOnceResult>;
   leaseMs?: number;
   intervalMs?: number;
   batchSize?: number;
@@ -49,13 +54,20 @@ export function createPublicationDispatcher(options: PublicationDispatcherOption
     for (let i = 0; i < batchSize; i++) {
       const publication = await options.publications.claimDue(now, leaseMs);
       if (!publication) return;
-      const result = await options.sendMessageOnce({
-        chatId: publication.targetChatId,
-        threadId: publication.threadId,
-        text: publication.chunk.text,
-        parseMode: 'HTML',
-        pipeline: publication.pipeline,
-      });
+      const result = publication.messageFormat === 'rich-html'
+        ? await options.sendRichMessageOnce({
+          chatId: publication.targetChatId,
+          threadId: publication.threadId,
+          html: publication.chunk.text,
+          pipeline: publication.pipeline,
+        })
+        : await options.sendMessageOnce({
+          chatId: publication.targetChatId,
+          threadId: publication.threadId,
+          text: publication.chunk.text,
+          parseMode: 'HTML',
+          pipeline: publication.pipeline,
+        });
       if (result.ok) {
         const messageId = result.message.message_id;
         if (!Number.isSafeInteger(messageId)) {

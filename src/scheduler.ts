@@ -3,12 +3,10 @@ import type { ScheduledTask } from 'node-cron';
 import type { Api } from 'grammy';
 import { config } from './config.js';
 import { logger, errMsg } from './logger.js';
-import { runDigestPipeline } from './radar.js';
 import { runThreadSummaryPipeline } from './summary.js';
 import type { CorePersistence } from './persistence.js';
 import type { PublicationDispatcher } from './publication-dispatcher.js';
 import {
-  enqueueDigestPublication,
   enqueueThreadSummaryPublication,
 } from './scheduled-publication.service.js';
 
@@ -49,25 +47,6 @@ function registerJob(name: string, cronExpr: string, handler: CronHandler): bool
   tasks.set(name, task);
   logger.info({ name, cronExpr }, 'Cron job registered');
   return true;
-}
-
-async function digestHandler(
-  persistence: CorePersistence,
-  dispatcher: PublicationDispatcher,
-): Promise<void> {
-  const result = await runDigestPipeline(persistence.jobs, { persistState: false });
-  if (result.alreadyPublished) {
-    logger.warn('Cron: digest already published today, skipping send');
-    return;
-  }
-  await enqueueDigestPublication(result, persistence, dispatcher, {
-    targetChatId: config.targetChatId,
-    threadId: config.aiRadarThreadId,
-  });
-  logger.info(
-    { itemCount: result.itemCount, skipped: result.skipped },
-    'Cron: digest cycle complete',
-  );
 }
 
 async function threadSummaryHandler(
@@ -128,7 +107,6 @@ export function startScheduler(
   persistence: CorePersistence,
   options: SchedulerOptions,
 ): void {
-  registerJob('digest', config.digestCron, () => digestHandler(persistence, options.dispatcher));
   registerJob('thread-summary', config.threadSummaryCron, () =>
     threadSummaryHandler(persistence, options.dispatcher));
   registerJob('retention-sweep', config.retentionSweepCron, () =>

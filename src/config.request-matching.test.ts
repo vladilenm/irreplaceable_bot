@@ -10,6 +10,7 @@ const validEnv: NodeJS.ProcessEnv = {
   TRACKED_THREAD_IDS: '11,22,33',
   TIMEWEB_AI_TOKEN: 'gateway-token',
   DATABASE_URL: 'postgresql://club:secret@db.example/club',
+  DIGEST_IMPORT_ENABLED: 'true',
 };
 
 const validProxyUrl =
@@ -20,13 +21,14 @@ const validProxyUrl =
   '&sid=0123456789abcdef&type=tcp#club-bot-amsterdam';
 
 describe('readConfig', () => {
-  it('builds the complete runtime config from exactly seven env values', () => {
+  it('builds the runtime config with an explicit digest import kill switch', () => {
     const config = readConfig(validEnv, () => 'timeweb-ca');
 
     expect(config).toMatchObject({
       botToken: 'telegram-token',
       targetChatId: -100123,
       aiRadarThreadId: 11,
+      digestImportEnabled: true,
       threadSummaryThreadId: 22,
       trackedThreadIds: [11, 22, 33],
       aiApiKey: 'gateway-token',
@@ -52,7 +54,6 @@ describe('readConfig', () => {
         processingTimeoutMinutes: 10,
       },
     });
-    expect(config.digestCron).toBe(RUNTIME_DEFAULTS.schedules.digestCron);
     expect(config.threadSummaryCron).toBe('30 6 * * *');
     expect(config.telegramProxy).toBeNull();
     expect(config.privateTestAdminId).toBeNull();
@@ -62,6 +63,20 @@ describe('readConfig', () => {
       TELEGRAM_PROXY_VLESS_URL: validProxyUrl,
     }, () => 'timeweb-ca');
     expect(proxied.telegramProxy?.host).toBe('203.0.113.7');
+  });
+
+  it('accepts only exact true or false values for digest importing', () => {
+    expect(readConfig({
+      ...validEnv,
+      DIGEST_IMPORT_ENABLED: 'false',
+    }, () => 'timeweb-ca').digestImportEnabled).toBe(false);
+
+    for (const value of ['', 'TRUE', 'False', '1', ' true ']) {
+      expect(() => readConfig({
+        ...validEnv,
+        DIGEST_IMPORT_ENABLED: value,
+      }, () => 'timeweb-ca')).toThrow('DIGEST_IMPORT_ENABLED must be exactly true or false');
+    }
   });
 
   it('reads an optional private test administrator ID', () => {
@@ -91,6 +106,7 @@ describe('readConfig', () => {
     'TRACKED_THREAD_IDS',
     'TIMEWEB_AI_TOKEN',
     'DATABASE_URL',
+    'DIGEST_IMPORT_ENABLED',
   ])('fails fast when %s is missing', (name) => {
     const env: NodeJS.ProcessEnv = { ...validEnv };
     delete env[name];

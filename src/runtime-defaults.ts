@@ -6,7 +6,6 @@ export const RUNTIME_DEFAULTS = Object.freeze({
     embeddingDimensions: 1536,
   }),
   schedules: Object.freeze({
-    digestCron: '0 6 * * *',
     threadSummaryCron: '30 6 * * *',
     retentionSweepCron: '0 1 * * *',
     memberSyncCron: '*/5 * * * *',
@@ -23,7 +22,10 @@ export const RUNTIME_DEFAULTS = Object.freeze({
       shutdownTimeoutMs: 5_000,
     }),
   }),
-  publications: Object.freeze({ deliveryLeaseMs: 5 * 60_000 }),
+  publications: Object.freeze({
+    deliveryLeaseMs: 5 * 60_000,
+    digestPollIntervalMs: 30_000,
+  }),
   matching: Object.freeze({
     concurrency: 2,
     queueLimit: 50,

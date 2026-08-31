@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { readFile } from 'node:fs/promises';
+import { access, readFile } from 'node:fs/promises';
 import { GrammyError } from 'grammy';
 import {
   classifyStartupError,
@@ -53,7 +53,11 @@ describe('classifyStartupError', () => {
 });
 
 describe('PostgreSQL deployment files', () => {
-  it('injects seven required and two optional App Platform environment variables', async () => {
+  it('does not ship the retired RSS feed configuration', async () => {
+    await expect(access(new URL('../config/feeds.json', import.meta.url))).rejects.toThrow();
+  });
+
+  it('injects eight required and two optional App Platform environment variables', async () => {
     const [compose, dockerfile, env] = await Promise.all([
       readFile(new URL('../docker-compose.yml', import.meta.url), 'utf8'),
       readFile(new URL('../Dockerfile', import.meta.url), 'utf8'),
@@ -70,6 +74,7 @@ describe('PostgreSQL deployment files', () => {
       'TRACKED_THREAD_IDS',
       'TIMEWEB_AI_TOKEN',
       'DATABASE_URL',
+      'DIGEST_IMPORT_ENABLED',
       'TELEGRAM_PROXY_VLESS_URL',
       'PRIVATE_TEST_ADMIN_ID',
     ]);

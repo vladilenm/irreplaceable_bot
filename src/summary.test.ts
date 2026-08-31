@@ -45,7 +45,7 @@ vi.mock('./config.js', () => ({
   config: {
     targetChatId: -1003096173975,
     aiRadarThreadId: 0,
-    digestCron: '0 6 * * *',
+    digestImportEnabled: false,
     aiApiKey: 'k',
     aiModel: 'm',
     botToken: 't',

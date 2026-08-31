@@ -12,6 +12,8 @@ const repo = new PgScheduledPublicationRepository(pool);
 const start = new Date('2030-08-23T06:00:00.000Z');
 const input = (overrides: Partial<ScheduledPublicationInput> = {}): ScheduledPublicationInput => ({
   pipeline: 'digest',
+  messageFormat: 'regular-html',
+  originDigestId: null,
   publicationDate: '2030-08-23',
   targetChatId: -100123,
   threadId: 6359,
@@ -49,6 +51,32 @@ describe('PgScheduledPublicationRepository', () => {
     ]);
   });
 
+  it('enqueues one rich digest publication for an origin across repeated dates', async () => {
+    const originDigestId = '11111111-1111-4111-8111-111111111111';
+    const first = await repo.enqueue(input({
+      messageFormat: 'rich-html',
+      originDigestId,
+      chunks: ['<h1>Digest</h1>'],
+    }));
+    const repeated = await repo.enqueue(input({
+      messageFormat: 'rich-html',
+      originDigestId,
+      publicationDate: '2030-08-24',
+      chunks: ['<h1>Duplicate</h1>', '<p>extra chunk</p>'],
+    }));
+
+    expect(first.created).toBe(true);
+    expect(repeated).toEqual({ id: first.id, created: false });
+    const rows = await pool.query<{ message_format: string; origin_digest_id: string }>(`
+      SELECT message_format, origin_digest_id FROM scheduled_publications
+    `);
+    expect(rows.rows).toEqual([{ message_format: 'rich-html', origin_digest_id: originDigestId }]);
+    const chunks = await pool.query<{ text: string }>(`
+      SELECT text FROM scheduled_publication_chunks ORDER BY chunk_index
+    `);
+    expect(chunks.rows).toEqual([{ text: '<h1>Digest</h1>' }]);
+  });
+
   it('claims the first undelivered chunk and completes only after the final chunk', async () => {
     const publication = await repo.enqueue(input());
 
@@ -56,6 +84,8 @@ describe('PgScheduledPublicationRepository', () => {
     expect(first).toMatchObject({
       id: publication.id,
       pipeline: 'digest',
+      messageFormat: 'regular-html',
+      originDigestId: null,
       attemptCount: 1,
       chunk: { chunkIndex: 0, text: 'first' },
     });

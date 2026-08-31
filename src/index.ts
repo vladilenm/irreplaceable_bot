@@ -13,8 +13,10 @@ import { logger, bootId, errMsg } from './logger.js';
 import { createPersistence } from './persistence.js';
 import { createRequestMatchingRuntime } from './request.runtime.js';
 import { createPublicationDispatcher } from './publication-dispatcher.js';
+import { createDigestImporter } from './digest-importer.js';
 import { startTelegramTransport } from './telegram-transport.js';
 import { startScheduler, stopScheduler } from './scheduler.js';
+import { RUNTIME_DEFAULTS } from './runtime-defaults.js';
 import {
   classifyStartupError,
   POLLING_CONFLICT_BACKOFF_MS,
@@ -74,12 +76,19 @@ async function main(): Promise<void> {
     database: config.database,
     requestMatching: config.requestMatching,
     telegramProxy: config.telegramProxy,
+    digestImport: {
+      enabled: config.digestImportEnabled,
+      targetChatId: config.targetChatId,
+      threadId: config.aiRadarThreadId,
+      intervalMs: RUNTIME_DEFAULTS.publications.digestPollIntervalMs,
+    },
     createPool,
     migrate: runMigrations,
     assertReady: assertDatabaseReady,
     createPersistence,
     createRequestMatching: createRequestMatchingRuntime,
     createPublicationDispatcher,
+    createDigestImporter,
     startTelegramTransport,
     createBot,
     startPolling,
