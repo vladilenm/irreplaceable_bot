@@ -54,7 +54,6 @@ describe('readConfig', () => {
         processingTimeoutMinutes: 10,
       },
     });
-    expect('digestCron' in config).toBe(false);
     expect(config.threadSummaryCron).toBe('30 6 * * *');
     expect(config.telegramProxy).toBeNull();
     expect(config.privateTestAdminId).toBeNull();

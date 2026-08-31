@@ -53,34 +53,6 @@ export interface BotConfig {
   telegramProxy: TelegramProxyConfig | null;
 }
 
-export interface DigestItem {
-  title: string;
-  summary: string;
-  url: string;
-  category: DigestCategory;
-}
-
-export type DigestCategory =
-  | 'agents'
-  | 'orchestration'
-  | 'models'
-  | 'tools'
-  | 'technologies'
-  | 'business';
-
-export interface FeedConfig {
-  url: string;
-  name: string;
-}
-
-export interface RawArticle {
-  title: string;
-  description: string;
-  link: string;
-  source: string;
-  pubDate: Date;
-}
-
 export interface CapturedMessage {
   chatId: number;
   threadId: number;

@@ -1,11 +1,6 @@
 import { Bot, type ApiClientOptions, type Context } from 'grammy';
 import { config } from './config.js';
 import { logger, errMsg } from './logger.js';
-import {
-  runDigestPipeline,
-  sendDigest,
-} from './radar.js';
-import { isDigestPublishedTodayWithState } from './job-state.repository.js';
 import { registerCaptureHandlers } from './capture.js';
 import { registerRequestHandlers } from './requests.js';
 import { registerPrivateRequestCommand } from './private-request-command.js';
@@ -72,62 +67,10 @@ export function createBot(options: CreateBotOptions): Bot {
   logger.info({ userId: ctx.from?.id }, '/start command received');
   await ctx.reply(
     '👋 Привет! Я бот Клуба Незаменимых.\n\n' +
-    '📡 AI-радар — ежедневный дайджест AI-новостей.\n' +
-    'Каждое утро я публикую 3–5 самых значимых новостей из мира AI, ' +
-    'отфильтрованных под контекст клуба.\n\n' +
-    'Источники: Habr, vc.ru, OpenAI, Anthropic, HuggingFace, LangChain, ' +
-    'VentureBeat, Cursor, Tproger.\n\n' +
+    '🗞 Я доставляю готовый выпуск Topic Digest в клубный AI-топик ' +
+    'и помогаю находить участников по точному хэштегу #запрос.\n\n' +
     'Система > Навык',
   );
-  });
-
-  bot.command('digest', async (ctx) => {
-  logger.info({ userId: ctx.from?.id }, '/digest command received');
-
-  if (!(await isAdmin(ctx))) {
-    await ctx.reply('Команда доступна только администраторам.');
-    return;
-  }
-
-  const state = await options.persistence.jobs.read();
-  if (isDigestPublishedTodayWithState(state)) {
-    await ctx.reply('Дайджест уже опубликован сегодня.');
-    return;
-  }
-
-  const statusMsg = await ctx.reply('Запускаю сборку дайджеста...');
-
-  try {
-    const result = await runDigestPipeline(options.persistence.jobs);
-
-    if (result.skipped) {
-      await ctx.api.editMessageText(
-        statusMsg.chat.id,
-        statusMsg.message_id,
-        'Дайджест пропущен: ни одной новости не прошло фильтр.',
-      );
-      return;
-    }
-
-    await sendDigest(bot.api, result, options.persistence.jobs);
-
-    await ctx.api.editMessageText(
-      statusMsg.chat.id,
-      statusMsg.message_id,
-      `Дайджест опубликован: ${result.itemCount} новостей.`,
-    );
-  } catch (err: unknown) {
-    logger.error({ err }, `/digest command failed: ${errMsg(err)}`);
-    await ctx.api
-      .editMessageText(
-        statusMsg.chat.id,
-        statusMsg.message_id,
-        'Ошибка при сборке дайджеста. Подробности в логах.',
-      )
-      .catch(() => {
-        /* ignore edit failure */
-      });
-  }
   });
 
   bot.command('status', async (ctx) => {
@@ -237,58 +180,6 @@ export function createBot(options: CreateBotOptions): Bot {
   );
   await options.dispatcher.dispatchDue();
   await ctx.reply(`Поставлено на повторную отправку: ${String(recovered)}.`);
-  });
-
-// Repeatable development run: publishes the real format without advancing job state.
-  bot.command('dev-digest', async (ctx) => {
-  logger.info({ userId: ctx.from?.id, devRun: true }, '/dev-digest command received');
-
-  if (!(await isAdmin(ctx))) {
-    await ctx.reply('Команда доступна только администраторам.');
-    return;
-  }
-
-  const statusMsg = await ctx.reply('Dev-run: запускаю сборку дайджеста...');
-
-  try {
-    const result = await runDigestPipeline(options.persistence.jobs, {
-      skipIdempotency: true,
-      persistState: false,
-    });
-
-    if (result.skipped) {
-      await ctx.api.editMessageText(
-        statusMsg.chat.id,
-        statusMsg.message_id,
-        'Dev-run: дайджест пропущен: ни одной новости не прошло фильтр. Состояние запуска не изменено.',
-      );
-      return;
-    }
-
-    await sendDigest(bot.api, result, options.persistence.jobs);
-
-    logger.info(
-      { itemCount: result.itemCount, devRun: true },
-      'Dev-digest published (state NOT persisted)',
-    );
-
-    await ctx.api.editMessageText(
-      statusMsg.chat.id,
-      statusMsg.message_id,
-      `Dev-run: опубликовано ${result.itemCount} новостей. Состояние запуска не изменено.`,
-    );
-  } catch (err: unknown) {
-    logger.error({ err, devRun: true }, `/dev-digest command failed: ${errMsg(err)}`);
-    await ctx.api
-      .editMessageText(
-        statusMsg.chat.id,
-        statusMsg.message_id,
-        'Dev-run: ошибка при сборке дайджеста. Подробности в логах.',
-      )
-      .catch(() => {
-        /* ignore edit failure */
-      });
-  }
   });
 
   if (options.requestMatching && config.privateTestAdminId !== null) {
