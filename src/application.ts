@@ -95,6 +95,11 @@ export async function startApplication(
         const { sendMessageOnce } = await import('./telegram.js');
         return sendMessageOnce(bot.api, params);
       },
+      sendRichMessageOnce: async (params) => {
+        if (!bot) throw new Error('Telegram bot is not ready');
+        const { sendRichMessageOnce } = await import('./telegram.js');
+        return sendRichMessageOnce(bot.api, params);
+      },
     });
     bot = deps.createBot({
       persistence,
