@@ -15,12 +15,6 @@ function sameMskDay(iso: string): boolean {
   );
 }
 
-export function isDigestPublishedTodayWithState(state: PipelineState): boolean {
-  return Boolean(
-    state.lastDigestDate && !state.lastSkipped && sameMskDay(state.lastDigestDate),
-  );
-}
-
 export function isThreadSummaryPublishedTodayWithState(state: PipelineState): boolean {
   return Boolean(state.lastThreadSummaryDate && sameMskDay(state.lastThreadSummaryDate));
 }

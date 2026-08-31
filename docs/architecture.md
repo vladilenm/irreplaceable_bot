@@ -22,9 +22,9 @@ Telegram -> bot on Timeweb App Platform
          -> Timeweb Managed PostgreSQL (messages + members + vector index)
 ```
 
-Xray is a userspace child process, binds its SOCKS listener only to loopback and receives the VLESS configuration on stdin. Only grammY traffic uses this branch; PostgreSQL, Timeweb AI and RSS remain direct. The VLESS URI, UUID and Reality keys are deployment secrets and never appear in source or logs. A blank optional `TELEGRAM_PROXY_VLESS_URL` retains direct Telegram mode.
+Xray is a userspace child process, binds its SOCKS listener only to loopback and receives the VLESS configuration on stdin. Only grammY traffic uses this branch; PostgreSQL and Timeweb AI remain direct. The VLESS URI, UUID and Reality keys are deployment secrets and never appear in source or logs. A blank optional `TELEGRAM_PROXY_VLESS_URL` retains direct Telegram mode.
 
-Операционные константы — модели, размерность embeddings, расписания, лимиты базы, обработки запросов и логирования — находятся в `src/runtime-defaults.ts`. Текущее production подтверждено для семи значений окружения: `BOT_TOKEN`, `TARGET_CHAT_ID`, `AI_RADAR_THREAD_ID`, `THREAD_SUMMARY_THREAD_ID`, `TRACKED_THREAD_IDS`, `TIMEWEB_AI_TOKEN` и `DATABASE_URL`. Локальный WIP добавляет необязательные deployment-specific `TELEGRAM_PROXY_VLESS_URL` и `PRIVATE_TEST_ADMIN_ID`; до explicit deploy они не описывают production.
+Операционные константы — модели, размерность embeddings, расписания, лимиты базы, обработки запросов и логирования — находятся в `src/runtime-defaults.ts`. Текущее production подтверждено для семи значений окружения: `BOT_TOKEN`, `TARGET_CHAT_ID`, `AI_RADAR_THREAD_ID`, `THREAD_SUMMARY_THREAD_ID`, `TRACKED_THREAD_IDS`, `TIMEWEB_AI_TOKEN` и `DATABASE_URL`. Эта ветка требует восьмое точное значение `DIGEST_IMPORT_ENABLED=true|false`; до проверки producer view оно должно оставаться `false`. Локальный WIP также поддерживает необязательные deployment-specific `TELEGRAM_PROXY_VLESS_URL` и `PRIVATE_TEST_ADMIN_ID`; до explicit deploy они не описывают production.
 
 `config/timeweb-cloud-ca.crt` — публичный материал сертификата для проверки TLS Managed PostgreSQL, а не секрет. Для домена, публичного IP и любого адреса вне разрешённых локальных сетей приложение использует этот сертификат. TLS выключается только для loopback и RFC1918 private IPv4 (`10/8`, `172.16/12`, `192.168/16`); private IP допустим только внутри общей приватной сети App Platform и Managed PostgreSQL.
 
@@ -68,9 +68,25 @@ rollback никогда автоматически не реактивируют
 
 Два разных Telegram message ID создают две независимые записи и могут выполняться параллельно. Повторная доставка одного и того же message ID не запускает pipeline повторно.
 
+## Consumer Topic Digest (проверенная ветка, не production)
+
+При `DIGEST_IMPORT_ENABLED=true` отдельный importer каждые 30 секунд выполняет
+только `SELECT` из producer-owned view `digest.telegram_issue_source` за текущую
+дату МСК. Документ сначала проходит strict validation `PublishedDigest v3`, затем
+локально рендерится в один Rich HTML и идемпотентно сохраняется в outbox с
+уникальным `origin_digest_id = digestId`. Main, Radar и Focus сохраняют редакционный
+порядок producer-а; consumer не вычисляет score и не вызывает LLM.
+
+Dispatcher отправляет сохранённый HTML через proxy-aware `bot.api.raw.sendRichMessage`
+в `TARGET_CHAT_ID` + `AI_RADAR_THREAD_ID`, фиксирует Telegram message ID и
+переиспользует существующие lease/backoff/recovery. Публикация истекает в следующую
+полночь МСК. Повторный poll или restart не создаёт второй outbox item. При
+`DIGEST_IMPORT_ENABLED=false` importer не создаётся; это deployment kill switch,
+но producer продолжает работать независимо.
+
 ## Авторизация Telegram-команд
 
-`/digest`, `/status` и `/dev-digest` используют список администраторов текущего group/supergroup с пятиминутным process-local cache. Личная переписка намеренно short-circuit-ится как неадминистративная, поэтому администратор целевой группы пока не может вызвать `/status` в DM. Telegram также не раскрывает реальный user ID анонимного администратора.
+`/status` и `/retry_publications` используют список администраторов текущего group/supergroup с пятиминутным process-local cache. Личная переписка намеренно short-circuit-ится как неадминистративная, поэтому администратор целевой группы пока не может вызвать `/status` в DM. Telegram также не раскрывает реальный user ID анонимного администратора. Ручных команд генерации дайджеста больше нет.
 
 Исправление без новой env-переменной должно проверять `ctx.from.id` по администраторам `TARGET_CHAT_ID`, когда команда пришла в личке. До такого изменения административные команды следует запускать в целевой группе от неанонимного аккаунта.
 
@@ -91,7 +107,7 @@ exact search и LLM evidence validation, но не пишет `member_requests`,
 |---|---|
 | `schema_migrations` | применённые миграции |
 | `messages` | сообщения отслеживаемых топиков |
-| `job_state` | состояния радара и сводок |
+| `job_state` | состояние доставленного дайджеста и сводок |
 | `scheduled_publications` | durable outbox финальных digest/summary перед отправкой в Telegram |
 | `scheduled_publication_chunks` | подтверждённые Telegram chunks одной публикации |
 | `members` | нормализованные карточки и content hash |
@@ -109,4 +125,4 @@ Telegram id хранятся как `bigint` и на границе прилож
 - Matcher logs содержат только агрегатные счётчики shortlist, validation, retry и outcome; query, profile, evidence, member IDs, usernames и model output исключены.
 - Текст карточки и запроса передаётся через Timeweb AI Gateway. До загрузки реальных данных нужны согласие участников и проверка требований к трансграничной обработке.
 - Приложение работает как long-polling worker и не открывает HTTP-порт. Health в Timeweb означает живой контейнер; состояние бизнес-pipeline проверяется по app logs, `/status` и PostgreSQL.
-- Scheduled digest (09:00 МСК) и summary (09:30 МСК) могут использовать один forum topic — это штатно. После генерации они сначала сохраняют отрендеренные chunks в outbox, затем dispatcher делает по одной попытке, фиксируя каждый успешный chunk. Повторы `3s/15s/1m/5m/15m/30m` и lease переживают restart процесса; terminal rows хранятся семь дней. Это at-least-once доставка: при обрыве сети после приёма Telegram возможен один дубликат chunk.
+- Импортированный Topic Digest и summary могут использовать один forum topic — это штатно. Final HTML сначала сохраняется в outbox, затем dispatcher делает по одной попытке, фиксируя каждый успешный chunk. Повторы `3s/15s/1m/5m/15m/30m` и lease переживают restart процесса; terminal rows хранятся семь дней. Это at-least-once доставка: при обрыве сети после приёма Telegram возможен один дубликат chunk.

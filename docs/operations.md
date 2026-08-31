@@ -11,7 +11,7 @@ npm run seed:members
 npm run dev
 ```
 
-Заполните локальный `.env` Telegram-токеном, всеми Telegram ID и `TIMEWEB_AI_TOKEN`. Пример `DATABASE_URL` уже настроен на pgvector-контейнер на `127.0.0.1:55432`.
+Заполните локальный `.env` Telegram-токеном, всеми Telegram ID и `TIMEWEB_AI_TOKEN`. `DIGEST_IMPORT_ENABLED` задаётся только как точное `true` или `false`; без producer view оставьте `false`. Пример `DATABASE_URL` уже настроен на pgvector-контейнер на `127.0.0.1:55432`.
 
 App Platform хранит production-переменные отдельно и не переносит их в локальные файлы. Репозиторий не содержит реальных значений, а приложение читает `.env`, не `.env.local`.
 
@@ -117,7 +117,7 @@ batch status.
 1. Создайте один ключ AI Gateway и сохраните его как `TIMEWEB_AI_TOKEN`.
 2. Для задеплоенного `597be1c` подтвердите `openai/gpt-4.1-mini` через `/models` и убедитесь, что `openai/text-embedding-3-large` возвращает 1536 значений при передаче `dimensions: 1536`. Локальный latency-WIP переключает defaults на `openai/gpt-5.6-luna` и `openai/text-embedding-3-small`; это изменение нельзя деплоить без полного release gate и переиндексации карточек.
 3. Создайте Managed PostgreSQL с pgvector. Для подключения по private IP добавьте App Platform и базу в одну приватную сеть и используйте RFC1918-адрес в `DATABASE_URL`; для подключения по домену или публичному IP используйте защищённый URL.
-4. Настройте семь обязательных переменных в существующем приложении App Platform: `BOT_TOKEN`, `TARGET_CHAT_ID`, `AI_RADAR_THREAD_ID`, `THREAD_SUMMARY_THREAD_ID`, `TRACKED_THREAD_IDS`, `TIMEWEB_AI_TOKEN`, `DATABASE_URL`. Необязательный `TELEGRAM_PROXY_VLESS_URL` добавляется только после отдельного согласования proxy rollout; значение — полный VLESS URI, его нельзя печатать, коммитить или передавать в обычные логи. Необязательный `PRIVATE_TEST_ADMIN_ID` включает `/test_request` только для одного точного Telegram user ID; значение также не печатается и не коммитится.
+4. Текущий production использует семь обязательных переменных: `BOT_TOKEN`, `TARGET_CHAT_ID`, `AI_RADAR_THREAD_ID`, `THREAD_SUMMARY_THREAD_ID`, `TRACKED_THREAD_IDS`, `TIMEWEB_AI_TOKEN`, `DATABASE_URL`. Перед deploy Topic Digest consumer добавьте восьмую обязательную `DIGEST_IMPORT_ENABLED=false`; включайте её только после проверки producer migration, view и grants. Необязательный `TELEGRAM_PROXY_VLESS_URL` добавляется только после отдельного согласования proxy rollout; значение — полный VLESS URI, его нельзя печатать, коммитить или передавать в обычные логи. Необязательный `PRIVATE_TEST_ADMIN_ID` включает `/test_request` только для одного точного Telegram user ID; значение также не печатается и не коммитится.
 5. Разверните один экземпляр бота и проверьте `/start`, затем `/status` в целевой группе от неанонимного администратора. В текущем коде `/status` в личке не подтверждает права администратора клуба.
 6. Один раз запустите `node dist/member.seed.js --allow-production` из консоли приложения, чтобы добавить 20 временных карточек. Production-образ не содержит dev dependency `tsx`, поэтому `npm run seed:members` внутри контейнера не является правильной командой.
 7. Проверьте `#запрос` на трёх репрезентативных запросах и убедитесь, что каждый ответ содержит 3–5 упоминаний.
@@ -138,18 +138,26 @@ Scheduler started
 Initial member source sync attempt finished
 ```
 
-## Расписание публикаций и инцидент 2026-08-23
+При `DIGEST_IMPORT_ENABLED=true` после запуска dispatcher-а дополнительно ожидается
+безопасная строка `Digest importer started`.
 
-Cron выражения интерпретируются в UTC. В локальном WIP, который ещё не развёрнут в production, расписание такое:
+## Topic Digest consumer и исторический инцидент 2026-08-23
 
-| Pipeline | Cron | Время МСК |
+В этой проверенной ветке бот больше не запускает digest cron и не генерирует
+выпуск. При включённом kill switch он каждые 30 секунд читает
+`digest.telegram_issue_source`, валидирует `PublishedDigest v3` и ставит один Rich
+Message на `digestId` в outbox. Сводка тем остаётся cron-задачей; cron выражения
+интерпретируются в UTC:
+
+| Pipeline | Триггер | Время |
 |---|---:|---:|
-| AI-радар | `0 6 * * *` | 09:00 |
-| Сводка тем | `30 6 * * *` | 09:30 |
+| Topic Digest delivery | poll producer view | каждые 30 секунд |
+| Сводка тем | `30 6 * * *` | 09:30 МСК |
 
-Production `597be1c` всё ещё содержит старое `30 3 * * *` для сводки (06:30 МСК), пока этот WIP не пройдёт release gate и не будет явно развёрнут.
+Production `597be1c` всё ещё содержит legacy digest cron и старое `30 3 * * *`
+для сводки (06:30 МСК), пока эта ветка не будет явно развёрнута.
 
-AI-радар и сводка намеренно отправляются в один Telegram forum topic. Совпадение target thread для этих pipeline является штатной конфигурацией.
+Topic Digest и сводка намеренно отправляются в один Telegram forum topic. Совпадение target thread для этих pipeline является штатной конфигурацией.
 
 23 августа оба scheduled pipeline успешно дошли до LLM, но не опубликовали результат:
 
@@ -159,11 +167,11 @@ AI-радар и сводка намеренно отправляются в о�
 - В обоих случаях Telegram не вернул API error code. Это отличает сетевой сбой до ответа Telegram от ошибок permissions, chat ID или thread ID.
 - Job state меняется только после подтверждённой доставки, поэтому состояния обоих pipeline не продвинулись. Однако scheduler не делает отложенный автоматический повтор после исчерпания встроенного retry.
 
-В реализованном локальном WIP final payload сохраняется в PostgreSQL outbox до первого Telegram request. Dispatcher сохраняет результат каждого chunk и повторяет transport/5xx/429 ошибки с persisted backoff `3s → 15s → 1m → 5m → 15m → 30m` до следующей полуночи МСК. Не-429 4xx переводят публикацию в `failed`; просроченные публикации — в `expired`. В обоих случаях администратор целевой группы запускает `/retry_publications [digest|summary|all]`; это повторяет только доставку, не RSS и не LLM. `/status` показывает только безопасные counts очереди.
+В реализованной ветке final payload сохраняется в PostgreSQL outbox до первого Telegram request. Dispatcher сохраняет результат каждого chunk и повторяет transport/5xx/429 ошибки с persisted backoff `3s → 15s → 1m → 5m → 15m → 30m` до следующей полуночи МСК. Не-429 4xx переводят публикацию в `failed`; просроченные публикации — в `expired`. В обоих случаях администратор целевой группы запускает `/retry_publications [digest|summary|all]`; это повторяет только сохранённую доставку и не вызывает LLM. `/status` показывает только безопасные counts очереди.
 
 ## Telegram egress через Amsterdam VLESS (локальный WIP до deploy)
 
-При заданном `TELEGRAM_PROXY_VLESS_URL` процесс запускает bundled Xray, ждёт loopback SOCKS и направляет через него только grammY. Проверка после deploy — `getMe` в startup/preflight и успешная доставка существующей outbox-публикации через `/retry_publications digest`; не запускайте `/digest` или `/dev-digest` для восстановления. Если прокси не стартует или Telegram всё ещё недоступен, удалите только optional secret и сделайте rollback приложения: direct mode будет восстановлен, а сохранённая публикация останется в outbox. Личный mobile URI не используется ботом; его ротация и ротация bot URI выполняются независимо.
+При заданном `TELEGRAM_PROXY_VLESS_URL` процесс запускает bundled Xray, ждёт loopback SOCKS и направляет через него только grammY. Проверка после deploy — `getMe` в startup/preflight и успешная доставка существующей outbox-публикации через `/retry_publications digest`; ручных команд генерации дайджеста в этой ветке нет. Если прокси не стартует или Telegram всё ещё недоступен, удалите только optional secret и сделайте rollback приложения: direct mode будет восстановлен, а сохранённая публикация останется в outbox. Личный mobile URI не используется ботом; его ротация и ротация bot URI выполняются независимо.
 
 Отправка является at-least-once: обрыв сети после того, как Telegram принял запрос, нельзя надёжно отличить от неполученного сообщения. Поэтому при recovery возможен один дубликат конкретного chunk. Terminal записи очищаются через семь дней.
 
@@ -219,11 +227,18 @@ member IDs, usernames или provider response.
 
 ## Rollback
 
-При rollback разверните предыдущий commit приложения. Managed PostgreSQL оставьте без изменений; не удаляйте и не ротируйте credentials во время rollback.
+Для остановки consumer-а без rollback сначала установите
+`DIGEST_IMPORT_ENABLED=false` и перезапустите один экземпляр worker-а. Producer и
+веб-архив при этом продолжают работать, а уже сохранённые outbox rows не удаляются.
+Для code rollback разверните предыдущий commit приложения. Аддитивную migration 4
+(`message_format`, `origin_digest_id`) и Managed PostgreSQL оставьте без изменений;
+не удаляйте producer view и не ротируйте credentials. Не реактивируйте legacy
+RSS/LLM radar автоматически: это отдельное осознанное изменение, а не rollback
+consumer-а.
 
 ## Диагностика и безопасность
 
-- `/status` показывает состояние радара, count-only web source/index state и аптайм. Для web-каталога он выводит только счётчики, timestamp, generation и embedding model; анкеты, Telegram ID, canonical document, URLs, credentials и raw errors не выводятся. Ошибка чтения статуса даёт `нет данных` и не отменяет административную команду.
+- `/status` показывает последнее подтверждённое состояние digest delivery, count-only outbox/web source/index state и аптайм. Для web-каталога он выводит только счётчики, timestamp, generation и embedding model; анкеты, Telegram ID, canonical document, URLs, credentials и raw errors не выводятся. Ошибка чтения статуса даёт `нет данных` и не отменяет административную команду.
 - `/status` в текущей реализации разрешён только неанонимному администратору того group/supergroup, где отправлена команда. DM всегда получает отказ.
 - При Telegram 409 найдите второй процесс с тем же токеном.
 - `Network request for 'sendMessage' failed` без Telegram error code означает транспортный сбой до ответа Telegram. Если далее есть `Telegram sendMessage ok (after retry)`, отправка восстановилась автоматически.
