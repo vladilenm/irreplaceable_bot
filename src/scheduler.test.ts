@@ -53,11 +53,11 @@ beforeEach(() => {
 });
 
 describe('cron registry', () => {
-  it('C1: startScheduler registers exactly 3 named jobs', () => {
+  it('registers summary and maintenance jobs without the legacy digest cron', () => {
     startScheduler(api, persistence, { dispatcher });
     const names = _getRegisteredJobNames();
     expect(new Set(names)).toEqual(
-      new Set(['digest', 'thread-summary', 'retention-sweep']),
+      new Set(['thread-summary', 'retention-sweep']),
     );
     stopScheduler();
   });
@@ -70,7 +70,7 @@ describe('cron registry', () => {
     const stopLogs = infoSpy.mock.calls.filter((c) => c[1] === 'Cron job stopped');
     const stoppedNames = stopLogs.map((c) => (c[0] as { name: string }).name);
     expect(new Set(stoppedNames)).toEqual(
-      new Set(['digest', 'thread-summary', 'retention-sweep']),
+      new Set(['thread-summary', 'retention-sweep']),
     );
     infoSpy.mockRestore();
   });
@@ -93,10 +93,10 @@ describe('cron registry', () => {
 });
 
 describe('cron thread-summary handler wiring', () => {
-  it('C7+C8+C9: registry still has 3 jobs and includes thread-summary', () => {
+  it('keeps thread-summary and retention without the legacy digest job', () => {
     startScheduler(api, persistence, { dispatcher });
     const names = _getRegisteredJobNames();
-    expect(names).toContain('digest');
+    expect(names).not.toContain('digest');
     expect(names).toContain('thread-summary');
     expect(names).toContain('retention-sweep');
     stopScheduler();
@@ -104,11 +104,11 @@ describe('cron thread-summary handler wiring', () => {
 });
 
 describe('cron retention-sweep wiring', () => {
-  it('R1: retention-sweep is registered with digest and thread-summary', () => {
+  it('R1: retention-sweep is registered with thread-summary', () => {
     startScheduler(api, persistence, { dispatcher });
     const names = _getRegisteredJobNames();
     expect(names).toContain('retention-sweep');
-    expect(names).toHaveLength(3);
+    expect(names).toHaveLength(2);
     stopScheduler();
   });
 
@@ -129,7 +129,6 @@ describe('member source sync scheduling', () => {
       },
     });
     expect(new Set(_getRegisteredJobNames())).toEqual(new Set([
-      'digest',
       'thread-summary',
       'retention-sweep',
       'member-sync',

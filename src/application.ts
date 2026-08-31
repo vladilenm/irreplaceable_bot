@@ -15,6 +15,7 @@ import type {
   PublicationDispatcher,
   PublicationDispatcherOptions,
 } from './publication-dispatcher.js';
+import type { DigestImporter, DigestImporterOptions } from './digest-importer.js';
 
 export interface PollingHandle {
   started: Promise<void>;
@@ -25,6 +26,12 @@ export interface ApplicationDependencies {
   database: DatabaseConfig;
   requestMatching: RequestMatchingConfig;
   telegramProxy: TelegramProxyConfig | null;
+  digestImport: {
+    enabled: boolean;
+    targetChatId: number;
+    threadId: number;
+    intervalMs: number;
+  };
   createPool(config: DatabaseConfig): Pool;
   migrate(pool: Pool): Promise<number | void>;
   assertReady(pool: Pool): Promise<void>;
@@ -38,6 +45,7 @@ export interface ApplicationDependencies {
   startScheduler(api: Api, persistence: Persistence, options?: SchedulerOptions): void;
   stopScheduler(): void;
   createPublicationDispatcher(options: PublicationDispatcherOptions): PublicationDispatcher;
+  createDigestImporter(options: DigestImporterOptions): DigestImporter;
   startTelegramTransport(
     proxy: TelegramProxyConfig | null,
   ): Promise<TelegramTransportRuntime>;
@@ -66,6 +74,7 @@ export async function startApplication(
   const pool = deps.createPool(deps.database);
   let bot: Bot | null = null;
   let dispatcher: PublicationDispatcher | null = null;
+  let importer: DigestImporter | null = null;
   let telegramTransport: TelegramTransportRuntime | null = null;
   let schedulerStarted = false;
   try {
@@ -110,6 +119,32 @@ export async function startApplication(
     const polling = deps.startPolling(bot);
     await polling.started;
     dispatcher.start();
+    if (deps.digestImport.enabled) {
+      importer = deps.createDigestImporter({
+        source: persistence.digestSource,
+        publications: persistence.publications,
+        dispatcher,
+        targetChatId: deps.digestImport.targetChatId,
+        threadId: deps.digestImport.threadId,
+        intervalMs: deps.digestImport.intervalMs,
+        onError: (error: unknown) => {
+          logger.error(
+            {
+              event: 'digest-import-failed',
+              errorClass: error instanceof Error ? error.name : 'unknown',
+            },
+            'Digest importer cycle failed',
+          );
+        },
+        logInvalid: (digestId, reason) => {
+          logger.error(
+            { event: 'digest-contract-rejected', digestId, reason },
+            'Digest issue rejected at consumer boundary',
+          );
+        },
+      });
+      importer.start();
+    }
 
     deps.startScheduler(
       bot.api,
@@ -144,6 +179,7 @@ export async function startApplication(
       async stop(): Promise<void> {
         if (stopped) return;
         stopped = true;
+        importer?.stop();
         dispatcher?.stop();
         deps.stopScheduler();
         await bot?.stop();
@@ -152,6 +188,7 @@ export async function startApplication(
       },
     };
   } catch (error: unknown) {
+    importer?.stop();
     dispatcher?.stop();
     if (schedulerStarted) deps.stopScheduler();
     if (bot) {

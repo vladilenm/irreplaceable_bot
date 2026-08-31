@@ -6,7 +6,6 @@ export const RUNTIME_DEFAULTS = Object.freeze({
     embeddingDimensions: 1536,
   }),
   schedules: Object.freeze({
-    digestCron: '0 6 * * *',
     threadSummaryCron: '30 6 * * *',
     retentionSweepCron: '0 1 * * *',
     memberSyncCron: '*/5 * * * *',

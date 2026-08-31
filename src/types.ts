@@ -37,7 +37,7 @@ export interface BotConfig {
   botToken: string;
   targetChatId: number;
   aiRadarThreadId: number;
-  digestCron: string;
+  digestImportEnabled: boolean;
   aiApiKey: string;
   aiModel: string;
   aiBaseUrl: string;

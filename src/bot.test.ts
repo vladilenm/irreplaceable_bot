@@ -217,6 +217,8 @@ it('reports that the web source has never synchronized', async () => {
 
   expect(reply).toContain('🗂 Источник анкет: успешной синхронизации ещё не было');
   expect(reply).toContain('🧩 Индекс: ещё не готов');
+  expect(reply).toContain('🗞 Дайджест: автоматически после публикации Topic Digest');
+  expect(reply).not.toContain('⏰ Расписание:');
 });
 
 it('keeps the status command available when matching status reads fail', async () => {

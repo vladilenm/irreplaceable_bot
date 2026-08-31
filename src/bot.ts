@@ -154,7 +154,7 @@ export function createBot(options: CreateBotOptions): Bot {
     lastDigestInfo = '📡 Дайджестов ещё не было';
   }
 
-  const nextRunInfo = `⏰ Расписание: ${config.digestCron} UTC`;
+  const nextRunInfo = '🗞 Дайджест: автоматически после публикации Topic Digest';
 
   // Bot uptime
   const uptimeSeconds = process.uptime();
