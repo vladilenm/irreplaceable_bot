@@ -1,4 +1,6 @@
-import { expect, it, vi } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
+import { LlmSchemaError } from './llm.js';
+import { logger } from './logger.js';
 import type { SimilarMember } from './members.js';
 import type { MemberRepository } from './members.repository.js';
 import { MemberMatcher } from './request.matcher.js';
@@ -34,8 +36,18 @@ const shortlist: SimilarMember[] = [
   },
 ];
 
-function matcherFor(raw: unknown, rows: readonly SimilarMember[] = shortlist) {
-  const requestJsonFn = vi.fn().mockResolvedValue(raw);
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+function matcherFor(
+  raw: unknown | readonly unknown[],
+  rows: readonly SimilarMember[] = shortlist,
+) {
+  const values = Array.isArray(raw) ? raw : [raw];
+  const requestJsonFn = vi.fn();
+  for (const value of values) requestJsonFn.mockResolvedValueOnce(value);
+  if (values.length > 0) requestJsonFn.mockResolvedValue(values.at(-1));
   const members: Pick<MemberRepository, 'search'> = {
     search: vi.fn().mockResolvedValue(rows),
   };
@@ -55,9 +67,9 @@ function matcherFor(raw: unknown, rows: readonly SimilarMember[] = shortlist) {
 it('requests exact PostgreSQL top-20 and returns code-owned usernames', async () => {
   const { matcher, members, embeddings } = matcherFor({
     matches: [
-      { memberId: 'anna', evidence: 'B2B SaaS' },
-      { memberId: 'mikhail', evidence: 'Enterprise sales' },
-      { memberId: 'olga', evidence: 'пилоты для корпораций' },
+      { memberId: 'anna', evidenceId: 'e0' },
+      { memberId: 'mikhail', evidenceId: 'e0' },
+      { memberId: 'olga', evidenceId: 'e0' },
     ],
   });
 
@@ -78,13 +90,13 @@ it('requests exact PostgreSQL top-20 and returns code-owned usernames', async ()
 });
 
 it('returns verbatim profile evidence instead of a free-form metric paraphrase', async () => {
-  const evidence = 'мой контент посмотрели более 3,5 млн уникальных пользователей';
+  const evidence = 'Опыт: мой контент посмотрели более 3,5 млн уникальных пользователей.';
   const rows: SimilarMember[] = [{
     member: {
       memberId: 'owner',
       displayName: 'Владелец',
       telegramUsername: 'owner_blog',
-      profileText: `Опыт: ${evidence}.`,
+      profileText: evidence,
     },
     similarity: 1,
   }];
@@ -92,7 +104,7 @@ it('returns verbatim profile evidence instead of a free-form metric paraphrase',
     matches: [{
       memberId: 'owner',
       reason: 'Добился 3,5 млн просмотров',
-      evidence,
+      evidenceId: 'e0',
     }],
   }, rows);
 
@@ -114,32 +126,148 @@ it('returns verbatim profile evidence instead of a free-form metric paraphrase',
   expect(formatted).not.toContain('3,5 млн просмотров');
 });
 
-it.each([
-  ['changed casing', 'запускала B2B SaaS'],
-  ['changed whitespace', 'Запускала  B2B SaaS'],
-  ['changed word', 'Запустила B2B SaaS'],
-])('rejects evidence with %s', async (_caseName, evidence) => {
-  const rows = shortlist.slice(0, 1);
-  const { matcher } = matcherFor({
-    matches: [{
-      memberId: 'anna',
-      evidence,
-    }],
+it('resolves a code-owned evidence id to exact profile text', async () => {
+  const rows: SimilarMember[] = [{
+    member: {
+      memberId: 'crypto',
+      displayName: 'Крипто-эксперт',
+      telegramUsername: 'crypto_expert',
+      profileText: 'Может помочь с запросами: Крипта и P2P',
+    },
+    similarity: 0.95,
+  }];
+  const { matcher, requestJsonFn } = matcherFor({
+    matches: [{ memberId: 'crypto', evidenceId: 'e0' }],
   }, rows);
 
-  await expect(matcher.match('Ищу эксперта', {
+  await expect(matcher.match('Ищу эксперта по крипте', {
+    minimumMatches: 1,
+  })).resolves.toEqual([{
+    memberId: 'crypto',
+    displayName: 'Крипто-эксперт',
+    telegramUsername: 'crypto_expert',
+    evidence: 'Может помочь с запросами: Крипта и P2P',
+    similarity: 0.95,
+  }]);
+
+  const request = requestJsonFn.mock.calls[0]?.[1];
+  expect(JSON.parse(request.user)).toEqual({
+    query: 'Ищу эксперта по крипте',
+    candidates: [{
+      memberId: 'crypto',
+      similarity: 0.95,
+      evidenceOptions: [{
+        evidenceId: 'e0',
+        text: 'Может помочь с запросами: Крипта и P2P',
+      }],
+    }],
+  });
+});
+
+it('retries once when a model match references an unknown evidence id', async () => {
+  const { matcher, requestJsonFn } = matcherFor([
+    { matches: [{ memberId: 'anna', evidenceId: 'invented' }] },
+    { matches: [{ memberId: 'anna', evidenceId: 'e0' }] },
+  ], shortlist.slice(0, 1));
+
+  await expect(matcher.match('Ищу B2B SaaS', {
+    minimumMatches: 1,
+  })).resolves.toEqual([
+    expect.objectContaining({ memberId: 'anna', evidence: 'Запускала B2B SaaS' }),
+  ]);
+  expect(requestJsonFn).toHaveBeenCalledTimes(2);
+  expect(requestJsonFn.mock.calls[1]?.[1]?.retryInstruction)
+    .toContain('existing memberId and evidenceId');
+});
+
+it('does not retry a valid empty result', async () => {
+  const { matcher, requestJsonFn } = matcherFor({ matches: [] }, shortlist.slice(0, 1));
+
+  await expect(matcher.match('Нет сильного совпадения', {
     minimumMatches: 1,
   })).resolves.toEqual([]);
+  expect(requestJsonFn).toHaveBeenCalledTimes(1);
+});
+
+it('never performs a third LLM call when both outputs are structurally invalid', async () => {
+  const { matcher, requestJsonFn } = matcherFor([
+    { matches: [{ memberId: 'anna', evidenceId: 'bad-1' }] },
+    { matches: [{ memberId: 'anna', evidenceId: 'bad-2' }] },
+  ], shortlist.slice(0, 1));
+
+  await expect(matcher.match('Ищу B2B SaaS', {
+    minimumMatches: 1,
+  })).resolves.toEqual([]);
+  expect(requestJsonFn).toHaveBeenCalledTimes(2);
+});
+
+it('retries one malformed JSON transport response and then succeeds', async () => {
+  const harness = matcherFor({
+    matches: [{ memberId: 'anna', evidenceId: 'e0' }],
+  }, shortlist.slice(0, 1));
+  harness.requestJsonFn.mockReset()
+    .mockRejectedValueOnce(new LlmSchemaError('invalid JSON'))
+    .mockResolvedValueOnce({
+      matches: [{ memberId: 'anna', evidenceId: 'e0' }],
+    });
+
+  await expect(harness.matcher.match('Ищу B2B SaaS', {
+    minimumMatches: 1,
+  })).resolves.toEqual([
+    expect.objectContaining({ memberId: 'anna' }),
+  ]);
+  expect(harness.requestJsonFn).toHaveBeenCalledTimes(2);
+});
+
+it('sorts accepted matches by similarity and member id, not model order', async () => {
+  const { matcher } = matcherFor({
+    matches: [
+      { memberId: 'olga', evidenceId: 'e0' },
+      { memberId: 'anna', evidenceId: 'e0' },
+      { memberId: 'mikhail', evidenceId: 'e0' },
+    ],
+  });
+
+  const result = await matcher.match('Ищу эксперта');
+
+  expect(result.map((match) => match.memberId)).toEqual(['anna', 'mikhail', 'olga']);
+});
+
+it('logs only aggregate rerank counters', async () => {
+  const info = vi.spyOn(logger, 'info').mockImplementation(() => undefined);
+  const privateProfile = 'Секретная анкета про крипту';
+  const rows: SimilarMember[] = [{
+    member: {
+      memberId: 'private-id',
+      displayName: 'Скрытое имя',
+      telegramUsername: 'private_user',
+      profileText: privateProfile,
+    },
+    similarity: 1,
+  }];
+  const { matcher } = matcherFor({
+    matches: [{ memberId: 'private-id', evidenceId: 'e0' }],
+  }, rows);
+
+  await matcher.match('Секретный запрос', { minimumMatches: 1 });
+
+  const logged = JSON.stringify(info.mock.calls);
+  expect(logged).not.toContain('Секретный запрос');
+  expect(logged).not.toContain(privateProfile);
+  expect(logged).not.toContain('private-id');
+  expect(logged).not.toContain('private_user');
+  expect(logged).toContain('acceptedCount');
+  expect(logged).toContain('retryUsed');
 });
 
 it('returns no mentions when fewer than three grounded rows survive validation', async () => {
   const { matcher } = matcherFor({
     matches: [
-      { memberId: 'unknown', evidence: 'B2B SaaS' },
-      { memberId: 'anna', evidence: 'B2B SaaS' },
-      { memberId: 'anna', evidence: 'B2B SaaS' },
-      { memberId: 'mikhail', evidence: 'Несуществующий факт' },
-      { memberId: 'olga', evidence: 'пилоты для корпораций' },
+      { memberId: 'unknown', evidenceId: 'e0' },
+      { memberId: 'anna', evidenceId: 'e0' },
+      { memberId: 'anna', evidenceId: 'e0' },
+      { memberId: 'mikhail', evidenceId: 'invented' },
+      { memberId: 'olga', evidenceId: 'e0' },
     ],
   });
 
@@ -157,7 +285,7 @@ it('allows one grounded result only when minimumMatches is one', async () => {
   const one = shortlist.slice(0, 1);
   const raw = {
     matches: [
-      { memberId: 'anna', evidence: 'B2B SaaS' },
+      { memberId: 'anna', evidenceId: 'e0' },
     ],
   };
   const defaultMatcher = matcherFor(raw, one);
@@ -175,16 +303,16 @@ it('allows one grounded result only when minimumMatches is one', async () => {
   ]);
 });
 
-it('rejects oversized schema output', async () => {
+it('retries oversized schema output once and returns no matches', async () => {
   const { matcher, requestJsonFn } = matcherFor({
     matches: Array.from({ length: 6 }, (_, index) => ({
       memberId: `member-${String(index)}`,
-      evidence: 'Факт',
+      evidenceId: 'e0',
     })),
   });
 
   await expect(matcher.match('Ищу эксперта')).resolves.toEqual([]);
-  expect(requestJsonFn).toHaveBeenCalledTimes(1);
+  expect(requestJsonFn).toHaveBeenCalledTimes(2);
 });
 
 it('passes requester Telegram ID to PostgreSQL before reranking', async () => {
@@ -213,9 +341,9 @@ it('treats instructions in profile text as untrusted card content', async () => 
   }));
   const { matcher } = matcherFor({
     matches: [
-      { memberId: 'anna', evidence: 'B2B SaaS' },
-      { memberId: 'mikhail', evidence: 'Enterprise sales' },
-      { memberId: 'olga', evidence: 'пилоты для корпораций' },
+      { memberId: 'anna', evidenceId: 'e0' },
+      { memberId: 'mikhail', evidenceId: 'e0' },
+      { memberId: 'olga', evidenceId: 'e0' },
     ],
   }, injected);
 

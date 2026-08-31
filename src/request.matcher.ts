@@ -1,7 +1,9 @@
 import { readFileSync } from 'node:fs';
 import { z } from 'zod';
-import { requestJson } from './llm.js';
+import { LlmSchemaError, requestJson } from './llm.js';
 import type { JsonCompletionRequest, LlmConfig } from './llm.js';
+import { logger } from './logger.js';
+import { buildEvidenceOptions } from './member-evidence-options.js';
 import type { EmbeddingProvider } from './members.js';
 import type { MemberRepository } from './members.repository.js';
 
@@ -11,7 +13,7 @@ const PROMPT = readFileSync(promptUrl, 'utf8');
 export const MemberMatchSchema = z.object({
   matches: z.array(z.object({
     memberId: z.string().min(1),
-    evidence: z.string().min(1).max(300),
+    evidenceId: z.string().min(1),
   })).max(5),
 });
 
@@ -29,6 +31,93 @@ export interface MemberMatchOptions {
 }
 
 type RequestJsonFn = <T>(config: LlmConfig, request: JsonCompletionRequest) => Promise<T>;
+
+type PreparedCandidate = {
+  row: Awaited<ReturnType<MemberRepository['search']>>[number];
+  evidenceOptions: ReturnType<typeof buildEvidenceOptions>;
+};
+
+type ValidationResult = {
+  schemaValid: boolean;
+  modelMatchCount: number;
+  accepted: PublicMemberMatch[];
+  unknownMemberCount: number;
+  duplicateMemberCount: number;
+  unknownEvidenceCount: number;
+};
+
+const RETRY_INSTRUCTION = [
+  'Your previous output was structurally invalid.',
+  'Return only existing memberId and evidenceId pairs from the supplied candidates.',
+  'Do not copy or create evidence text.',
+].join(' ');
+
+function validateModelMatches(
+  raw: unknown,
+  prepared: readonly PreparedCandidate[],
+): ValidationResult {
+  const parsed = MemberMatchSchema.safeParse(raw);
+  if (!parsed.success) {
+    return {
+      schemaValid: false,
+      modelMatchCount: 0,
+      accepted: [],
+      unknownMemberCount: 0,
+      duplicateMemberCount: 0,
+      unknownEvidenceCount: 0,
+    };
+  }
+  const byId = new Map(prepared.map((candidate) => [
+    candidate.row.member.memberId,
+    candidate,
+  ]));
+  const seen = new Set<string>();
+  const accepted: PublicMemberMatch[] = [];
+  let unknownMemberCount = 0;
+  let duplicateMemberCount = 0;
+  let unknownEvidenceCount = 0;
+  for (const match of parsed.data.matches) {
+    const candidate = byId.get(match.memberId);
+    if (!candidate) {
+      unknownMemberCount++;
+      continue;
+    }
+    if (seen.has(match.memberId)) {
+      duplicateMemberCount++;
+      continue;
+    }
+    const evidence = candidate.evidenceOptions.find(
+      (option) => option.evidenceId === match.evidenceId,
+    )?.text;
+    if (!evidence || !candidate.row.member.profileText.includes(evidence)) {
+      unknownEvidenceCount++;
+      continue;
+    }
+    seen.add(match.memberId);
+    accepted.push({
+      memberId: match.memberId,
+      displayName: candidate.row.member.displayName,
+      telegramUsername: candidate.row.member.telegramUsername,
+      evidence,
+      similarity: candidate.row.similarity,
+    });
+  }
+  return {
+    schemaValid: true,
+    modelMatchCount: parsed.data.matches.length,
+    accepted,
+    unknownMemberCount,
+    duplicateMemberCount,
+    unknownEvidenceCount,
+  };
+}
+
+function isStructurallyInvalid(result: ValidationResult): boolean {
+  return !result.schemaValid ||
+    result.unknownMemberCount > 0 ||
+    result.duplicateMemberCount > 0 ||
+    result.unknownEvidenceCount > 0;
+}
 
 export class MemberMatcher {
   constructor(private readonly deps: {
@@ -54,16 +143,35 @@ export class MemberMatcher {
       20,
       options.requesterTelegramUserId,
     );
-    if (shortlist.length < minimumMatches) return [];
+    if (shortlist.length < minimumMatches) {
+      logger.info({
+        event: 'member-match-rerank',
+        shortlistCount: shortlist.length,
+        modelMatchCount: 0,
+        acceptedCount: 0,
+        unknownMemberCount: 0,
+        duplicateMemberCount: 0,
+        unknownEvidenceCount: 0,
+        schemaValid: true,
+        retryUsed: false,
+        minimumMatches,
+        outcome: 'below-threshold',
+      }, 'Member match rerank complete');
+      return [];
+    }
 
+    const prepared: PreparedCandidate[] = shortlist.map((row) => ({
+      row,
+      evidenceOptions: buildEvidenceOptions(row.member.profileText),
+    }));
     const request: JsonCompletionRequest = {
       system: PROMPT,
       user: JSON.stringify({
         query,
-        candidates: shortlist.map(({ member, similarity }) => ({
-          memberId: member.memberId,
-          profileText: member.profileText,
-          similarity,
+        candidates: prepared.map(({ row, evidenceOptions }) => ({
+          memberId: row.member.memberId,
+          similarity: row.similarity,
+          evidenceOptions,
         })),
       }),
       maxTokens: 1200,
@@ -79,10 +187,10 @@ export class MemberMatcher {
             items: {
               type: 'object',
               additionalProperties: false,
-              required: ['memberId', 'evidence'],
+              required: ['memberId', 'evidenceId'],
               properties: {
-                memberId: { type: 'string' },
-                evidence: { type: 'string', minLength: 1, maxLength: 300 },
+                memberId: { type: 'string', minLength: 1 },
+                evidenceId: { type: 'string', minLength: 1 },
               },
             },
           },
@@ -90,31 +198,46 @@ export class MemberMatcher {
       },
     };
     const requestFn = this.deps.requestJsonFn ?? requestJson;
-    const raw = await requestFn<unknown>(this.deps.llm, request);
-    const parsed = MemberMatchSchema.safeParse(raw);
-    if (!parsed.success) return [];
-
-    const byId = new Map(shortlist.map((item) => [item.member.memberId, item]));
-    const seen = new Set<string>();
-    const valid: PublicMemberMatch[] = [];
-    for (const match of parsed.data.matches) {
-      const candidate = byId.get(match.memberId);
-      if (
-        !candidate ||
-        seen.has(match.memberId) ||
-        !candidate.member.profileText.includes(match.evidence)
-      ) {
-        continue;
+    const runAttempt = async (retryInstruction?: string): Promise<ValidationResult> => {
+      try {
+        const raw = await requestFn<unknown>(this.deps.llm, {
+          ...request,
+          ...(retryInstruction ? { retryInstruction } : {}),
+        });
+        return validateModelMatches(raw, prepared);
+      } catch (error: unknown) {
+        if (!(error instanceof LlmSchemaError)) throw error;
+        return validateModelMatches(undefined, prepared);
       }
-      seen.add(match.memberId);
-      valid.push({
-        memberId: match.memberId,
-        displayName: candidate.member.displayName,
-        telegramUsername: candidate.member.telegramUsername,
-        evidence: match.evidence,
-        similarity: candidate.similarity,
-      });
+    };
+
+    let result = await runAttempt();
+    let retryUsed = false;
+    if (isStructurallyInvalid(result)) {
+      retryUsed = true;
+      result = await runAttempt(RETRY_INSTRUCTION);
     }
-    return valid.length >= minimumMatches ? valid.slice(0, 5) : [];
+    const accepted = [...result.accepted]
+      .sort((left, right) =>
+        right.similarity - left.similarity || left.memberId.localeCompare(right.memberId));
+    const outcome = !result.schemaValid
+      ? 'invalid-output'
+      : accepted.length >= minimumMatches
+        ? 'completed'
+        : 'below-threshold';
+    logger.info({
+      event: 'member-match-rerank',
+      shortlistCount: shortlist.length,
+      modelMatchCount: result.modelMatchCount,
+      acceptedCount: accepted.length,
+      unknownMemberCount: result.unknownMemberCount,
+      duplicateMemberCount: result.duplicateMemberCount,
+      unknownEvidenceCount: result.unknownEvidenceCount,
+      schemaValid: result.schemaValid,
+      retryUsed,
+      minimumMatches,
+      outcome,
+    }, 'Member match rerank complete');
+    return accepted.length >= minimumMatches ? accepted.slice(0, 5) : [];
   }
 }
