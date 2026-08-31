@@ -2,6 +2,7 @@ import type { Pool } from 'pg';
 import { withTransaction } from './db/pool.js';
 
 export type ScheduledPublicationPipeline = 'digest' | 'thread-summary';
+export type ScheduledPublicationMessageFormat = 'regular-html' | 'rich-html';
 export type ScheduledPublicationStatus =
   | 'ready'
   | 'delivering'
@@ -12,6 +13,8 @@ export type ScheduledPublicationStatus =
 
 export interface ScheduledPublicationInput {
   pipeline: ScheduledPublicationPipeline;
+  messageFormat: ScheduledPublicationMessageFormat;
+  originDigestId: string | null;
   publicationDate: string;
   targetChatId: number;
   threadId: number;
@@ -24,6 +27,8 @@ export interface ScheduledPublicationInput {
 export interface ClaimedPublication {
   id: string;
   pipeline: ScheduledPublicationPipeline;
+  messageFormat: ScheduledPublicationMessageFormat;
+  originDigestId: string | null;
   publicationDate: string;
   targetChatId: number;
   threadId: number;
@@ -43,6 +48,8 @@ export interface CompletedPublication {
 export interface ScheduledPublicationRecord {
   id: string;
   pipeline: ScheduledPublicationPipeline;
+  messageFormat: ScheduledPublicationMessageFormat;
+  originDigestId: string | null;
   publicationDate: string;
   status: ScheduledPublicationStatus;
   targetChatId: number;
@@ -66,6 +73,8 @@ export interface PublicationStatusCount {
 interface PublicationRow {
   id: string;
   pipeline: ScheduledPublicationPipeline;
+  message_format: ScheduledPublicationMessageFormat;
+  origin_digest_id: string | null;
   publication_date: string;
   status: ScheduledPublicationStatus;
   target_chat_id: string;
@@ -89,6 +98,8 @@ function asRecord(row: PublicationRow): ScheduledPublicationRecord {
   return {
     id: row.id,
     pipeline: row.pipeline,
+    messageFormat: row.message_format,
+    originDigestId: row.origin_digest_id,
     publicationDate: row.publication_date,
     status: row.status,
     targetChatId: toSafeInteger(row.target_chat_id, 'target chat id'),
@@ -137,9 +148,9 @@ export class PgScheduledPublicationRepository implements ScheduledPublicationRep
       const inserted = await client.query<{ id: string }>(`
         INSERT INTO scheduled_publications (
           pipeline, publication_date, target_chat_id, thread_id, item_count, status,
-          next_attempt_at, expires_at
-        ) VALUES ($1, $2, $3, $4, $5, 'ready', $6, $7)
-        ON CONFLICT(pipeline, publication_date) DO NOTHING
+          next_attempt_at, expires_at, message_format, origin_digest_id
+        ) VALUES ($1, $2, $3, $4, $5, 'ready', $6, $7, $8, $9)
+        ON CONFLICT DO NOTHING
         RETURNING id
       `, [
         input.pipeline,
@@ -149,14 +160,24 @@ export class PgScheduledPublicationRepository implements ScheduledPublicationRep
         input.itemCount,
         input.nextAttemptAt,
         input.expiresAt,
+        input.messageFormat,
+        input.originDigestId,
       ]);
       const row = inserted.rows[0];
       if (!row) {
-        const existing = await client.query<{ id: string }>(`
-          SELECT id FROM scheduled_publications
-          WHERE pipeline = $1 AND publication_date = $2
-        `, [input.pipeline, input.publicationDate]);
-        const existingRow = existing.rows[0];
+        const byOrigin = input.originDigestId === null
+          ? null
+          : await client.query<{ id: string }>(`
+            SELECT id FROM scheduled_publications
+            WHERE origin_digest_id = $1
+          `, [input.originDigestId]);
+        const byDate = byOrigin?.rows[0]
+          ? null
+          : await client.query<{ id: string }>(`
+            SELECT id FROM scheduled_publications
+            WHERE pipeline = $1 AND publication_date = $2
+          `, [input.pipeline, input.publicationDate]);
+        const existingRow = byOrigin?.rows[0] ?? byDate?.rows[0];
         if (!existingRow) throw new Error('scheduled publication enqueue lost conflict row');
         return { id: existingRow.id, created: false };
       }
@@ -210,6 +231,8 @@ export class PgScheduledPublicationRepository implements ScheduledPublicationRep
       return {
         id: record.id,
         pipeline: record.pipeline,
+        messageFormat: record.messageFormat,
+        originDigestId: record.originDigestId,
         publicationDate: record.publicationDate,
         targetChatId: record.targetChatId,
         threadId: record.threadId,

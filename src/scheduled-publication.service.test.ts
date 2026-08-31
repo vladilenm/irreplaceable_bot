@@ -53,6 +53,8 @@ describe('scheduled publication handoff', () => {
 
     expect(publications.enqueue).toHaveBeenCalledWith(expect.objectContaining({
       pipeline: 'digest',
+      messageFormat: 'regular-html',
+      originDigestId: null,
       publicationDate: '2030-08-23',
       targetChatId: -100123,
       threadId: 6359,
@@ -94,6 +96,8 @@ describe('scheduled publication handoff', () => {
 
     expect(publications.enqueue).toHaveBeenCalledWith(expect.objectContaining({
       pipeline: 'thread-summary',
+      messageFormat: 'regular-html',
+      originDigestId: null,
       threadId: 6359,
       chunks: ['one', 'two'],
     }));

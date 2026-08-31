@@ -32,6 +32,8 @@ export async function enqueueDigestPublication(
   }
   await persistence.publications.enqueue({
     pipeline: 'digest',
+    messageFormat: 'regular-html',
+    originDigestId: null,
     publicationDate: moscowDateKey(result.date),
     targetChatId: destination.targetChatId,
     threadId: destination.threadId,
@@ -52,6 +54,8 @@ export async function enqueueThreadSummaryPublication(
   if (result.alreadyPublished || result.llmOutage || result.chunks.length === 0) return;
   await persistence.publications.enqueue({
     pipeline: 'thread-summary',
+    messageFormat: 'regular-html',
+    originDigestId: null,
     publicationDate: moscowDateKey(result.date),
     targetChatId: destination.targetChatId,
     threadId: destination.threadId,

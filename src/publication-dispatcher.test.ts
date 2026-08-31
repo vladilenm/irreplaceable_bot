@@ -15,6 +15,8 @@ const now = new Date('2030-08-23T06:00:00.000Z');
 const claimed = (overrides: Partial<ClaimedPublication> = {}): ClaimedPublication => ({
   id: '1',
   pipeline: 'digest',
+  messageFormat: 'regular-html',
+  originDigestId: null,
   publicationDate: '2030-08-23',
   targetChatId: -100123,
   threadId: 6359,

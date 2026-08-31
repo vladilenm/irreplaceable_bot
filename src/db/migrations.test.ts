@@ -110,4 +110,43 @@ describe('runMigrations', () => {
     );
     expect(sourceState.rows[0]?.present).toBe('member_source_state');
   });
+
+  it('adds idempotent Rich Message origin metadata while preserving existing rows', async () => {
+    await runMigrations(pool, POSTGRES_MIGRATIONS.slice(0, 3));
+    await pool.query(`
+      INSERT INTO scheduled_publications (
+        pipeline, publication_date, target_chat_id, thread_id, item_count, status,
+        next_attempt_at, expires_at
+      ) VALUES (
+        'thread-summary', '2030-08-23', -100123, 77, 0, 'ready',
+        '2030-08-23T06:00:00.000Z', '2030-08-23T21:00:00.000Z'
+      )
+    `);
+
+    expect(await runMigrations(pool)).toBe(1);
+    expect(await runMigrations(pool)).toBe(0);
+
+    const existing = await pool.query<{
+      message_format: string;
+      origin_digest_id: string | null;
+    }>(`
+      SELECT message_format, origin_digest_id
+      FROM scheduled_publications
+      WHERE pipeline = 'thread-summary'
+    `);
+    expect(existing.rows).toEqual([{
+      message_format: 'regular-html',
+      origin_digest_id: null,
+    }]);
+
+    await expect(pool.query(`
+      INSERT INTO scheduled_publications (
+        pipeline, publication_date, target_chat_id, thread_id, item_count, status,
+        next_attempt_at, expires_at, message_format
+      ) VALUES (
+        'digest', '2030-08-24', -100123, 77, 1, 'ready',
+        '2030-08-24T06:00:00.000Z', '2030-08-24T21:00:00.000Z', 'markdown'
+      )
+    `)).rejects.toThrow();
+  });
 });
