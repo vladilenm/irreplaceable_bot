@@ -164,6 +164,60 @@ it('resolves a code-owned evidence id to exact profile text', async () => {
   });
 });
 
+it('allows complementary candidates to cover different parts of a compound request', async () => {
+  const blogEvidence = 'Помогаю развивать экспертные блоги и контент.';
+  const cryptoEvidence = 'Профессия и специализация: эксперт по криптовалютам.';
+  const rows: SimilarMember[] = [
+    {
+      member: {
+        memberId: 'blog-expert',
+        displayName: 'Эксперт по блогам',
+        telegramUsername: 'blog_expert',
+        profileText: blogEvidence,
+      },
+      similarity: 0.92,
+    },
+    {
+      member: {
+        memberId: 'crypto-expert',
+        displayName: 'Эксперт по крипте',
+        telegramUsername: 'crypto_expert',
+        profileText: cryptoEvidence,
+      },
+      similarity: 0.9,
+    },
+  ];
+  const { matcher, requestJsonFn } = matcherFor({
+    matches: [
+      { memberId: 'blog-expert', evidenceId: 'e0' },
+      { memberId: 'crypto-expert', evidenceId: 'e0' },
+    ],
+  }, rows);
+
+  await expect(matcher.match('Ищу помощь с прокачкой блога по крипте', {
+    minimumMatches: 1,
+  })).resolves.toEqual([
+    expect.objectContaining({
+      memberId: 'blog-expert',
+      telegramUsername: 'blog_expert',
+      evidence: blogEvidence,
+    }),
+    expect.objectContaining({
+      memberId: 'crypto-expert',
+      telegramUsername: 'crypto_expert',
+      evidence: cryptoEvidence,
+    }),
+  ]);
+
+  const system = requestJsonFn.mock.calls[0]?.[1]?.system;
+  expect(system).toContain(
+    'можешь выбрать разных участников, которые надёжно закрывают их совместно',
+  );
+  expect(system).toContain(
+    'кандидат не обязан закрывать весь составной запрос один',
+  );
+});
+
 it('retries once when a model match references an unknown evidence id', async () => {
   const { matcher, requestJsonFn } = matcherFor([
     { matches: [{ memberId: 'anna', evidenceId: 'invented' }] },
