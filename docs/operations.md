@@ -185,6 +185,12 @@ node --input-type=module -e 'import{Pool}from"pg";const p=new Pool({connectionSt
 - `no_match`: после evidence-проверки осталось меньше трёх кандидатов.
 - `failed`: используйте `error_code` и app logs, не выводя query или credentials.
 
+После будущего deploy событие `member-match-rerank` различает model selection и
+структурное отбрасывание безопасными счётчиками. `unknownEvidenceCount > 0` или
+`schemaValid=false` вместе с `retryUsed=true` означает, что matcher использовал
+единственный validation retry. Событие не содержит query, profile, evidence,
+member IDs, usernames или provider response.
+
 Два разных `tg_message_id` — два реальных Telegram-сообщения, а не повторная обработка одного update. При production-проверке 2026-08-22 успешный запрос занял около 139 секунд, а второй почти одновременный запрос завершился `processing-failed` примерно через 269 секунд. Это исходная точка для latency-патча, а не целевая производительность.
 
 ## Приватная проверка подбора
@@ -199,10 +205,11 @@ node --input-type=module -e 'import{Pool}from"pg";const p=new Pool({connectionSt
 сообщение. Она допускает один grounded-кандидат, сохраняет лимит пять и разрешает
 показать карточку владельца. Другой пользователь и вызов в группе не получают
 ответа. При пустой переменной команда не регистрируется. Публичный `#запрос`
-по-прежнему исключает автора по Telegram ID. LLM выбирает участника и дословный
-фрагмент анкеты. Код принимает evidence только при точном raw substring match в
-`profileText` и показывает именно этот фрагмент. Свободный LLM-пересказ в Telegram
-не публикуется.
+по-прежнему исключает автора по Telegram ID. LLM выбирает участника и `evidenceId`
+из подготовленных кодом точных фрагментов анкеты. Код проверяет принадлежность ID
+участнику и показывает исходный substring из `profileText`; свободный LLM-пересказ
+в Telegram не публикуется. Структурно невалидный ответ повторяется не более одного
+раза, а валидный пустой ответ не повторяется.
 
 Это smoke реального embedding → PostgreSQL/pgvector → LLM reranking pipeline, но
 не smoke таблицы `member_requests`: приватные команды не создают в ней строк. После
