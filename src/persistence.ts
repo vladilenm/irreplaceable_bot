@@ -23,6 +23,10 @@ import {
   PgScheduledPublicationRepository,
   type ScheduledPublicationRepository,
 } from './scheduled-publication.repository.js';
+import {
+  PgDigestSourceRepository,
+  type DigestSourceRepository,
+} from './digest-source.repository.js';
 
 export interface CorePersistence {
   jobs: JobStateRepository;
@@ -31,6 +35,7 @@ export interface CorePersistence {
 }
 
 export interface Persistence extends CorePersistence {
+  digestSource: DigestSourceRepository;
   members: MemberRepository;
   memberSource: MemberSourceRepository;
   requests: RequestRepository;
@@ -41,6 +46,7 @@ export function createPersistence(pool: Pool): Persistence {
     jobs: new PgJobStateRepository(pool),
     messages: new PgMessageRepository(pool),
     publications: new PgScheduledPublicationRepository(pool),
+    digestSource: new PgDigestSourceRepository(pool),
     members: new PgMemberRepository(pool),
     memberSource: new PgMemberSourceRepository(pool),
     requests: new PgRequestRepository(pool),

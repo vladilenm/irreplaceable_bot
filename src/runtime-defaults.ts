@@ -23,7 +23,10 @@ export const RUNTIME_DEFAULTS = Object.freeze({
       shutdownTimeoutMs: 5_000,
     }),
   }),
-  publications: Object.freeze({ deliveryLeaseMs: 5 * 60_000 }),
+  publications: Object.freeze({
+    deliveryLeaseMs: 5 * 60_000,
+    digestPollIntervalMs: 30_000,
+  }),
   matching: Object.freeze({
     concurrency: 2,
     queueLimit: 50,
